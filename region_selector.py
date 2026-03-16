@@ -38,9 +38,11 @@ class RegionSelector(QWidget):
     # ------------------------------------------------------------------ #
 
     def _setup_window(self) -> None:
-        # Cover all screens
-        screen_geometry = QApplication.primaryScreen().virtualGeometry()
-        self.setGeometry(screen_geometry)
+        # 모든 스크린을 합친 전체 영역 계산
+        combined = QRect()
+        for screen in QApplication.screens():
+            combined = combined.united(screen.geometry())
+        self.setGeometry(combined)
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
@@ -48,6 +50,8 @@ class RegionSelector(QWidget):
             Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)   # 닫힐 때 자동 소멸
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)          # 키보드 이벤트 수신
         self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
         self.setMouseTracking(True)
 

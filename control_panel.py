@@ -37,6 +37,7 @@ class ControlPanel(QWidget):
         self._overlay: OverlayWindow | None = None
         self._frame_count = 0
         self._fps_timer = QTimer(self)
+        self._selector: RegionSelector | None = None   # ← GC 방지용 참조 보관
 
         self._build_ui()
         self._refresh_windows()
@@ -161,11 +162,15 @@ class ControlPanel(QWidget):
         self._selected_hwnd = hwnd
 
     def _start_region_selection(self) -> None:
-        selector = RegionSelector()
-        selector.region_selected.connect(self._on_region_selected)
-        selector.selection_cancelled.connect(lambda: self._set_status("Region selection cancelled."))
-        selector.show()
-        selector.activateWindow()
+        # 로컬 변수로 두면 함수 종료 즉시 GC가 소멸 → self에 저장해야 함
+        self._selector = RegionSelector()
+        self._selector.region_selected.connect(self._on_region_selected)
+        self._selector.selection_cancelled.connect(
+            lambda: self._set_status("Region selection cancelled.")
+        )
+        self._selector.showFullScreen()   # show() 대신 showFullScreen()으로 확실히 전체화면 확보
+        self._selector.raise_()
+        self._selector.activateWindow()
 
     def _on_region_selected(self, rect: QRect) -> None:
         self._capture_region = rect
