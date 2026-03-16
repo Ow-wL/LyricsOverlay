@@ -1,118 +1,93 @@
 """
 capture_engine.py
-Low-latency screen-region capture using `mss`.
-Runs on a dedicated QThread so the GUI stays responsive.
-
-Future extension point: swap _capture_frame() body for a CUDA/DXGI path.
+mss 기반 저지연 화면 캡처 + TextProcessor 실시간 적용.
+QThread에서 동작해 GUI가 블로킹되지 않는다.
 """
 
 from __future__ import annotations
 import time
 import numpy as np
 import mss
-import mss.tools
 from PyQt6.QtCore import QThread, pyqtSignal, QRect
 from PyQt6.QtGui import QImage
+
+from text_processor import TextProcessor, ProcessorSettings
 
 
 class CaptureEngine(QThread):
     """
-    Worker thread that captures a fixed screen region at ~target_fps.
-
-    Signals
-    -------
-    frame_ready(QImage)
-        Emitted every time a new frame is captured.
-    error_occurred(str)
-        Emitted when capture fails.
+    지정 스크린 영역을 target_fps 로 캡처하고,
+    TextProcessor 를 거쳐 QImage 를 frame_ready 시그널로 내보낸다.
     """
 
-    frame_ready = pyqtSignal(QImage)
+    frame_ready    = pyqtSignal(QImage)
     error_occurred = pyqtSignal(str)
 
-    def __init__(self, region: QRect, target_fps: int = 30) -> None:
+    def __init__(
+        self,
+        region: QRect,
+        target_fps: int = 30,
+        settings: ProcessorSettings | None = None,
+    ) -> None:
         super().__init__()
-        self._region = region
+        self._region    = region
         self._target_fps = target_fps
-        self._running = False
+        self._running   = False
+        self._monitor   = self._rect_to_monitor(region)
+        self._processor = TextProcessor(settings or ProcessorSettings())
 
-        # mss monitor dict  (top-left origin, width/height)
-        self._monitor: dict = self._rect_to_monitor(region)
-
-    # ------------------------------------------------------------------ #
-    #  Public API                                                          #
-    # ------------------------------------------------------------------ #
-
+    # ── 공개 API ────────────────────────────────────────────────────────
     def update_region(self, region: QRect) -> None:
-        """Thread-safe region update."""
-        self._region = region
+        self._region  = region
         self._monitor = self._rect_to_monitor(region)
+
+    def update_settings(self, settings: ProcessorSettings) -> None:
+        """실시간 설정 변경 (스레드 안전: 단순 객체 교체)."""
+        self._processor.settings = settings
 
     def stop(self) -> None:
         self._running = False
         self.wait()
 
-    # ------------------------------------------------------------------ #
-    #  QThread entry                                                       #
-    # ------------------------------------------------------------------ #
-
+    # ── QThread 진입점 ──────────────────────────────────────────────────
     def run(self) -> None:
         self._running = True
-        frame_duration = 1.0 / self._target_fps
+        frame_dur = 1.0 / self._target_fps
 
-        # Each thread gets its own mss instance (not thread-safe to share)
         with mss.mss() as sct:
             while self._running:
                 t0 = time.perf_counter()
                 try:
-                    frame = self._capture_frame(sct)
-                    if frame is not None:
-                        self.frame_ready.emit(frame)
+                    qimg = self._capture_and_process(sct)
+                    if qimg is not None:
+                        self.frame_ready.emit(qimg)
                 except Exception as exc:
                     self.error_occurred.emit(str(exc))
 
-                # Adaptive sleep: subtract elapsed time so we stay on cadence
                 elapsed = time.perf_counter() - t0
-                sleep_for = frame_duration - elapsed
+                sleep_for = frame_dur - elapsed
                 if sleep_for > 0:
                     time.sleep(sleep_for)
 
-    # ------------------------------------------------------------------ #
-    #  Internals                                                           #
-    # ------------------------------------------------------------------ #
-
-    def _capture_frame(self, sct: mss.mss) -> QImage | None:
-        """
-        Capture one frame using mss and return it as a QImage (ARGB32).
-
-        Extension point: replace this method body with a CUDA or DXGI
-        Desktop-Duplication path without changing the rest of the pipeline.
-        """
+    # ── 내부 ────────────────────────────────────────────────────────────
+    def _capture_and_process(self, sct) -> QImage | None:
         raw = sct.grab(self._monitor)
         if raw is None:
             return None
 
-        # mss returns BGRA; convert to RGBA for Qt
-        arr: np.ndarray = np.frombuffer(raw.bgra, dtype=np.uint8).reshape(
+        # mss → numpy BGRA
+        bgra: np.ndarray = np.frombuffer(raw.bgra, dtype=np.uint8).reshape(
             raw.height, raw.width, 4
-        )
-        # BGRA → RGBA
-        arr = arr[:, :, [2, 1, 0, 3]].copy()
+        ).copy()   # writeable copy 필요 (OpenCV 연산)
 
-        img = QImage(
-            arr.data,
-            raw.width,
-            raw.height,
-            raw.width * 4,
-            QImage.Format.Format_RGBA8888,
-        )
-        return img.copy()   # detach from numpy buffer lifetime
+        # TextProcessor 적용 → RGBA QImage
+        return self._processor.process(bgra)
 
     @staticmethod
     def _rect_to_monitor(rect: QRect) -> dict:
         return {
-            "top": rect.top(),
-            "left": rect.left(),
-            "width": rect.width(),
+            "top":    rect.top(),
+            "left":   rect.left(),
+            "width":  rect.width(),
             "height": rect.height(),
         }

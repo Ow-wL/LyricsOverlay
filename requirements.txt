@@ -1,5 +1,5 @@
-# Lyrics Overlay MVP – Python dependencies
-# Install with: pip install -r requirements.txt
+# Lyrics Overlay MVP – 의존성
+# pip install -r requirements.txt
 
 PyQt6>=6.6.0
 opencv-python>=4.9.0
