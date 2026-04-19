@@ -1,67 +1,67 @@
 import requests
 from bs4 import BeautifulSoup
 import re
+from urllib.parse import quote
 
 class LyricsSearcher:
     def __init__(self):
         self.current_song = ""
         self.cached_lyrics = []
+        self.session = requests.Session()
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+            'Referer': 'https://www.melon.com/index.htm'
         }
 
     def search_lyrics(self, query):
-        # 1. 검색어 정제 (핵심!)
-        # 괄호 안의 내용 제거: "12:45 (Stripped) - Etham" -> "12:45 - Etham"
-        temp_query = re.sub(r'\(.*?\)', '', query)
-        # " - Melon" 꼬리표 제거 및 불필요한 특수문자 정리
-        clean_query = temp_query.replace("- Melon", "").replace("-", " ").strip()
-        # 중복 공백 제거
+        # 1. 화면 표시용 이름 정리
+        display_name = query.replace("- Melon", "").strip()
+        
+        # 2. 검색용 정제 (괄호 제거 등)
+        clean_query = re.sub(r'[\(\[].*?[\)\]]', '', query)
+        clean_query = clean_query.replace("- Melon", "").replace("-", " ").strip()
         clean_query = " ".join(clean_query.split())
 
+        if not clean_query: return [], None
+
+        # [핵심] 이미 검색했던 곡(성공 혹은 실패)이라면 더 이상 시도하지 않음
         if self.current_song == clean_query:
             return self.cached_lyrics, None
 
-        try:
-            # 2. 멜론 검색 시도
-            search_url = f"https://www.melon.com/search/song/index.htm?q={clean_query}"
-            response = requests.get(search_url, headers=self.headers, timeout=5)
-            soup = BeautifulSoup(response.text, 'html.parser')
+        # 새로운 곡이 들어오면 일단 현재 곡으로 등록 (실패해도 다시 안 하도록)
+        self.current_song = clean_query
+        self.cached_lyrics = [] # 가사 초기화
 
-            # 곡 상세 페이지 링크 찾기
-            song_link = soup.select_one("a.btn.btn_icon_detail")
+        try:
+            encoded_query = quote(clean_query)
+            search_url = f"https://www.melon.com/search/total/index.htm?q={encoded_query}"
+            
+            response = self.session.get(search_url, headers=self.headers, timeout=5)
+            if response.status_code != 200:
+                return [], f"❌ 접근 실패: {display_name} (HTTP {response.status_code})"
+
+            soup = BeautifulSoup(response.text, 'html.parser')
+            song_link = soup.select_one("a[href*='goSongDetail']")
             
             if not song_link:
-                # [재시도 로직] 만약 실패하면 더 단순하게 검색 (가수 빼고 제목만)
-                simple_query = clean_query.split()[0] # 첫 단어만
-                return [], f"❌ 검색 실패: '{clean_query}' (단순 검색 권장)"
+                return [], f"❌ 검색 결과 없음: {display_name}"
 
             song_id = re.findall(r'\d+', song_link['href'])[0]
-            lyrics_list = self._fetch_melon_lyrics(song_id)
             
-            if lyrics_list:
-                self.current_song = clean_query
-                self.cached_lyrics = lyrics_list
-                return lyrics_list, f"✅ 로드 완료: {clean_query} ({len(lyrics_list)}줄)"
-            else:
-                return [], "⚠️ 가사 정보가 없는 곡입니다."
+            # 가사 상세 페이지 요청
+            lyrics_url = f"https://www.melon.com/song/detail.htm?songId={song_id}"
+            res = self.session.get(lyrics_url, headers=self.headers, timeout=5)
+            l_soup = BeautifulSoup(res.text, 'html.parser')
+            
+            lyric_div = l_soup.select_one("#d_video_summary")
+            if lyric_div:
+                text_raw = lyric_div.get_text(separator="\n").strip()
+                self.cached_lyrics = [line.strip() for line in text_raw.split('\n') if line.strip()]
                 
+                line_count = len(self.cached_lyrics)
+                return self.cached_lyrics, f"✅ 로드 성공: {display_name} ({line_count}줄)"
+            else:
+                return [], f"❌ 가사 데이터 없음: {display_name}"
+            
         except Exception as e:
-            return [], f"⚠️ 에러: {str(e)}"
-
-    def _fetch_melon_lyrics(self, song_id):
-        url = f"https://www.melon.com/song/detail.htm?songId={song_id}"
-        response = requests.get(url, headers=self.headers, timeout=5)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # 멜론은 가사가 없으면 해당 div가 아예 없거나 비어있음
-        lyric_div = soup.select_one("#d_video_summary")
-        if not lyric_div:
-            return []
-
-        # 줄바꿈 처리
-        for br in lyric_div.find_all("br"):
-            br.replace_with("\n")
-        
-        raw_lyrics = lyric_div.get_text()
-        return [line.strip() for line in raw_lyrics.split('\n') if line.strip()]
+            return [], f"⚠️ 에러: {display_name} ({str(e)})"
