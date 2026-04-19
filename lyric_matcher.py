@@ -4,26 +4,19 @@ from lyrics_searcher import LyricsSearcher
 class LyricMatcher:
     def __init__(self):
         self.searcher = LyricsSearcher()
+        self.last_status = None 
 
     def get_best_match(self, ocr_text, song_title):
         """OCR 결과와 실제 가사를 대조하여 정답 문장 반환"""
-        # 1. 현재 노래 가사 가져오기
-        full_lyrics = self.searcher.search_lyrics(song_title)
+        # 1. 가사와 상태 메시지를 함께 가져옴
+        full_lyrics, status = self.searcher.search_lyrics(song_title)
+        if status: self.last_status = status # 새로운 로그가 있으면 저장
         
-        if not full_lyrics or not ocr_text:
-            return ocr_text
+        if not full_lyrics: return ocr_text, status
 
-        # 2. 유사도 매칭 실행 (임계값 60% 설정)
-        # ocr_text와 가장 비슷한 문장을 full_lyrics에서 찾음
-        match_result = process.extractOne(
-            ocr_text, 
-            full_lyrics, 
-            scorer=fuzz.WRatio
-        )
-
-        if match_result:
-            best_text, score, _ = match_result
-            if score > 60: # 60% 이상 비슷할 때만 교체
-                return best_text
+        # 2. 유사도 매칭 (기존과 동일)
+        match = process.extractOne(ocr_text, full_lyrics, scorer=fuzz.WRatio, score_cutoff=60)
         
-        return ocr_text
+        if match:
+            return match[0], status
+        return ocr_text, status
