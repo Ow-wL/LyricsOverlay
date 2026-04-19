@@ -17,6 +17,15 @@ from lyric_matcher import LyricMatcher
 # 1. 전역 변수
 engine = OcrEngine.try_create_from_user_profile_languages()
 is_ghost_mode = False 
+log_history = []
+
+def add_log(message):
+    """최근 로그 5개만 유지하는 함수"""
+    global log_history
+    timestamp = time.strftime("%H:%M:%S")
+    log_history.append(f"[{timestamp}] {message}")
+    if len(log_history) > 5:  # 너무 많으면 지움
+        log_history.pop(0)
 
 def toggle_mode():
     global is_ghost_mode
@@ -44,32 +53,28 @@ async def windows_native_ocr_split(image):
         return []
 
 def apply_transparency(hwnd, ghost):
-    """OBS 충돌 방지를 위해 스타일 설정을 매번 확인하고 강제 적용"""
     try:
-        # 현재 확장 스타일 가져오기
         style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
         
         if ghost:
-            # 반투명(LAYERED)과 클릭 통과(TRANSPARENT)를 명시적으로 추가
+            # 게임 모드: 클릭 통과 + 항상 위 강제
             new_style = style | win32con.WS_EX_LAYERED | win32con.WS_EX_TRANSPARENT
-            if style != new_style:
-                win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, new_style)
-            
+            win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, new_style)
             win32gui.SetLayeredWindowAttributes(hwnd, 0, 1, win32con.LWA_ALPHA)
+            # 고스트 모드일 때는 확실하게 위로 올립니다.
             win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0, 
                                   win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE)
         else:
-            # 클릭 가능하게 복구하되, 투명도 조절을 위해 LAYERED는 유지하는 것이 안전함
+            # 조작 모드: 클릭 가능하게 복구
             new_style = (style | win32con.WS_EX_LAYERED) & ~win32con.WS_EX_TRANSPARENT
-            if style != new_style:
-                win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, new_style)
-            
-            # 255(불투명) 적용 전 레이어드 스타일이 확실히 있는지 재확인
+            win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, new_style)
             win32gui.SetLayeredWindowAttributes(hwnd, 0, 255, win32con.LWA_ALPHA)
-            win32gui.SetWindowPos(hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0, 
-                                  win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE)
-    except Exception as e:
-        # 에러가 나도 프로그램이 종료되지 않고 다음 루프로 넘어가게 함
+            
+            # [핵심] 여기서 HWND_NOTOPMOST를 쓰지 않고, 멜론의 자체 설정을 존중하도록
+            # 창의 스타일만 바꾸고 위치(Z-order)는 건드리지 않습니다.
+            win32gui.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 
+                                  win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE | win32con.SWP_NOZORDER)
+    except:
         pass
 
 def capture_covered_window(hwnd):
@@ -98,6 +103,7 @@ def capture_covered_window(hwnd):
 async def main():
     # 1. 새 보정 엔진 초기화 (LyricMatcher)
     matcher = LyricMatcher() 
+    last_applied_mode = None # 이전에 적용된 모드를 저장
     global is_ghost_mode
     
     print("=" * 50)
@@ -119,6 +125,13 @@ async def main():
         
         if target_win:
             hwnd = target_win._hWnd
+
+            # [수정] 모드가 바뀌었을 때만 스타일을 적용합니다.
+            if is_ghost_mode != last_applied_mode:
+                apply_transparency(hwnd, is_ghost_mode)
+                last_applied_mode = is_ghost_mode
+                add_log(f"창 스타일 변경 완료: {'고스트' if is_ghost_mode else '일반'}")
+
             if win32gui.IsIconic(hwnd):
                 win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
             
@@ -129,26 +142,38 @@ async def main():
             if full_img is not None:
                 # 가사 영역 정밀 추출 및 3배 확대
                 roi = full_img[216:216+46, 28:28+251]
-                sscaled = cv2.resize(roi, None, fx=5, fy=5, interpolation=cv2.INTER_LANCZOS4)
+                scaled = cv2.resize(roi, None, fx=5, fy=5, interpolation=cv2.INTER_LANCZOS4)
                 
                 # 윈도우 네이티브 OCR 실행
                 lines = await windows_native_ocr_split(scaled)
                 
-                # --- [오늘의 핵심: 실시간 가사 보정 로직] ---
-                # OCR 결과(lines)와 현재 곡 제목(target_win.title)을 대조하여 정답지로 보정
-                fixed_lines = [matcher.get_best_match(line, target_win.title) for line in lines]
+                # 가사 보정 및 로그 수집
+                fixed_lines = []
+                for line in lines:
+                    fixed_text, status = matcher.get_best_match(line, target_win.title)
+                    if status: # 새로운 로그가 발생했다면 history에 추가
+                        add_log(status)
+                    fixed_lines.append(fixed_text)
 
-                # 터미널 출력 및 화면 청소
+               # 1. 화면 지우기
                 print("\033[H\033[J") 
-                mode_status = "👻 게임 모드 (클릭 통과)" if is_ghost_mode else "🖱️  조작 모드 (클릭 가능)"
-                print(f"상태: {mode_status}\n대상: {target_win.title}\n" + "-"*30)
                 
-                # 보정된 가사 출력
+                # 2. 상태 및 가사 출력
+                mode_status = "👻 게임 모드" if is_ghost_mode else "🖱️  조작 모드"
+                print(f"상태: {mode_status} | 대상: {target_win.title}")
+                print("-" * 40)
+                
                 curr = fixed_lines[0] if len(fixed_lines) > 0 else "..."
                 nxt = fixed_lines[1] if len(fixed_lines) > 1 else "..."
                 
-                print(f"🔥 현재(보정됨): {curr}")
-                print(f"💤 다음(보정됨): {nxt}\n" + "-"*30)
+                print(f"🔥 현재: {curr}")
+                print(f"💤 다음: {nxt}")
+                print("-" * 40)
+
+                # 3. [핵심] 하단 로그 출력 영역
+                print("[ 시스템 로그 ]")
+                for log in log_history:
+                    print(f" > {log}")
 
                 # 디버그용 프리뷰 창
                 cv2.imshow("OCR Preview (5x)", scaled)
