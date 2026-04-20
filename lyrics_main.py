@@ -1,39 +1,54 @@
+import sys
 import cv2
 import numpy as np
 import pygetwindow as gw
-import win32gui
-import win32ui
-import win32con
-import ctypes
 import asyncio
+import win32gui, win32ui, win32con
 import time
 import keyboard
+import ctypes
+from PySide6.QtWidgets import QApplication
+import threading
+
+# 윈도우 SDK 및 모듈 임포트
 from winsdk.windows.media.ocr import OcrEngine
-from winsdk.windows.graphics.imaging import SoftwareBitmap, BitmapDecoder
-from winsdk.windows.storage.streams import DataWriter, InMemoryRandomAccessStream
+from winsdk.windows.graphics.imaging import BitmapDecoder
+from winsdk.windows.storage.streams import InMemoryRandomAccessStream, DataWriter
+
+# 우리가 만든 모듈들
+from lyrics_overlay import LyricsOverlay
 from lyric_matcher import LyricMatcher
 
-
-# 1. 전역 변수
-engine = OcrEngine.try_create_from_user_profile_languages()
-is_ghost_mode = False 
+# 전역 변수 설정
 log_history = []
+is_ghost_mode = True
+is_running = True # 프로그램 실행 상태 플래그 추가
+engine = OcrEngine.try_create_from_user_profile_languages()
 
 def add_log(message):
     """최근 로그 5개만 유지하는 함수"""
     global log_history
     timestamp = time.strftime("%H:%M:%S")
     log_history.append(f"[{timestamp}] {message}")
-    if len(log_history) > 5:  # 너무 많으면 지움
+    if len(log_history) > 5:
         log_history.pop(0)
 
 def toggle_mode():
     global is_ghost_mode
     is_ghost_mode = not is_ghost_mode
     mode_name = "반투명 + 클릭통과" if is_ghost_mode else "불투명 + 클릭가능"
+    # 터미널에 즉시 출력 및 로그 추가
     print(f"\n[🔔] 모드 전환: {mode_name}")
+    add_log(f"모드 전환: {mode_name}")
+
+def exit_program():
+    """프로그램 종료 플래그를 설정하는 함수"""
+    global is_running
+    is_running = False
+    print("\n[🔔] 프로그램 종료 요청됨.")
 
 keyboard.add_hotkey('F10', toggle_mode)
+keyboard.add_hotkey('shift+q', exit_program) # 'shift+q' 키로 프로그램 종료 기능 추가
 
 async def windows_native_ocr_split(image):
     try:
@@ -55,23 +70,16 @@ async def windows_native_ocr_split(image):
 def apply_transparency(hwnd, ghost):
     try:
         style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
-        
         if ghost:
-            # 게임 모드: 클릭 통과 + 항상 위 강제
             new_style = style | win32con.WS_EX_LAYERED | win32con.WS_EX_TRANSPARENT
             win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, new_style)
             win32gui.SetLayeredWindowAttributes(hwnd, 0, 1, win32con.LWA_ALPHA)
-            # 고스트 모드일 때는 확실하게 위로 올립니다.
             win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0, 
                                   win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE)
         else:
-            # 조작 모드: 클릭 가능하게 복구
             new_style = (style | win32con.WS_EX_LAYERED) & ~win32con.WS_EX_TRANSPARENT
             win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, new_style)
             win32gui.SetLayeredWindowAttributes(hwnd, 0, 255, win32con.LWA_ALPHA)
-            
-            # [핵심] 여기서 HWND_NOTOPMOST를 쓰지 않고, 멜론의 자체 설정을 존중하도록
-            # 창의 스타일만 바꾸고 위치(Z-order)는 건드리지 않습니다.
             win32gui.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 
                                   win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE | win32con.SWP_NOZORDER)
     except:
@@ -101,23 +109,30 @@ def capture_covered_window(hwnd):
         return None
 
 async def main():
-    # 1. 새 보정 엔진 초기화 (LyricMatcher)
+    # --- 1. 가사 및 UI 엔진 초기화 ---
+    app = QApplication(sys.argv)
+    overlay = LyricsOverlay()
     matcher = LyricMatcher() 
-    last_applied_mode = None # 이전에 적용된 모드를 저장
+
+    # overlay.setGeometry(460, 800, 666, 160)
+    overlay.show()
+    overlay.raise_()
+    
+    last_applied_mode = None 
     global is_ghost_mode
     
     print("=" * 50)
-    print("🎤 OBS 호환 가사 대시보드 실행 중 (보정 엔진 활성화)")
+    print("🎤 가사 대시보드 및 오버레이 실행 중")
     print("⌨️  단축키: [F10] 모드 전환 | [Q] 종료")
     print("=" * 50)
     
-    # 검색 대상 제외 리스트
-    exclude = ["Visual Studio Code", "Whale", "Gemini", "OBS", "Overlay", "Discord", "파일 탐색기", "메모장"]
+    exclude = ["Visual Studio Code", "Whale", "Gemini", "OBS", "Overlay", "Discord", "파일 탐색기", "메모장", "PowerPoint"]
     
-    while True:
+    while is_running: # is_running 플래그를 사용하여 루프 제어
+        app.processEvents()
+
         target_win = None
         for w in gw.getAllWindows():
-            # 멜론 창 찾기 로직
             if ("Melon" in w.title or " - " in w.title) and not any(ex in w.title for ex in exclude):
                 if w.width > 200:
                     target_win = w
@@ -126,63 +141,65 @@ async def main():
         if target_win:
             hwnd = target_win._hWnd
 
-            # [수정] 모드가 바뀌었을 때만 스타일을 적용합니다.
+            # 모드 변경 시 창 스타일 적용
             if is_ghost_mode != last_applied_mode:
                 apply_transparency(hwnd, is_ghost_mode)
+                overlay.set_ghost_mode(is_ghost_mode) # 오버레이 모드도 함께 변경
                 last_applied_mode = is_ghost_mode
                 add_log(f"창 스타일 변경 완료: {'고스트' if is_ghost_mode else '일반'}")
 
-            if win32gui.IsIconic(hwnd):
-                win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
-            
-            # 투명도 및 클릭 통과 설정 적용
-            apply_transparency(hwnd, is_ghost_mode)
-            
             full_img = capture_covered_window(hwnd)
             if full_img is not None:
-                # 가사 영역 정밀 추출 및 3배 확대
                 roi = full_img[216:216+46, 28:28+251]
                 scaled = cv2.resize(roi, None, fx=5, fy=5, interpolation=cv2.INTER_LANCZOS4)
                 
-                # 윈도우 네이티브 OCR 실행
                 lines = await windows_native_ocr_split(scaled)
                 
-                # 가사 보정 및 로그 수집
                 fixed_lines = []
                 for line in lines:
                     fixed_text, status = matcher.get_best_match(line, target_win.title)
-                    if status: # 새로운 로그가 발생했다면 history에 추가
+                    if status:
                         add_log(status)
                     fixed_lines.append(fixed_text)
 
-               # 1. 화면 지우기
+                # --- 터미널 출력 영역 ---
                 print("\033[H\033[J") 
-                
-                # 2. 상태 및 가사 출력
                 mode_status = "👻 게임 모드" if is_ghost_mode else "🖱️  조작 모드"
                 print(f"상태: {mode_status} | 대상: {target_win.title}")
                 print("-" * 40)
                 
                 curr = fixed_lines[0] if len(fixed_lines) > 0 else "..."
-                nxt = fixed_lines[1] if len(fixed_lines) > 1 else "..."
+                nxt = fixed_lines[1] if len(fixed_lines) > 1 else ""
                 
                 print(f"🔥 현재: {curr}")
                 print(f"💤 다음: {nxt}")
                 print("-" * 40)
-
-                # 3. [핵심] 하단 로그 출력 영역
                 print("[ 시스템 로그 ]")
                 for log in log_history:
                     print(f" > {log}")
 
-                # 디버그용 프리뷰 창
-                cv2.imshow("OCR Preview (5x)", scaled)
+                # --- 오버레이 업데이트 영역 ---
+                overlay.update_lyrics(curr, nxt)
+                QApplication.processEvents()
+
+                # 디버그용 프리뷰
+                # cv2.imshow("OCR Preview (5x)", scaled)
         
-        # 'q' 키를 누르면 루프 종료
-        if cv2.waitKey(200) & 0xFF == ord('q'): 
-            break
+        # cv2.waitKey(1) & 0xFF == ord('q') 대신 keyboard 모듈 사용
+        # if cv2.waitKey(1) & 0xFF == ord('q'): 
+        #     break
+
+        await asyncio.sleep(0.05)
             
     cv2.destroyAllWindows()
 
+def start_keyboard_listener():
+    """키보드 이벤트를 감지하는 리스너를 시작합니다."""
+    keyboard.wait() # 이 함수는 블로킹되므로 별도의 스레드에서 실행해야 합니다.
+
 if __name__ == "__main__":
+    # 키보드 리스너를 별도의 스레드에서 시작
+    keyboard_thread = threading.Thread(target=start_keyboard_listener, daemon=True)
+    keyboard_thread.start()
+    
     asyncio.run(main())
