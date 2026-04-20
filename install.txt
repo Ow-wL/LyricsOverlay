@@ -2,3 +2,7 @@ pip install PyQt6 winsdk pywin32 opencv-python numpy mss pygetwindow # 윈도우
 pip install keyboard # 키 입력 받기 
 pip install rapidfuzz # 유사도 계산 
 pip install beautifulsoup4 requests # 웹 크롤링 용
+
+    - pip install --upgrade requests urllib3 charset-normalizer # 버전 오류 업데이트
+
+pip install PySide6 pywin32 # 오버레이 띄우기 
