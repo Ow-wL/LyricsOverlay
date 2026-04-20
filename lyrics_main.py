@@ -128,70 +128,77 @@ async def main():
     
     exclude = ["Visual Studio Code", "Whale", "Gemini", "OBS", "Overlay", "Discord", "파일 탐색기", "메모장", "PowerPoint"]
     
-    while is_running: # is_running 플래그를 사용하여 루프 제어
-        app.processEvents()
+    last_hwnd = None
+    
+    try:
+        while is_running: # is_running 플래그를 사용하여 루프 제어
+            app.processEvents()
 
-        target_win = None
-        for w in gw.getAllWindows():
-            if ("Melon" in w.title or " - " in w.title) and not any(ex in w.title for ex in exclude):
-                if w.width > 200:
-                    target_win = w
-                    break
-        
-        if target_win:
-            hwnd = target_win._hWnd
-
-            # 모드 변경 시 창 스타일 적용
-            if is_ghost_mode != last_applied_mode:
-                apply_transparency(hwnd, is_ghost_mode)
-                overlay.set_ghost_mode(is_ghost_mode) # 오버레이 모드도 함께 변경
-                last_applied_mode = is_ghost_mode
-                add_log(f"창 스타일 변경 완료: {'고스트' if is_ghost_mode else '일반'}")
-
-            full_img = capture_covered_window(hwnd)
-            if full_img is not None:
-                roi = full_img[216:216+46, 28:28+251]
-                scaled = cv2.resize(roi, None, fx=5, fy=5, interpolation=cv2.INTER_LANCZOS4)
-                
-                lines = await windows_native_ocr_split(scaled)
-                
-                fixed_lines = []
-                for line in lines:
-                    fixed_text, status = matcher.get_best_match(line, target_win.title)
-                    if status:
-                        add_log(status)
-                    fixed_lines.append(fixed_text)
-
-                # --- 터미널 출력 영역 ---
-                print("\033[H\033[J") 
-                mode_status = "👻 게임 모드" if is_ghost_mode else "🖱️  조작 모드"
-                print(f"상태: {mode_status} | 대상: {target_win.title}")
-                print("-" * 40)
-                
-                curr = fixed_lines[0] if len(fixed_lines) > 0 else "..."
-                nxt = fixed_lines[1] if len(fixed_lines) > 1 else ""
-                
-                print(f"🔥 현재: {curr}")
-                print(f"💤 다음: {nxt}")
-                print("-" * 40)
-                print("[ 시스템 로그 ]")
-                for log in log_history:
-                    print(f" > {log}")
-
-                # --- 오버레이 업데이트 영역 ---
-                overlay.update_lyrics(curr, nxt)
-                QApplication.processEvents()
-
-                # 디버그용 프리뷰
-                # cv2.imshow("OCR Preview (5x)", scaled)
-        
-        # cv2.waitKey(1) & 0xFF == ord('q') 대신 keyboard 모듈 사용
-        # if cv2.waitKey(1) & 0xFF == ord('q'): 
-        #     break
-
-        await asyncio.sleep(0.05)
+            target_win = None
+            for w in gw.getAllWindows():
+                if ("Melon" in w.title or " - " in w.title) and not any(ex in w.title for ex in exclude):
+                    if w.width > 200:
+                        target_win = w
+                        break
             
-    cv2.destroyAllWindows()
+            if target_win:
+                hwnd = target_win._hWnd
+                last_hwnd = hwnd
+
+                # 모드 변경 시 창 스타일 적용
+                if is_ghost_mode != last_applied_mode:
+                    apply_transparency(hwnd, is_ghost_mode)
+                    overlay.set_ghost_mode(is_ghost_mode) # 오버레이 모드도 함께 변경
+                    last_applied_mode = is_ghost_mode
+                    add_log(f"창 스타일 변경 완료: {'고스트' if is_ghost_mode else '일반'}")
+
+                full_img = capture_covered_window(hwnd)
+                if full_img is not None:
+                    roi = full_img[216:216+46, 28:28+251]
+                    scaled = cv2.resize(roi, None, fx=5, fy=5, interpolation=cv2.INTER_LANCZOS4)
+                    
+                    lines = await windows_native_ocr_split(scaled)
+                    
+                    fixed_lines = []
+                    for line in lines:
+                        fixed_text, status = matcher.get_best_match(line, target_win.title)
+                        if status:
+                            add_log(status)
+                        fixed_lines.append(fixed_text)
+
+                    # --- 터미널 출력 영역 ---
+                    print("\033[H\033[J") 
+                    mode_status = "👻 게임 모드" if is_ghost_mode else "🖱️  조작 모드"
+                    print(f"상태: {mode_status} | 대상: {target_win.title}")
+                    print("-" * 40)
+                    
+                    curr = fixed_lines[0] if len(fixed_lines) > 0 else "..."
+                    nxt = fixed_lines[1] if len(fixed_lines) > 1 else ""
+                    
+                    print(f"🔥 현재: {curr}")
+                    print(f"💤 다음: {nxt}")
+                    print("-" * 40)
+                    print("[ 시스템 로그 ]")
+                    for log in log_history:
+                        print(f" > {log}")
+
+                    # --- 오버레이 업데이트 영역 ---
+                    overlay.update_lyrics(curr, nxt)
+                    QApplication.processEvents()
+
+                    # 디버그용 프리뷰
+                    # cv2.imshow("OCR Preview (5x)", scaled)
+            
+            # cv2.waitKey(1) & 0xFF == ord('q') 대신 keyboard 모듈 사용
+            # if cv2.waitKey(1) & 0xFF == ord('q'): 
+            #     break
+
+            await asyncio.sleep(0.05)
+    finally:
+        if last_hwnd:
+            print("\n[🧹] 멜론 창 상태 원복 중...")
+            apply_transparency(last_hwnd, False)
+        cv2.destroyAllWindows()
 
 def start_keyboard_listener():
     """키보드 이벤트를 감지하는 리스너를 시작합니다."""
