@@ -1,23 +1,23 @@
 import sys
 import cv2
 import numpy as np
-import pygetwindow as gw
+import pygetwindow as gw # type: ignore
 import asyncio
 import win32gui, win32ui, win32con
 import time
-import keyboard
+import keyboard # type: ignore
 import ctypes
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication # type: ignore
 import threading
 
 # 윈도우 SDK 및 모듈 임포트
-from winsdk.windows.media.ocr import OcrEngine
-from winsdk.windows.graphics.imaging import BitmapDecoder
-from winsdk.windows.storage.streams import InMemoryRandomAccessStream, DataWriter
+from winsdk.windows.media.ocr import OcrEngine # type: ignore
+from winsdk.windows.graphics.imaging import BitmapDecoder # type: ignore
+from winsdk.windows.storage.streams import InMemoryRandomAccessStream, DataWriter # type: ignore
 
 # 우리가 만든 모듈들
 from lyrics_overlay import LyricsOverlay
-from lyric_matcher import LyricMatcher
+from lyrics_matcher import LyricMatcher
 
 # 전역 변수 설정
 log_history = []

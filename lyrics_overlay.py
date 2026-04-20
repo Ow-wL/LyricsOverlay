@@ -1,7 +1,7 @@
 import sys
-from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QFrame
-from PySide6.QtCore import Qt, QPoint
-from PySide6.QtGui import QFont, QColor
+from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QFrame # type: ignore
+from PySide6.QtCore import Qt, QPoint # type: ignore 
+from PySide6.QtGui import QFont, QColor # type: ignore
 import win32gui
 import win32con
 
