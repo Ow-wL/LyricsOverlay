@@ -1,4 +1,4 @@
-from rapidfuzz import process, fuzz
+from rapidfuzz import process, fuzz # type: ignore
 from lyrics_searcher import LyricsSearcher
 
 class LyricMatcher:
