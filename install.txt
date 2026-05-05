@@ -6,3 +6,7 @@ pip install beautifulsoup4 requests # 웹 크롤링 용
     - pip install --upgrade requests urllib3 charset-normalizer # 버전 오류 업데이트
 
 pip install PySide6 pywin32 # 오버레이 띄우기 
+
+pip install pyqt5 pyqt5-tools # UI 디자인 (PyQt + Qt Designer)
+
+C:\Users\Joohy\AppData\Local\Programs\Python\Python310\Lib\site-packages\qt5_applications\Qt\bin\designer.exe
