@@ -13,7 +13,7 @@ if __name__ == "__main__":
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from gui.roi_selector import ROISelector
-from lyrics_overlay import LyricsOverlay
+from lyrics_overlay import LyricsOverlay, OverlayConfigManager
 
 ################################################################################
 # UI CONFIGURATION - Edit these values to customize the appearance
@@ -94,13 +94,6 @@ class UIConfig:
     FS_SIDEBAR_BTN = "17px"
     FS_CHECKBOX = "15px"
 
-    # ----- Initial Overlay Settings -----
-    OVERLAY_INIT_FONT_SIZE = 24
-    OVERLAY_INIT_TEXT_COLOR = "#FFFFFF"
-    OVERLAY_INIT_BG_COLOR = "#000000"
-    OVERLAY_INIT_OUT_COLOR = "#000000"
-    OVERLAY_INIT_ALPHA = 200
-    OVERLAY_INIT_OUTLINE = 2
 ################################################################################
 
 class Theme:
@@ -296,15 +289,11 @@ class MusicListPage(QWidget):
         layout.addWidget(self.list_card)
 
 class SettingPage(QWidget):
-    settings_changed = Signal(dict)
+    settings_changed = Signal()
 
-    def __init__(self):
+    def __init__(self, config_manager: OverlayConfigManager):
         super().__init__()
-        # Customization variables
-        self.overlay_font = QFont("Pretendard", UIConfig.OVERLAY_INIT_FONT_SIZE)
-        self.text_color = QColor(UIConfig.OVERLAY_INIT_TEXT_COLOR)
-        self.bg_color = QColor(UIConfig.OVERLAY_INIT_BG_COLOR)
-        self.out_color = QColor(UIConfig.OVERLAY_INIT_OUT_COLOR)
+        self.config = config_manager
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(40, 40, 40, 40)
@@ -341,8 +330,8 @@ class SettingPage(QWidget):
         
         self.overlay_switch = QCheckBox()
         self.overlay_switch.setCursor(Qt.PointingHandCursor)
-        self.overlay_switch.setChecked(True)
-        self.overlay_switch.toggled.connect(self.emit_settings)
+        self.overlay_switch.setChecked(self.config.visible)
+        self.overlay_switch.toggled.connect(self.on_visible_toggled)
         
         control_layout.addLayout(control_label_vbox)
         control_layout.addStretch()
@@ -378,7 +367,7 @@ class SettingPage(QWidget):
         trans_header_layout = QHBoxLayout()
         trans_label = QLabel("오버레이 불투명도")
         trans_label.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 600;")
-        self.alpha_val_label = QLabel(str(UIConfig.OVERLAY_INIT_ALPHA))
+        self.alpha_val_label = QLabel(str(self.config.bg_color.alpha()))
         self.alpha_val_label.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 800; color: #7C4DFF;")
         trans_header_layout.addWidget(trans_label)
         trans_header_layout.addStretch()
@@ -386,7 +375,7 @@ class SettingPage(QWidget):
         
         self.alpha_slider = QSlider(Qt.Horizontal)
         self.alpha_slider.setRange(0, 255)
-        self.alpha_slider.setValue(UIConfig.OVERLAY_INIT_ALPHA)
+        self.alpha_slider.setValue(self.config.bg_color.alpha())
         self.alpha_slider.setFixedHeight(20)
         self.alpha_slider.valueChanged.connect(self.on_alpha_changed)
         
@@ -412,9 +401,9 @@ class SettingPage(QWidget):
             vbox.addWidget(btn)
             return vbox, btn
 
-        color_text_vbox, self.btn_text_color = create_color_ctrl("글씨 색상", self.text_color, "text")
-        color_bg_vbox, self.btn_bg_color = create_color_ctrl("배경 색상", self.bg_color, "bg")
-        color_out_vbox, self.btn_out_color = create_color_ctrl("아웃라인 색상", self.out_color, "out")
+        color_text_vbox, self.btn_text_color = create_color_ctrl("글씨 색상", self.config.text_color, "text")
+        color_bg_vbox, self.btn_bg_color = create_color_ctrl("배경 색상", self.config.bg_color, "bg")
+        color_out_vbox, self.btn_out_color = create_color_ctrl("아웃라인 색상", self.config.outline_color, "out")
 
         color_grid.addLayout(color_text_vbox)
         color_grid.addLayout(color_bg_vbox)
@@ -429,14 +418,14 @@ class SettingPage(QWidget):
         outline_label = QLabel("아웃라인 두께")
         outline_label.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 600;")
         outline_header.addWidget(outline_label)
-        self.outline_val_label = QLabel(str(UIConfig.OVERLAY_INIT_OUTLINE))
+        self.outline_val_label = QLabel(str(self.config.outline_width))
         self.outline_val_label.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 800; color: #7C4DFF;")
         outline_header.addStretch()
         outline_header.addWidget(self.outline_val_label)
         
         self.outline_slider = QSlider(Qt.Horizontal)
         self.outline_slider.setRange(0, 10)
-        self.outline_slider.setValue(UIConfig.OVERLAY_INIT_OUTLINE)
+        self.outline_slider.setValue(self.config.outline_width)
         self.outline_slider.valueChanged.connect(self.on_outline_changed)
         
         outline_vbox.addLayout(outline_header)
@@ -467,9 +456,9 @@ class SettingPage(QWidget):
         
         self.ghost_check = QCheckBox()
         self.ghost_check.setCursor(Qt.PointingHandCursor)
-        self.ghost_check.setChecked(True)
+        self.ghost_check.setChecked(self.config.ghost_mode)
         self.ghost_check.setStyleSheet("QCheckBox::indicator { width: 24px; height: 24px; }")
-        self.ghost_check.toggled.connect(self.emit_settings)
+        self.ghost_check.toggled.connect(self.on_ghost_toggled)
         
         ghost_layout.addLayout(ghost_label_vbox)
         ghost_layout.addStretch()
@@ -505,47 +494,43 @@ class SettingPage(QWidget):
         scroll.setWidget(scroll_content)
         layout.addWidget(scroll)
 
+    def on_visible_toggled(self, checked):
+        self.config.visible = checked
+        self.settings_changed.emit()
+
+    def on_ghost_toggled(self, checked):
+        self.config.ghost_mode = checked
+        self.settings_changed.emit()
+
     def on_alpha_changed(self, value):
         self.alpha_val_label.setText(str(value))
-        self.emit_settings()
+        self.config.update_background(opacity=value)
+        self.settings_changed.emit()
 
     def on_outline_changed(self, value):
         self.outline_val_label.setText(str(value))
-        self.emit_settings()
+        self.config.update_text_style(outline_width=value)
+        self.settings_changed.emit()
 
     def pick_color(self, target, btn):
-        color = QColorDialog.getColor()
+        current_color = getattr(self.config, f"{target}_color")
+        color = QColorDialog.getColor(current_color)
         if color.isValid():
             btn.setStyleSheet(f"background-color: {color.name()}; border-radius: 18px; border: 2px solid #E0E0E0;")
             if target == "text":
-                self.text_color = color
+                self.config.update_text_style(color=color)
             elif target == "bg":
-                self.bg_color = color
+                self.config.update_background(color=color)
             elif target == "out":
-                self.out_color = color
-            self.emit_settings()
+                self.config.update_text_style(outline_color=color)
+            self.settings_changed.emit()
 
     def pick_font(self):
-        ok, font = QFontDialog.getFont(self.overlay_font, self)
+        current_font = QFont(self.config.font_family, self.config.font_size)
+        ok, font = QFontDialog.getFont(current_font, self)
         if ok:
-            self.overlay_font = font
-            self.emit_settings()
-
-    def get_settings(self):
-        bg_with_alpha = QColor(self.bg_color)
-        bg_with_alpha.setAlpha(self.alpha_slider.value())
-        return {
-            'visible': self.overlay_switch.isChecked(),
-            'font': self.overlay_font,
-            'text_color': self.text_color,
-            'bg_color': bg_with_alpha,
-            'out_color': self.out_color,
-            'out_width': self.outline_slider.value(),
-            'ghost': self.ghost_check.isChecked()
-        }
-
-    def emit_settings(self):
-        self.settings_changed.emit(self.get_settings())
+            self.config.update_font(family=font.family(), size=font.pointSize())
+            self.settings_changed.emit()
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -558,13 +543,13 @@ class MainWindow(QMainWindow):
             self.setWindowIcon(QIcon(logo_path))
 
         self.theme_manager = ThemeManager()
-        self.overlay = LyricsOverlay()
+        self.config_manager = OverlayConfigManager()
+        self.overlay = LyricsOverlay(self.config_manager)
         
         self.load_fonts()
         self.setup_ui()
         self.apply_theme(self.theme_manager.current_theme)
         
-        self.update_overlay(self.setting_page.get_settings())
         self.overlay.show()
 
     def load_fonts(self):
@@ -615,7 +600,7 @@ class MainWindow(QMainWindow):
         self.content_stack = QStackedWidget()
         self.dashboard_page = DashboardPage()
         self.music_page = MusicListPage()
-        self.setting_page = SettingPage()
+        self.setting_page = SettingPage(self.config_manager)
         
         self.setting_page.settings_changed.connect(self.update_overlay)
         
@@ -633,8 +618,8 @@ class MainWindow(QMainWindow):
         self.btn_music.clicked.connect(lambda: self.switch_page(1))
         self.btn_settings.clicked.connect(lambda: self.switch_page(2))
 
-    def update_overlay(self, settings):
-        self.overlay.apply_settings(settings)
+    def update_overlay(self):
+        self.overlay.sync_with_config()
 
     def switch_page(self, index):
         for i, btn in enumerate(self.nav_buttons):
