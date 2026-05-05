@@ -45,7 +45,14 @@ class UIConfig:
     LIGHT_BTN_BG = "#FFFFFF"
     LIGHT_BTN_TEXT = "#14043F"
     LIGHT_BTN_BORDER = "#DEE2E6"
-    LIGHT_BTN_ACCENT_BG = "#7C4DFF" # Vibrant purple for visibility
+    
+    # [리스트 아이템] 선택 색상 - 라이트 모드
+    LIGHT_LIST_SEL_BG = "#E9ECEF"
+    LIGHT_LIST_SEL_TEXT = "#4400FF"
+    
+    # [글꼴 변경] 버튼 - 라이트 모드
+    LIGHT_FONT_BTN_BG = "#7C4DFF"
+    LIGHT_FONT_BTN_TEXT = "#14043F"
 
     # ----- Dark Theme -----
     DARK_BG_MAIN = "#121212"
@@ -64,7 +71,14 @@ class UIConfig:
     DARK_BTN_BG = "#2C2C2C"
     DARK_BTN_TEXT = "#FFFFFF"
     DARK_BTN_BORDER = "#444444"
-    DARK_BTN_ACCENT_BG = "#7C4DFF"
+
+    # [리스트 아이템] 선택 색상 - 다크 모드
+    DARK_LIST_SEL_BG = "#333333"
+    DARK_LIST_SEL_TEXT = "#FFFFFF"
+
+    # [글꼴 변경] 버튼 - 다크 모드
+    DARK_FONT_BTN_BG = "#7C4DFF"
+    DARK_FONT_BTN_TEXT = "#FFFFFF"
 
     # ----- Font Sizes -----
     FS_HEADER_MAIN = "36px"
@@ -106,7 +120,10 @@ class Theme:
         "btn_bg": UIConfig.LIGHT_BTN_BG,
         "btn_text": UIConfig.LIGHT_BTN_TEXT,
         "btn_border": UIConfig.LIGHT_BTN_BORDER,
-        "btn_accent_bg": UIConfig.LIGHT_BTN_ACCENT_BG
+        "btn_font_bg": UIConfig.LIGHT_FONT_BTN_BG,
+        "btn_font_text": UIConfig.LIGHT_FONT_BTN_TEXT,
+        "list_sel_bg": UIConfig.LIGHT_LIST_SEL_BG,
+        "list_sel_text": UIConfig.LIGHT_LIST_SEL_TEXT
     }
     DARK = {
         "bg_main": UIConfig.DARK_BG_MAIN,
@@ -124,7 +141,10 @@ class Theme:
         "btn_bg": UIConfig.DARK_BTN_BG,
         "btn_text": UIConfig.DARK_BTN_TEXT,
         "btn_border": UIConfig.DARK_BTN_BORDER,
-        "btn_accent_bg": UIConfig.DARK_BTN_ACCENT_BG
+        "btn_font_bg": UIConfig.DARK_FONT_BTN_BG,
+        "btn_font_text": UIConfig.DARK_FONT_BTN_TEXT,
+        "list_sel_bg": UIConfig.DARK_LIST_SEL_BG,
+        "list_sel_text": UIConfig.DARK_LIST_SEL_TEXT
     }
 
 class ThemeManager:
@@ -214,7 +234,6 @@ class DashboardPage(QWidget):
         log_title.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 600;")
         
         self.log_list = QListWidget()
-        self.log_list.setStyleSheet("background: transparent; border: none;")
         self.log_list.addItem("[14:20:05] 프로그램 시작")
         self.log_list.addItem("[14:20:06] Melon 창 감지됨")
         self.log_list.addItem("[14:20:10] 가사 매칭 완료")
@@ -260,7 +279,6 @@ class MusicListPage(QWidget):
         card_layout = QVBoxLayout(self.list_card)
         
         self.music_list = QListWidget()
-        self.music_list.setStyleSheet("background: transparent; border: none;")
         
         items = [
             ("사랑하게 될거야", "한로로", "26.04.04"),
@@ -646,6 +664,7 @@ class MainWindow(QMainWindow):
                 padding-left: 12px;
                 color: {theme["text_primary"]};
                 letter-spacing: -0.5px;
+                background-color: transparent;
             }}
             QFrame#Card {{
                 background-color: {theme["bg_card"]};
@@ -711,6 +730,10 @@ class MainWindow(QMainWindow):
             QListWidget::item:hover {{
                 background-color: {theme["sb_hover_bg"]};
             }}
+            QListWidget::item:selected {{
+                background-color: {theme["list_sel_bg"]};
+                color: {theme["list_sel_text"]};
+            }}
             QLabel#PageHeader {{
                 color: {theme["text_primary"]};
                 font-weight: 900;
@@ -718,8 +741,8 @@ class MainWindow(QMainWindow):
                 margin-bottom: 20px;
             }}
             QPushButton#AccentButton {{
-                background-color: {theme["btn_accent_bg"]};
-                color: white;
+                background-color: {theme["btn_font_bg"]};
+                color: {theme["btn_font_text"]};
                 border: none;
                 font-weight: 700;
             }}
