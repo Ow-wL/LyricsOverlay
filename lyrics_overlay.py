@@ -1,9 +1,121 @@
 import sys
+import json
+import os
 from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QFrame
 from PySide6.QtCore import Qt, QPoint, QRect
 from PySide6.QtGui import QFont, QColor, QPainter, QPainterPath, QPen, QBrush
 import win32gui
 import win32con
+
+class OverlayConfigManager:
+    """오버레이 스타일 및 설정을 관리하는 매니저 클래스"""
+    def __init__(self, config_path="overlay_settings.json"):
+        self.config_path = config_path
+        # 기본 스타일 설정
+        self.bg_color = QColor(0, 0, 0, 100)      # 배경색 (RGBA)
+        self.text_color = QColor(255, 255, 255)  # 글자색
+        self.outline_color = QColor(0, 0, 0)     # 아웃라인 색
+        self.outline_width = 2                   # 아웃라인 두께
+        self.font_family = "Pretendard"          # 폰트 종류
+        self.font_size = 22                      # 폰트 크기
+        self.ghost_mode = True                   # 클릭 통과 모드
+        self.visible = True                      # 표시 여부
+        
+        # 파일에서 설정 로드
+        self.load_from_file()
+
+    def get_settings(self):
+        """현재 설정을 dict 형태로 반환 (LyricsOverlay.apply_settings 호환용)"""
+        return {
+            'bg_color': self.bg_color,
+            'text_color': self.text_color,
+            'out_color': self.outline_color,
+            'out_width': self.outline_width,
+            'font': QFont(self.font_family, self.font_size),
+            'ghost': self.ghost_mode,
+            'visible': self.visible
+        }
+
+    def update_background(self, color=None, opacity=None):
+        """배경색 및 투명도 업데이트 (opacity: 0~255)"""
+        if color:
+            new_color = QColor(color)
+            if opacity is not None:
+                new_color.setAlpha(opacity)
+            else:
+                new_color.setAlpha(self.bg_color.alpha())
+            self.bg_color = new_color
+        elif opacity is not None:
+            self.bg_color.setAlpha(opacity)
+        self.save_to_file()
+
+    def update_text_style(self, color=None, outline_color=None, outline_width=None):
+        """글자 스타일 업데이트"""
+        if color: self.text_color = QColor(color)
+        if outline_color: self.outline_color = QColor(outline_color)
+        if outline_width is not None: self.outline_width = outline_width
+        self.save_to_file()
+
+    def update_font(self, family=None, size=None):
+        """폰트 업데이트"""
+        if family: self.font_family = family
+        if size is not None: self.font_size = size
+        self.save_to_file()
+
+    def set_visible(self, visible):
+        self.visible = visible
+        self.save_to_file()
+
+    def set_ghost_mode(self, ghost):
+        self.ghost_mode = ghost
+        self.save_to_file()
+
+    def save_to_file(self):
+        """설정을 JSON 파일로 저장"""
+        try:
+            data = {
+                "bg_color": self.bg_color.name(),
+                "bg_alpha": self.bg_color.alpha(),
+                "text_color": self.text_color.name(),
+                "outline_color": self.outline_color.name(),
+                "outline_width": self.outline_width,
+                "font_family": self.font_family,
+                "font_size": self.font_size,
+                "ghost_mode": self.ghost_mode,
+                "visible": self.visible
+            }
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4)
+        except Exception as e:
+            print(f"Failed to save settings: {e}")
+
+    def load_from_file(self):
+        """JSON 파일에서 설정 로드"""
+        if not os.path.exists(self.config_path):
+            return
+        
+        try:
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            if "bg_color" in data:
+                self.bg_color = QColor(data["bg_color"])
+                if "bg_alpha" in data:
+                    self.bg_color.setAlpha(data["bg_alpha"])
+            
+            if "text_color" in data:
+                self.text_color = QColor(data["text_color"])
+            
+            if "outline_color" in data:
+                self.outline_color = QColor(data["outline_color"])
+            
+            self.outline_width = data.get("outline_width", self.outline_width)
+            self.font_family = data.get("font_family", self.font_family)
+            self.font_size = data.get("font_size", self.font_size)
+            self.ghost_mode = data.get("ghost_mode", self.ghost_mode)
+            self.visible = data.get("visible", self.visible)
+        except Exception as e:
+            print(f"Failed to load settings: {e}")
 
 class OutlinedLabel(QLabel):
     def __init__(self, text="", parent=None):
@@ -26,7 +138,7 @@ class OutlinedLabel(QLabel):
 
         path = QPainterPath()
         
-        # Calculate alignment
+        # 텍스트 정렬 계산
         font_metrics = self.fontMetrics()
         text_rect = font_metrics.boundingRect(self.text())
         
@@ -40,21 +152,24 @@ class OutlinedLabel(QLabel):
 
         path.addText(x, y, self.font(), self.text())
 
-        # Draw outline
+        # 아웃라인 그리기
         if self.outline_width > 0:
             pen = QPen(self.outline_color, self.outline_width * 2)
             pen.setJoinStyle(Qt.RoundJoin)
             painter.setPen(pen)
             painter.drawPath(path)
 
-        # Draw text
+        # 텍스트 채우기
         painter.fillPath(path, QBrush(self.text_color))
 
 class LyricsOverlay(QWidget):
-    def __init__(self):
+    def __init__(self, config=None):
         super().__init__()
-        self.bg_color = QColor(0, 0, 0, 100)
+        # 외부 매니저를 주입받거나 새로 생성
+        self.config = config if config else OverlayConfigManager()
+        self.bg_color = self.config.bg_color
         self.init_ui()
+        self.sync_with_config()
 
     def init_ui(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
@@ -76,12 +191,16 @@ class LyricsOverlay(QWidget):
 
         self.next_label = OutlinedLabel("다음 가사...")
         self.next_label.setAlignment(Qt.AlignCenter)
-        self.next_label.set_style(QFont("Pretendard", 16), QColor("#AAAAAA"), QColor(0, 0, 0), 1)
 
         self.frame_layout.addWidget(self.curr_label)
         self.frame_layout.addWidget(self.next_label)
 
+        # 기본 위치 및 크기
         self.setGeometry(460, 800, 800, 150)
+
+    def sync_with_config(self):
+        """매니저의 현재 설정을 UI에 동기화"""
+        self.apply_settings(self.config.get_settings())
 
     def update_bg_style(self):
         self.bg_frame.setStyleSheet(f"""
@@ -120,10 +239,15 @@ class LyricsOverlay(QWidget):
 
         self.curr_label.set_style(font, text_color, out_color, out_width)
         
-        # Next label style is slightly dimmed version of curr label
+        # 다음 가사 스타일 (현재 가사보다 약간 작고 투명하게)
         next_font = QFont(font)
         next_font.setPointSize(max(8, font.pointSize() - 6))
-        self.next_label.set_style(next_font, QColor(text_color.red(), text_color.green(), text_color.blue(), 180), out_color, max(0, out_width - 1))
+        self.next_label.set_style(
+            next_font, 
+            QColor(text_color.red(), text_color.green(), text_color.blue(), 180), 
+            out_color, 
+            max(0, out_width - 1)
+        )
 
         if 'ghost' in settings:
             self.set_ghost_mode(settings['ghost'])
@@ -155,6 +279,12 @@ class LyricsOverlay(QWidget):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    overlay = LyricsOverlay()
+    
+    # 매니저 사용 예시
+    config = OverlayConfigManager()
+    config.update_background("#000000", 150) # 검은색 배경, 투명도 150
+    config.update_text_style(color="#00FF00", outline_color="#000000", outline_width=3) # 초록색 글자, 검은 아웃라인
+    
+    overlay = LyricsOverlay(config)
     overlay.show()
     sys.exit(app.exec())

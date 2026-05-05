@@ -16,12 +16,13 @@ from winsdk.windows.graphics.imaging import BitmapDecoder # type: ignore
 from winsdk.windows.storage.streams import InMemoryRandomAccessStream, DataWriter # type: ignore
 
 # 우리가 만든 모듈들
-from lyrics_overlay import LyricsOverlay
+from lyrics_overlay import LyricsOverlay, OverlayConfigManager
 from lyrics_matcher import LyricMatcher
 
 # 전역 변수 설정
 log_history = []
-is_ghost_mode = True
+config_manager = OverlayConfigManager()
+is_ghost_mode = config_manager.ghost_mode
 is_running = True # 프로그램 실행 상태 플래그 추가
 engine = OcrEngine.try_create_from_user_profile_languages()
 
@@ -36,6 +37,7 @@ def add_log(message):
 def toggle_mode():
     global is_ghost_mode
     is_ghost_mode = not is_ghost_mode
+    config_manager.set_ghost_mode(is_ghost_mode)
     mode_name = "반투명 + 클릭통과" if is_ghost_mode else "불투명 + 클릭가능"
     # 터미널에 즉시 출력 및 로그 추가
     print(f"\n[🔔] 모드 전환: {mode_name}")
@@ -111,7 +113,7 @@ def capture_covered_window(hwnd):
 async def main():
     # --- 1. 가사 및 UI 엔진 초기화 ---
     app = QApplication(sys.argv)
-    overlay = LyricsOverlay()
+    overlay = LyricsOverlay(config_manager)
     matcher = LyricMatcher() 
 
     # overlay.setGeometry(460, 800, 666, 160)
@@ -120,6 +122,9 @@ async def main():
     
     last_applied_mode = None 
     global is_ghost_mode
+    
+    # 설정 동기화
+    overlay.sync_with_config()
     
     print("=" * 50)
     print("🎤 가사 대시보드 및 오버레이 실행 중")
