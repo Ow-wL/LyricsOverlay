@@ -18,11 +18,10 @@ from winsdk.windows.storage.streams import InMemoryRandomAccessStream, DataWrite
 # 우리가 만든 모듈들
 from lyrics_overlay import LyricsOverlay, OverlayConfigManager
 from lyrics_matcher import LyricMatcher
+from gui.main_window import MainWindow
 
 # 전역 변수 설정
 log_history = []
-config_manager = OverlayConfigManager()
-is_ghost_mode = config_manager.ghost_mode
 is_running = True # 프로그램 실행 상태 플래그 추가
 engine = OcrEngine.try_create_from_user_profile_languages()
 
@@ -34,23 +33,11 @@ def add_log(message):
     if len(log_history) > 5:
         log_history.pop(0)
 
-def toggle_mode():
-    global is_ghost_mode
-    is_ghost_mode = not is_ghost_mode
-    config_manager.set_ghost_mode(is_ghost_mode)
-    mode_name = "반투명 + 클릭통과" if is_ghost_mode else "불투명 + 클릭가능"
-    # 터미널에 즉시 출력 및 로그 추가
-    print(f"\n[🔔] 모드 전환: {mode_name}")
-    add_log(f"모드 전환: {mode_name}")
-
 def exit_program():
     """프로그램 종료 플래그를 설정하는 함수"""
     global is_running
     is_running = False
     print("\n[🔔] 프로그램 종료 요청됨.")
-
-keyboard.add_hotkey('F10', toggle_mode)
-keyboard.add_hotkey('shift+q', exit_program) # 'shift+q' 키로 프로그램 종료 기능 추가
 
 async def windows_native_ocr_split(image):
     try:
@@ -113,22 +100,30 @@ def capture_covered_window(hwnd):
 async def main():
     # --- 1. 가사 및 UI 엔진 초기화 ---
     app = QApplication(sys.argv)
-    overlay = LyricsOverlay(config_manager)
+    
+    # 메인 윈도우 생성 (매니저와 오버레이는 이 안에서 생성됨)
+    window = MainWindow()
+    window.show()
+    
+    overlay = window.overlay
+    config_manager = window.config_manager
     matcher = LyricMatcher() 
 
-    # overlay.setGeometry(460, 800, 666, 160)
-    overlay.show()
-    overlay.raise_()
-    
     last_applied_mode = None 
-    global is_ghost_mode
     
-    # 설정 동기화
-    overlay.sync_with_config()
-    
+    def toggle_mode():
+        nonlocal last_applied_mode
+        config_manager.set_ghost_mode(not config_manager.ghost_mode)
+        mode_name = "반투명 + 클릭통과" if config_manager.ghost_mode else "불투명 + 클릭가능"
+        print(f"\n[🔔] 모드 전환: {mode_name}")
+        add_log(f"모드 전환: {mode_name}")
+
+    keyboard.add_hotkey('F10', toggle_mode)
+    keyboard.add_hotkey('shift+q', exit_program) # 'shift+q' 키로 프로그램 종료 기능 추가
+
     print("=" * 50)
     print("🎤 가사 대시보드 및 오버레이 실행 중")
-    print("⌨️  단축키: [F10] 모드 전환 | [Q] 종료")
+    print("⌨️  단축키: [F10] 모드 전환 | [shift+q] 종료")
     print("=" * 50)
     
     exclude = ["Visual Studio Code", "Whale", "Gemini", "OBS", "Overlay", "Discord", "파일 탐색기", "메모장", "PowerPoint"]
@@ -149,6 +144,8 @@ async def main():
             if target_win:
                 hwnd = target_win._hWnd
                 last_hwnd = hwnd
+
+                is_ghost_mode = config_manager.ghost_mode
 
                 # 모드 변경 시 창 스타일 적용
                 if is_ghost_mode != last_applied_mode:
@@ -190,13 +187,6 @@ async def main():
                     # --- 오버레이 업데이트 영역 ---
                     overlay.update_lyrics(curr, nxt)
                     QApplication.processEvents()
-
-                    # 디버그용 프리뷰
-                    # cv2.imshow("OCR Preview (5x)", scaled)
-            
-            # cv2.waitKey(1) & 0xFF == ord('q') 대신 keyboard 모듈 사용
-            # if cv2.waitKey(1) & 0xFF == ord('q'): 
-            #     break
 
             await asyncio.sleep(0.05)
     finally:
