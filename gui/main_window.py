@@ -25,12 +25,12 @@ class Theme:
         "accent_hover": "#2A1066",
         "success": "#4CAF50",
         "danger": "#F44336",
-        "sidebar_active": "#EEEEEE"
+        "sidebar_active": "#DEDEDE"
     }
     DARK = {
         "bg_main": "#121212",
         "bg_sidebar": "#1E1E1E",
-        "bg_card": "#242424",
+        "bg_card": "#121212",
         "border": "#333333",
         "text_primary": "#FFFFFF",
         "text_secondary": "#AAAAAA",
@@ -64,12 +64,16 @@ class SidebarButton(QPushButton):
     def __init__(self, text, icon_color="#000000", parent=None):
         super().__init__(text, parent)
         self.setCheckable(True)
-        self.setMinimumHeight(50)
+        self.setMinimumHeight(55)
         self.setCursor(Qt.PointingHandCursor)
+        
+        # 원형 아이콘 복구
         self.icon_circle = QFrame(self)
-        self.icon_circle.setFixedSize(24, 24)
-        self.icon_circle.setStyleSheet(f"background-color: {icon_color}; border-radius: 12px;")
-        self.icon_circle.move(16, 13)
+        self.icon_circle.setFixedSize(16, 16)
+        self.icon_circle.setStyleSheet(f"background-color: {icon_color}; border-radius: 8px; border: none;")
+        self.icon_circle.move(20, 19)
+        self.icon_circle.setAttribute(Qt.WA_TransparentForMouseEvents)
+        
         self.setContentsMargins(50, 0, 0, 0)
 
 class DashboardPage(QWidget):
@@ -241,6 +245,11 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Lyrics Overlay")
         self.setFixedSize(1280, 720)
         
+        # Set Window Icon
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "asset", "logo.png")
+        if os.path.exists(logo_path):
+            self.setWindowIcon(QIcon(logo_path))
+
         self.theme_manager = ThemeManager()
         self.load_fonts()
         self.setup_ui()
@@ -265,18 +274,19 @@ class MainWindow(QMainWindow):
 
         # Sidebar
         self.sidebar = QFrame()
+        self.sidebar.setObjectName("Sidebar")
         self.sidebar.setFixedWidth(280)
         self.sidebar_layout = QVBoxLayout(self.sidebar)
         self.sidebar_layout.setContentsMargins(16, 24, 16, 24)
         self.sidebar_layout.setSpacing(8)
         
         menu_label = QLabel("메뉴")
-        menu_label.setStyleSheet("font-size: 24px; font-weight: 600; margin-bottom: 20px; padding-left: 8px;")
+        menu_label.setObjectName("SidebarMenuLabel")
         self.sidebar_layout.addWidget(menu_label)
         
-        self.btn_dashboard = SidebarButton("대시보드", "#F17979")
-        self.btn_music = SidebarButton("가사 목록", "#7EEFB1")
-        self.btn_settings = SidebarButton("설정", "#F1F175")
+        self.btn_dashboard = SidebarButton("대시보드  🏠", "#F17979")
+        self.btn_music = SidebarButton("가사 목록  🎵", "#7EEFA4")
+        self.btn_settings = SidebarButton("설정  ⚙️", "#75EDF1")
         
         self.sidebar_layout.addWidget(self.btn_dashboard)
         self.sidebar_layout.addWidget(self.btn_music)
@@ -285,8 +295,10 @@ class MainWindow(QMainWindow):
         self.sidebar_layout.addStretch()
         
         # Theme Toggle Button
-        self.btn_theme = QPushButton("테마 전환 (다크/라이트)")
+        self.btn_theme = QPushButton("🌓  테마 전환")
+        self.btn_theme.setObjectName("ThemeButton")
         self.btn_theme.setMinimumHeight(50)
+        self.btn_theme.setCursor(Qt.PointingHandCursor)
         self.btn_theme.clicked.connect(self.toggle_theme)
         self.sidebar_layout.addWidget(self.btn_theme)
         
@@ -321,6 +333,20 @@ class MainWindow(QMainWindow):
         self.apply_theme(new_theme)
 
     def apply_theme(self, theme):
+        is_light = theme == Theme.LIGHT
+        
+        # Sidebar Colors
+        if is_light:
+            sb_normal_text = "#14043F"
+            sb_active_bg = "#14043F"
+            sb_active_text = "#FFFFFF"
+            sb_hover_bg = "#E9ECEF"
+        else:
+            sb_normal_text = "#FFFFFF"
+            sb_active_bg = "#7C4DFF"
+            sb_active_text = "#FFFFFF"
+            sb_hover_bg = "#2C2C2C"
+        
         style = f"""
             QMainWindow, QWidget {{
                 background-color: {theme["bg_main"]};
@@ -331,40 +357,62 @@ class MainWindow(QMainWindow):
                 background-color: {theme["bg_sidebar"]};
                 border-right: 1px solid {theme["border"]};
             }}
+            QLabel#SidebarMenuLabel {{
+                font-size: 20px;
+                font-weight: 800;
+                margin-bottom: 10px;
+                padding-left: 8px;
+                color: {theme["text_primary"]};
+            }}
             QFrame#Card {{
                 background-color: {theme["bg_card"]};
                 border-radius: 12px;
                 border: 1px solid {theme["border"]};
             }}
-            SidebarButton {{
-                background-color: transparent;
-                border: none;
-                border-radius: 8px;
-                text-align: left;
-                padding-left: 60px;
-                font-weight: 600;
-                font-size: 17px;
+            QGroupBox {{
+                background-color: {theme["bg_card"]};
+                border: 1px solid {theme["border"]};
+                border-radius: 12px;
+                margin-top: 20px;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 3px;
                 color: {theme["text_primary"]};
-            }}
-            SidebarButton:hover {{
-                background-color: {theme["sidebar_active"]};
-            }}
-            SidebarButton:checked {{
-                background-color: {theme["sidebar_active"]};
-                color: {theme["accent"]};
-                font-weight: 800;
             }}
             QPushButton {{
                 background-color: {theme["accent"]};
                 color: white;
-                border-radius: 8px;
+                border-radius: 10px;
                 font-weight: 600;
+                border: none;
             }}
             QPushButton:hover {{
                 background-color: {theme["accent_hover"]};
             }}
+            SidebarButton {{
+                background-color: transparent;
+                border: none;
+                border-radius: 10px;
+                text-align: left;
+                padding-left: 55px;
+                font-weight: 700;
+                font-size: 16px;
+                color: {sb_normal_text};
+            }}
+            SidebarButton:hover {{
+                background-color: {sb_hover_bg};
+            }}
+            SidebarButton:checked {{
+                background-color: {sb_active_bg};
+                color: {sb_active_text};
+                font-weight: 800;
+            }}
             QListWidget {{
                 color: {theme["text_primary"]};
+                background-color: transparent;
+                border: none;
                 font-size: 15px;
             }}
             QLabel#PageHeader {{
@@ -373,13 +421,14 @@ class MainWindow(QMainWindow):
             }}
             QCheckBox, QSlider {{
                 color: {theme["text_primary"]};
+                background-color: transparent;
             }}
             QLabel {{
                 color: {theme["text_primary"]};
+                background-color: transparent;
             }}
         """
         self.central_widget.setStyleSheet(style)
-        self.sidebar.setStyleSheet(f"background-color: {theme['bg_sidebar']}; border-right: 1px solid {theme['border']};")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
