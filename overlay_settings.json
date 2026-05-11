@@ -1,11 +1,11 @@
 {
     "bg_color": "#000000",
-    "bg_alpha": 73,
+    "bg_alpha": 118,
     "text_color": "#ffffff",
     "outline_color": "#000000",
     "outline_width": 1,
     "font_family": "Pretendard",
-    "font_size": 26,
-    "ghost_mode": true,
+    "font_size": 24,
+    "ghost_mode": false,
     "visible": true
 }
