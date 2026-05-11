@@ -189,9 +189,9 @@ class DashboardPage(QWidget):
         stats_layout = QHBoxLayout()
         stats_layout.setSpacing(24)
         
-        self.stat1 = self.create_stat_card("들은 노래 수", "127곡", "전 주 대비 21% 증가")
-        self.stat2 = self.create_stat_card("노래 플레이 타임", "2,301분", "전 주 대비 12% 증가")
-        self.stat3 = self.create_stat_card("들은 가수의 수", "31명", "전월 대비 -8% 감소")
+        self.stat1 = self.create_stat_card("들은 노래 수", "0곡", "현재 세션 기준")
+        self.stat2 = self.create_stat_card("노래 플레이 타임", "0분", "현재 세션 기준")
+        self.stat3 = self.create_stat_card("매칭된 가사 라인", "0줄", "현재 세션 기준")
         
         stats_layout.addWidget(self.stat1)
         stats_layout.addWidget(self.stat2)
@@ -208,7 +208,7 @@ class DashboardPage(QWidget):
         lyrics_title = QLabel("실시간 가사 미리보기")
         lyrics_title.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 600;")
         
-        self.curr_lyric = QLabel("그대 반드시 행복해지세요\n그 다음 말은 이젠")
+        self.curr_lyric = QLabel("가사를 대기 중입니다...")
         self.curr_lyric.setAlignment(Qt.AlignCenter)
         self.curr_lyric.setStyleSheet("font-size: 32px; font-weight: 400; line-height: 48px;")
         self.curr_lyric.setWordWrap(True)
@@ -227,9 +227,6 @@ class DashboardPage(QWidget):
         log_title.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 600;")
         
         self.log_list = QListWidget()
-        self.log_list.addItem("[14:20:05] 프로그램 시작")
-        self.log_list.addItem("[14:20:06] Melon 창 감지됨")
-        self.log_list.addItem("[14:20:10] 가사 매칭 완료")
         
         log_vbox.addWidget(log_title)
         log_vbox.addWidget(self.log_list)
@@ -247,6 +244,7 @@ class DashboardPage(QWidget):
         t = QLabel(title)
         t.setStyleSheet(f"font-size: 16px; font-weight: 600; color: {UIConfig.COLOR_SECONDARY_TEXT};")
         v = QLabel(value)
+        v.setObjectName("StatValue")
         v.setStyleSheet("font-size: 40px; font-weight: 600;")
         s = QLabel(sub)
         s.setStyleSheet(f"font-size: 14px; color: {UIConfig.COLOR_SECONDARY_TEXT};")
@@ -273,20 +271,9 @@ class MusicListPage(QWidget):
         
         self.music_list = QListWidget()
         
-        items = [
-            ("사랑하게 될거야", "한로로", "26.04.04"),
-            ("WE LIKE 2 PARTY", "BIGBANG(빅뱅)", "26.04.03"),
-            ("Drowning", "WOODZ", "26.04.02"),
-            ("그대 작은 나의 세상이 되어", "카더가든", "26.04.02")
-        ]
-        
-        for title, artist, date in items:
-            item = QListWidgetItem(f"{title} - {artist} ({date})")
-            item.setSizeHint(QSize(0, 60))
-            self.music_list.addItem(item)
-            
         card_layout.addWidget(self.music_list)
         layout.addWidget(self.list_card)
+
 
 class SettingPage(QWidget):
     settings_changed = Signal()
@@ -533,7 +520,9 @@ class SettingPage(QWidget):
             self.settings_changed.emit()
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    theme_changed = Signal(str)
+
+    def __init__(self, initial_theme="light"):
         super().__init__()
         self.setWindowTitle("Lyrics Overlay")
         self.setFixedSize(1280, 720)
@@ -543,6 +532,9 @@ class MainWindow(QMainWindow):
             self.setWindowIcon(QIcon(logo_path))
 
         self.theme_manager = ThemeManager()
+        if initial_theme == "dark":
+            self.theme_manager.current_theme = Theme.DARK
+            
         self.config_manager = OverlayConfigManager()
         self.overlay = LyricsOverlay(self.config_manager)
         
@@ -629,6 +621,8 @@ class MainWindow(QMainWindow):
     def toggle_theme(self):
         new_theme = self.theme_manager.toggle_theme()
         self.apply_theme(new_theme)
+        theme_name = "light" if new_theme == Theme.LIGHT else "dark"
+        self.theme_changed.emit(theme_name)
 
     def apply_theme(self, theme):
         style = f"""
