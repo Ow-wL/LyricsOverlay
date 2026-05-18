@@ -199,7 +199,7 @@ async def main():
     print("=" * 50)
     add_log("프로그램 시작")
     
-    exclude = ["Visual Studio Code", "Whale", "Gemini", "OBS", "Overlay", "Discord", "파일 탐색기", "메모장", "PowerPoint"]
+    exclude = ["Visual Studio Code", "Whale", "Gemini", "OBS", "Overlay", "Discord", "파일 탐색기", "메모장", "PowerPoint", "한글", "Hancom", "Hwp"]
     
     last_hwnd = None
     last_song_title = ""
@@ -211,11 +211,22 @@ async def main():
             app.processEvents()
 
             target_win = None
-            for w in gw.getAllWindows():
-                if ("Melon" in w.title or " - " in w.title) and not any(ex in w.title for ex in exclude):
-                    if w.width > 200:
+            all_windows = gw.getAllWindows()
+            
+            # 1순위: 'Melon'이 제목에 명시적으로 포함된 창
+            for w in all_windows:
+                if "Melon" in w.title and not any(ex in w.title for ex in exclude):
+                    if w.width > 200 and not w.isMinimized:
                         target_win = w
                         break
+            
+            # 2순위: 'Melon'은 없지만 ' - ' 형식을 가진 창 (기존 호환성 유지)
+            if not target_win:
+                for w in all_windows:
+                    if " - " in w.title and not any(ex in w.title for ex in exclude):
+                        if w.width > 200 and not w.isMinimized:
+                            target_win = w
+                            break
             
             if target_win:
                 hwnd = target_win._hWnd
