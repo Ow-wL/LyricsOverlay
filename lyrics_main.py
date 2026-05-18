@@ -98,9 +98,9 @@ def exit_program():
 def refresh_hotkeys():
     global _window
     try:
-        # 기존 등록된 모든 단축키 해제 (개별 해제가 더 안전할 수 있음)
+        # 기존 등록된 모든 단축키 해제
         try:
-            keyboard.unhook_all_hotkeys()
+            keyboard.unhook_all()
         except:
             pass
         
@@ -113,18 +113,22 @@ def refresh_hotkeys():
         # 유효한 단축키 문자열인지 확인 후 등록
         if hk_ghost and hk_ghost.strip():
             try:
+                # hotkey 가 올바른 형식인지 검증 겸 등록
                 keyboard.add_hotkey(hk_ghost.strip(), toggle_mode)
+                print(f"[⌨️] 고스트 모드 단축키 등록: {hk_ghost}")
             except Exception as e:
+                print(f"[⚠️] 고스트 단축키 등록 실패 ({hk_ghost}): {e}")
                 add_log(f"고스트 단축키 등록 실패: {hk_ghost}")
         
         if hk_quit and hk_quit.strip():
             try:
                 keyboard.add_hotkey(hk_quit.strip(), exit_program)
+                print(f"[⌨️] 프로그램 종료 단축키 등록: {hk_quit}")
             except Exception as e:
+                print(f"[⚠️] 종료 단축키 등록 실패 ({hk_quit}): {e}")
                 add_log(f"종료 단축키 등록 실패: {hk_quit}")
         
-        print(f"[⌨️] 단축키 갱신: 고스트({hk_ghost}), 종료({hk_quit})")
-        add_log(f"단축키 갱신: {hk_ghost} / {hk_quit}")
+        add_log(f"단축키 갱신 완료: {hk_ghost} / {hk_quit}")
     except Exception as e:
         print(f"[⚠️] 단축키 시스템 오류: {e}")
         add_log(f"단축키 시스템 오류")
@@ -362,13 +366,5 @@ async def main():
             apply_transparency(last_hwnd, False)
         cv2.destroyAllWindows()
 
-def start_keyboard_listener():
-    """키보드 이벤트를 감지하는 리스너를 시작합니다."""
-    keyboard.wait() # 이 함수는 블로킹되므로 별도의 스레드에서 실행해야 합니다.
-
 if __name__ == "__main__":
-    # 키보드 리스너를 별도의 스레드에서 시작
-    keyboard_thread = threading.Thread(target=start_keyboard_listener, daemon=True)
-    keyboard_thread.start()
-    
     asyncio.run(main())

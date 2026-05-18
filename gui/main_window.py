@@ -708,10 +708,12 @@ class SettingPage(QWidget):
     def on_hotkey_ghost_changed(self, text):
         self.config.update_hotkey_ghost(text.strip())
         self.settings_changed.emit()
+        self.hotkeys_changed.emit()
 
     def on_hotkey_quit_changed(self, text):
         self.config.update_hotkey_quit(text.strip())
         self.settings_changed.emit()
+        self.hotkeys_changed.emit()
 
     def on_alpha_changed(self, value):
         self.alpha_val_label.setText(str(value))
