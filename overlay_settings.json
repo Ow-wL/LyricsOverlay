@@ -1,15 +1,15 @@
 {
     "bg_color": "#000000",
-    "bg_alpha": 48,
+    "bg_alpha": 89,
     "text_color": "#aaffff",
     "outline_color": "#054099",
     "outline_width": 2,
-    "font_family": "Pretendard Black",
+    "font_family": "Pretendard ExtraBold",
     "font_size": 26,
     "ghost_mode": false,
     "visible": true,
     "x": 1044,
     "y": 3,
     "width": 620,
-    "height": 118
+    "height": 121
 }

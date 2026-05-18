@@ -1,6 +1,14 @@
 {
     "songs": [
         [
+            "남아있어 (Feat. Crush) - 로꼬",
+            "26.05.18"
+        ],
+        [
+            "그대라는 사치 - 한동근",
+            "26.05.18"
+        ],
+        [
             "SHEESH - BABYMONSTER",
             "26.05.18"
         ],
@@ -57,7 +65,7 @@
             "26.05.12"
         ]
     ],
-    "total_lines": 239,
-    "total_play_time_sec": 1051,
+    "total_lines": 255,
+    "total_play_time_sec": 1171,
     "theme": "dark"
 }
