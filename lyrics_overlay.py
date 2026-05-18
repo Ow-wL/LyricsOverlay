@@ -22,6 +22,8 @@ class OverlayConfigManager:
         self.visible = True                      # 표시 여부
         self.x = 460                             # 기본 X 위치
         self.y = 800                             # 기본 Y 위치
+        self.width = 800                         # 기본 너비
+        self.height = 150                        # 기본 높이
         
         # 파일에서 설정 로드
         self.load_from_file()
@@ -37,7 +39,9 @@ class OverlayConfigManager:
             'ghost': self.ghost_mode,
             'visible': self.visible,
             'x': self.x,
-            'y': self.y
+            'y': self.y,
+            'width': self.width,
+            'height': self.height
         }
 
     def update_background(self, color=None, opacity=None):
@@ -72,6 +76,12 @@ class OverlayConfigManager:
         self.y = y
         self.save_to_file()
 
+    def update_size(self, width, height):
+        """크기 정보 업데이트"""
+        self.width = width
+        self.height = height
+        self.save_to_file()
+
     def set_visible(self, visible):
         self.visible = visible
         self.save_to_file()
@@ -94,7 +104,9 @@ class OverlayConfigManager:
                 "ghost_mode": self.ghost_mode,
                 "visible": self.visible,
                 "x": self.x,
-                "y": self.y
+                "y": self.y,
+                "width": self.width,
+                "height": self.height
             }
             with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4)
@@ -128,6 +140,8 @@ class OverlayConfigManager:
             self.visible = data.get("visible", self.visible)
             self.x = data.get("x", self.x)
             self.y = data.get("y", self.y)
+            self.width = data.get("width", self.width)
+            self.height = data.get("height", self.height)
         except Exception as e:
             print(f"Failed to load settings: {e}")
 
@@ -189,6 +203,7 @@ class LyricsOverlay(QWidget):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
+        self.setMouseTracking(True)
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -210,7 +225,10 @@ class LyricsOverlay(QWidget):
         self.frame_layout.addWidget(self.next_label)
 
         # 저장된 위치 및 크기 설정
-        self.setGeometry(self.config.x, self.config.y, 800, 150)
+        self.setGeometry(self.config.x, self.config.y, self.config.width, self.config.height)
+        
+        self.resizing = False
+        self.resize_margin = 15
 
     def sync_with_config(self):
         """매니저의 현재 설정을 UI에 동기화"""
@@ -237,6 +255,8 @@ class LyricsOverlay(QWidget):
         - ghost: bool
         - x: int
         - y: int
+        - width: int
+        - height: int
         """
         if not settings.get('visible', True):
             self.hide()
@@ -248,8 +268,12 @@ class LyricsOverlay(QWidget):
             self.bg_color = settings['bg_color']
             self.update_bg_style()
 
-        if 'x' in settings and 'y' in settings:
-            self.move(settings['x'], settings['y'])
+        # 위치 및 크기 복원
+        x = settings.get('x', self.x())
+        y = settings.get('y', self.y())
+        w = settings.get('width', self.width())
+        h = settings.get('height', self.height())
+        self.setGeometry(x, y, w, h)
 
         font = settings.get('font', self.curr_label.font())
         text_color = settings.get('text_color', self.curr_label.text_color)
@@ -288,17 +312,37 @@ class LyricsOverlay(QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self.old_pos = event.globalPosition().toPoint()
+            # 우측 하단 모서리 클릭 시 리사이즈 모드
+            if event.pos().x() > self.width() - self.resize_margin and \
+               event.pos().y() > self.height() - self.resize_margin:
+                self.resizing = True
+            else:
+                self.resizing = False
+                self.old_pos = event.globalPosition().toPoint()
 
     def mouseMoveEvent(self, event):
+        # 마우스 커서 모양 변경 (리사이즈 영역)
+        if event.pos().x() > self.width() - self.resize_margin and \
+           event.pos().y() > self.height() - self.resize_margin:
+            self.setCursor(Qt.SizeFDiagCursor)
+        else:
+            self.setCursor(Qt.ArrowCursor)
+
         if event.buttons() == Qt.LeftButton:
-            delta = QPoint(event.globalPosition().toPoint() - self.old_pos)
-            new_x = self.x() + delta.x()
-            new_y = self.y() + delta.y()
-            self.move(new_x, new_y)
-            self.old_pos = event.globalPosition().toPoint()
-            # 위치 이동 시 실시간 저장
-            self.config.update_position(new_x, new_y)
+            if self.resizing:
+                # 크기 조절
+                new_width = max(200, event.pos().x())
+                new_height = max(80, event.pos().y())
+                self.resize(new_width, new_height)
+                self.config.update_size(new_width, new_height)
+            else:
+                # 위치 이동
+                delta = QPoint(event.globalPosition().toPoint() - self.old_pos)
+                new_x = self.x() + delta.x()
+                new_y = self.y() + delta.y()
+                self.move(new_x, new_y)
+                self.old_pos = event.globalPosition().toPoint()
+                self.config.update_position(new_x, new_y)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
