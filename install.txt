@@ -1,12 +1,15 @@
-pip install PyQt6 winsdk pywin32 opencv-python numpy mss pygetwindow # 윈도우 OCR 및 기본 라이브러리
-pip install keyboard # 키 입력 받기 
-pip install rapidfuzz # 유사도 계산 
-pip install beautifulsoup4 requests # 웹 크롤링 용
+  📋 생성된 requirements.txt 내용
+   - PySide6: GUI 프레임워크 (코드에서 주력으로 사용)
+   - winsdk: 윈도우 기본 OCR 엔진 사용을 위한 SDK
+   - pywin32: 윈도우 API 제어 (win32gui, win32ui 등)
+   - opencv-python & numpy: 이미지 처리 및 데이터 계산
+   - mss & pygetwindow: 화면 캡처 및 윈도우 창 관리
+   - keyboard: 단축키 입력을 위한 라이브러리
+   - rapidfuzz: 가사 검색 결과의 유사도 계산
+   - beautifulsoup4 & requests: 웹 가사 크롤링 및 네트워크 요청
 
-    - pip install --upgrade requests urllib3 charset-normalizer # 버전 오류 업데이트
 
-pip install PySide6 pywin32 # 오버레이 띄우기 
+🚀 설치 방법
+터미널에서 아래 명령어를 입력하여 한 번에 설치할 수 있습니다.
 
-pip install pyqt5 pyqt5-tools # UI 디자인 (PyQt + Qt Designer)
-
-C:\Users\Joohy\AppData\Local\Programs\Python\Python310\Lib\site-packages\qt5_applications\Qt\bin\designer.exe
+pip install -r requirements.txt
