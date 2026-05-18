@@ -484,6 +484,54 @@ class SettingPage(QWidget):
         ghost_layout.addStretch()
         ghost_layout.addWidget(self.ghost_check)
         interaction_layout.addLayout(ghost_layout)
+
+        line2 = QFrame()
+        line2.setFrameShape(QFrame.HLine)
+        line2.setFrameShadow(QFrame.Sunken)
+        line2.setStyleSheet("background-color: #E0E0E0;")
+        interaction_layout.addWidget(line2)
+
+        # Move Enabled Toggle
+        move_layout = QHBoxLayout()
+        move_label_vbox = QVBoxLayout()
+        move_title = QLabel("오버레이 위치 이동")
+        move_title.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 600;")
+        move_desc = QLabel("오버레이를 드래그하여 위치를 변경할 수 있도록 합니다.")
+        move_desc.setStyleSheet(f"font-size: {UIConfig.FS_DESC}; color: {UIConfig.COLOR_SECONDARY_TEXT};")
+        move_label_vbox.addWidget(move_title)
+        move_label_vbox.addWidget(move_desc)
+        
+        self.move_check = QCheckBox()
+        self.move_check.setCursor(Qt.PointingHandCursor)
+        self.move_check.setChecked(self.config.move_enabled)
+        self.move_check.setStyleSheet("QCheckBox::indicator { width: 24px; height: 24px; }")
+        self.move_check.toggled.connect(self.on_move_toggled)
+        
+        move_layout.addLayout(move_label_vbox)
+        move_layout.addStretch()
+        move_layout.addWidget(self.move_check)
+        interaction_layout.addLayout(move_layout)
+
+        # Resize Enabled Toggle
+        resize_layout = QHBoxLayout()
+        resize_label_vbox = QVBoxLayout()
+        resize_title = QLabel("오버레이 크기 조절")
+        resize_title.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 600;")
+        resize_desc = QLabel("오버레이 우측 하단을 드래그하여 크기를 조절할 수 있도록 합니다.")
+        resize_desc.setStyleSheet(f"font-size: {UIConfig.FS_DESC}; color: {UIConfig.COLOR_SECONDARY_TEXT};")
+        resize_label_vbox.addWidget(resize_title)
+        resize_label_vbox.addWidget(resize_desc)
+        
+        self.resize_check = QCheckBox()
+        self.resize_check.setCursor(Qt.PointingHandCursor)
+        self.resize_check.setChecked(self.config.resize_enabled)
+        self.resize_check.setStyleSheet("QCheckBox::indicator { width: 24px; height: 24px; }")
+        self.resize_check.toggled.connect(self.on_resize_toggled)
+        
+        resize_layout.addLayout(resize_label_vbox)
+        resize_layout.addStretch()
+        resize_layout.addWidget(self.resize_check)
+        interaction_layout.addLayout(resize_layout)
         
         line = QFrame()
         line.setFrameShape(QFrame.HLine)
@@ -520,6 +568,14 @@ class SettingPage(QWidget):
 
     def on_ghost_toggled(self, checked):
         self.config.ghost_mode = checked
+        self.settings_changed.emit()
+
+    def on_move_toggled(self, checked):
+        self.config.set_move_enabled(checked)
+        self.settings_changed.emit()
+
+    def on_resize_toggled(self, checked):
+        self.config.set_resize_enabled(checked)
         self.settings_changed.emit()
 
     def on_alpha_changed(self, value):
