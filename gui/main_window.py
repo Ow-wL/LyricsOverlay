@@ -419,6 +419,38 @@ class SettingPage(QWidget):
         outline_vbox.addLayout(outline_header)
         outline_vbox.addWidget(self.outline_slider)
         appearance_layout.addLayout(outline_vbox)
+
+        # Overlay Size
+        size_vbox = QVBoxLayout()
+        size_vbox.setSpacing(12)
+        size_header = QHBoxLayout()
+        size_label = QLabel("오버레이 크기 (너비 / 높이)")
+        size_label.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 600;")
+        size_header.addWidget(size_label)
+        self.size_val_label = QLabel(f"{self.config.width} x {self.config.height}")
+        self.size_val_label.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 800; color: #7C4DFF;")
+        size_header.addStretch()
+        size_header.addWidget(self.size_val_label)
+        
+        size_sliders_layout = QHBoxLayout()
+        self.width_slider = QSlider(Qt.Horizontal)
+        self.width_slider.setRange(200, 1500)
+        self.width_slider.setValue(self.config.width)
+        self.width_slider.setFixedHeight(30)
+        self.width_slider.valueChanged.connect(self.on_size_changed)
+        
+        self.height_slider = QSlider(Qt.Horizontal)
+        self.height_slider.setRange(80, 500)
+        self.height_slider.setValue(self.config.height)
+        self.height_slider.setFixedHeight(30)
+        self.height_slider.valueChanged.connect(self.on_size_changed)
+        
+        size_sliders_layout.addWidget(self.width_slider)
+        size_sliders_layout.addWidget(self.height_slider)
+        
+        size_vbox.addLayout(size_header)
+        size_vbox.addLayout(size_sliders_layout)
+        appearance_layout.addLayout(size_vbox)
         
         scroll_layout.addWidget(appearance_card)
         
@@ -498,6 +530,13 @@ class SettingPage(QWidget):
     def on_outline_changed(self, value):
         self.outline_val_label.setText(str(value))
         self.config.update_text_style(outline_width=value)
+        self.settings_changed.emit()
+
+    def on_size_changed(self):
+        w = self.width_slider.value()
+        h = self.height_slider.value()
+        self.size_val_label.setText(f"{w} x {h}")
+        self.config.update_size(w, h)
         self.settings_changed.emit()
 
     def pick_color(self, target, btn):
