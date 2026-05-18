@@ -209,6 +209,7 @@ class LyricsOverlay(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
 
         self.bg_frame = QFrame()
+        self.bg_frame.setObjectName("LyricsBgFrame")
         self.update_bg_style()
         main_layout.addWidget(self.bg_frame)
 
@@ -217,9 +218,11 @@ class LyricsOverlay(QWidget):
 
         self.curr_label = OutlinedLabel("현재 가사 대기 중...")
         self.curr_label.setAlignment(Qt.AlignCenter)
+        self.curr_label.setStyleSheet("background: transparent;")
 
         self.next_label = OutlinedLabel("다음 가사...")
         self.next_label.setAlignment(Qt.AlignCenter)
+        self.next_label.setStyleSheet("background: transparent;")
 
         self.frame_layout.addWidget(self.curr_label)
         self.frame_layout.addWidget(self.next_label)
@@ -236,7 +239,7 @@ class LyricsOverlay(QWidget):
 
     def update_bg_style(self):
         self.bg_frame.setStyleSheet(f"""
-            QFrame {{
+            QFrame#LyricsBgFrame {{
                 background-color: rgba({self.bg_color.red()}, {self.bg_color.green()}, {self.bg_color.blue()}, {self.bg_color.alpha()});
                 border-radius: 15px;
                 border: none;
