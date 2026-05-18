@@ -3,9 +3,11 @@
     "bg_alpha": 0,
     "text_color": "#aaffff",
     "outline_color": "#0012b3",
-    "outline_width": 1,
+    "outline_width": 2,
     "font_family": "Pretendard Black",
     "font_size": 26,
     "ghost_mode": false,
-    "visible": true
+    "visible": true,
+    "x": 1044,
+    "y": 3
 }
