@@ -1,6 +1,14 @@
 {
     "songs": [
         [
+            "サムライハ?ト (Some Like It Hot!!/Samurai Heart) (*애니메이션 「은혼」 엔딩 테마곡) - SPYAIR",
+            "26.05.18"
+        ],
+        [
+            "Smoking Dreams - Jazzyfact",
+            "26.05.18"
+        ],
+        [
             "나의 사춘기에게 - 볼빨간사춘기",
             "26.05.18"
         ],
@@ -109,7 +117,7 @@
             "26.05.12"
         ]
     ],
-    "total_lines": 593,
-    "total_play_time_sec": 3392,
+    "total_lines": 636,
+    "total_play_time_sec": 3512,
     "theme": "dark"
 }
