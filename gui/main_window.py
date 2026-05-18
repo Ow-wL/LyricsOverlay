@@ -390,7 +390,7 @@ class SettingPage(QWidget):
 
         color_text_vbox, self.btn_text_color = create_color_ctrl("글씨 색상", self.config.text_color, "text")
         color_bg_vbox, self.btn_bg_color = create_color_ctrl("배경 색상", self.config.bg_color, "bg")
-        color_out_vbox, self.btn_out_color = create_color_ctrl("아웃라인 색상", self.config.outline_color, "out")
+        color_out_vbox, self.btn_out_color = create_color_ctrl("아웃라인 색상", self.config.outline_color, "outline")
 
         color_grid.addLayout(color_text_vbox)
         color_grid.addLayout(color_bg_vbox)
@@ -508,7 +508,7 @@ class SettingPage(QWidget):
                 self.config.update_text_style(color=color)
             elif target == "bg":
                 self.config.update_background(color=color)
-            elif target == "out":
+            elif target == "outline":
                 self.config.update_text_style(outline_color=color)
             self.settings_changed.emit()
 
