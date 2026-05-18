@@ -32,7 +32,7 @@
 
 ```bash
 # 저장소 클론 (또는 다운로드)
-git clone https://github.com/your-repo/LyricsOverlay.git
+git clone https://github.com/Ow-wL/LyricsOverlay
 cd LyricsOverlay
 
 # 필수 라이브러리 설치
