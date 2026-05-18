@@ -20,6 +20,8 @@ class OverlayConfigManager:
         self.font_size = 22                      # 폰트 크기
         self.ghost_mode = True                   # 클릭 통과 모드
         self.visible = True                      # 표시 여부
+        self.move_enabled = False                # 위치 이동 가능 여부
+        self.resize_enabled = False              # 크기 조절 가능 여부
         self.x = 460                             # 기본 X 위치
         self.y = 800                             # 기본 Y 위치
         self.width = 800                         # 기본 너비
@@ -38,6 +40,8 @@ class OverlayConfigManager:
             'font': QFont(self.font_family, self.font_size),
             'ghost': self.ghost_mode,
             'visible': self.visible,
+            'move_enabled': self.move_enabled,
+            'resize_enabled': self.resize_enabled,
             'x': self.x,
             'y': self.y,
             'width': self.width,
@@ -90,6 +94,14 @@ class OverlayConfigManager:
         self.ghost_mode = ghost
         self.save_to_file()
 
+    def set_move_enabled(self, enabled):
+        self.move_enabled = enabled
+        self.save_to_file()
+
+    def set_resize_enabled(self, enabled):
+        self.resize_enabled = enabled
+        self.save_to_file()
+
     def save_to_file(self):
         """설정을 JSON 파일로 저장"""
         try:
@@ -103,6 +115,8 @@ class OverlayConfigManager:
                 "font_size": self.font_size,
                 "ghost_mode": self.ghost_mode,
                 "visible": self.visible,
+                "move_enabled": self.move_enabled,
+                "resize_enabled": self.resize_enabled,
                 "x": self.x,
                 "y": self.y,
                 "width": self.width,
@@ -138,6 +152,8 @@ class OverlayConfigManager:
             self.font_size = data.get("font_size", self.font_size)
             self.ghost_mode = data.get("ghost_mode", self.ghost_mode)
             self.visible = data.get("visible", self.visible)
+            self.move_enabled = data.get("move_enabled", self.move_enabled)
+            self.resize_enabled = data.get("resize_enabled", self.resize_enabled)
             self.x = data.get("x", self.x)
             self.y = data.get("y", self.y)
             self.width = data.get("width", self.width)
@@ -196,8 +212,22 @@ class LyricsOverlay(QWidget):
         # 외부 매니저를 주입받거나 새로 생성
         self.config = config if config else OverlayConfigManager()
         self.bg_color = self.config.bg_color
+        self.move_enabled = self.config.move_enabled
+        self.resize_enabled = self.config.resize_enabled
         self.init_ui()
         self.sync_with_config()
+
+    def set_move_enabled(self, enabled):
+        """위치 조절 가능 여부 설정"""
+        self.move_enabled = enabled
+        if not enabled and not self.resize_enabled:
+            self.setCursor(Qt.ArrowCursor)
+
+    def set_resize_enabled(self, enabled):
+        """크기 조절 가능 여부 설정"""
+        self.resize_enabled = enabled
+        if not enabled and not self.move_enabled:
+            self.setCursor(Qt.ArrowCursor)
 
     def init_ui(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
@@ -260,6 +290,8 @@ class LyricsOverlay(QWidget):
         - y: int
         - width: int
         - height: int
+        - move_enabled: bool
+        - resize_enabled: bool
         """
         if not settings.get('visible', True):
             self.hide()
@@ -297,6 +329,11 @@ class LyricsOverlay(QWidget):
 
         if 'ghost' in settings:
             self.set_ghost_mode(settings['ghost'])
+            
+        if 'move_enabled' in settings:
+            self.move_enabled = settings['move_enabled']
+        if 'resize_enabled' in settings:
+            self.resize_enabled = settings['resize_enabled']
 
     def set_ghost_mode(self, enable):
         hwnd = self.winId()
@@ -314,31 +351,39 @@ class LyricsOverlay(QWidget):
         self.update()
 
     def mousePressEvent(self, event):
+        if not self.move_enabled and not self.resize_enabled:
+            return
+            
         if event.button() == Qt.LeftButton:
-            # 우측 하단 모서리 클릭 시 리사이즈 모드
-            if event.pos().x() > self.width() - self.resize_margin and \
+            # 우측 하단 모서리 클릭 시 리사이즈 모드 (리사이즈가 활성화된 경우만)
+            if self.resize_enabled and \
+               event.pos().x() > self.width() - self.resize_margin and \
                event.pos().y() > self.height() - self.resize_margin:
                 self.resizing = True
-            else:
+            elif self.move_enabled:
                 self.resizing = False
                 self.old_pos = event.globalPosition().toPoint()
 
     def mouseMoveEvent(self, event):
-        # 마우스 커서 모양 변경 (리사이즈 영역)
-        if event.pos().x() > self.width() - self.resize_margin and \
+        if not self.move_enabled and not self.resize_enabled:
+            return
+
+        # 마우스 커서 모양 변경 (리사이즈 영역) - 리사이즈가 활성화된 경우만
+        if self.resize_enabled and \
+           event.pos().x() > self.width() - self.resize_margin and \
            event.pos().y() > self.height() - self.resize_margin:
             self.setCursor(Qt.SizeFDiagCursor)
         else:
             self.setCursor(Qt.ArrowCursor)
 
         if event.buttons() == Qt.LeftButton:
-            if self.resizing:
+            if self.resizing and self.resize_enabled:
                 # 크기 조절
                 new_width = max(200, event.pos().x())
                 new_height = max(80, event.pos().y())
                 self.resize(new_width, new_height)
                 self.config.update_size(new_width, new_height)
-            else:
+            elif not self.resizing and self.move_enabled:
                 # 위치 이동
                 delta = QPoint(event.globalPosition().toPoint() - self.old_pos)
                 new_x = self.x() + delta.x()
