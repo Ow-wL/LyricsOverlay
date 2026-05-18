@@ -237,7 +237,7 @@ async def main():
     print("=" * 50)
     add_log("프로그램 시작")
     
-    exclude = ["Visual Studio Code", "Whale", "Gemini", "OBS", "Overlay", "Discord", "파일 탐색기", "메모장", "PowerPoint", "한글", "Hancom", "Hwp"]
+    exclude = ["Visual Studio Code", "Whale", "Gemini", "OBS", "Overlay", "Discord", "파일 탐색기", "메모장", "PowerPoint", "한글", "Hancom", "Hwp", "Edge"]
     
     last_hwnd = None
     last_song_title = ""
