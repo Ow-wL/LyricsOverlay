@@ -1,19 +1,19 @@
 {
     "bg_color": "#f0f0f0",
-    "bg_alpha": 37,
-    "text_color": "#aaffff",
-    "outline_color": "#054099",
+    "bg_alpha": 52,
+    "text_color": "#00ffff",
+    "outline_color": "#3d3d7f",
     "outline_width": 2,
     "font_family": "Pretendard ExtraBold",
-    "font_size": 26,
+    "font_size": 22,
     "ghost_mode": false,
     "visible": true,
     "move_enabled": true,
     "resize_enabled": false,
     "hotkey_ghost": "f9",
     "hotkey_quit": "shift+q",
-    "x": 1151,
-    "y": 6,
-    "width": 591,
-    "height": 105
+    "x": 1156,
+    "y": 0,
+    "width": 581,
+    "height": 84
 }

@@ -16,13 +16,13 @@
 
 ## 📸 스크린샷
 
-| 메인 대시보드 | 가사 영역 선택 |
+| 메인 대시보드 | 전체 이미지 |
 | :---: | :---: |
-| ![Dashboard](./asset/Dashboard.png) | ![LyricAreaSelect](./asset/LyricAreaSelect.png) |
+| ![Dashboard](./asset/Dashboard_Dark.png) | ![LyricAreaSelect](./asset/Full.png) |
 
-| 음악 목록 검색 | 오버레이 설정 |
+| 감상 기록 | 설정 페이지 |
 | :---: | :---: |
-| ![MusicList](./asset/MusicList.png) | ![OverlaySetting](./asset/OverlaySetting.png) |
+| ![MusicList](./asset/List.png) | ![OverlaySetting](./asset/SettingPage.png) |
 
 ---
 
@@ -47,9 +47,9 @@ pip install -r requirements.txt
    ```bash
    python lyrics_main.py
    ```
-2. **가사 영역 설정**:
-   - 메인 화면에서 '영역 선택' 버튼을 클릭합니다.
-   - 음악 플레이어의 가사가 출력되는 영역을 마우스로 드래그하여 지정합니다.
+2. **음악 스트리밍 앱 실행 (Melon)**:
+   -  음악 플레이어를 통해 노래를 재생합니다.
+
 3. **가사 검색 및 시작**:
    - 프로그램이 가사 영역을 인식하면 자동으로 가사를 검색하고 오버레이를 띄웁니다.
    - 오버레이 위치는 자유롭게 이동 가능하며, 설정 메뉴에서 스타일을 변경할 수 있습니다.
