@@ -1,0 +1,13 @@
+PySide6
+winsdk
+pywin32
+opencv-python
+numpy
+mss
+pygetwindow
+keyboard
+rapidfuzz
+beautifulsoup4
+requests
+urllib3
+charset-normalizer
