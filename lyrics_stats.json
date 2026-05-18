@@ -1,6 +1,22 @@
 {
     "songs": [
         [
+            "바달∘☽ - 마크툽 (MAKTUB)",
+            "26.05.18"
+        ],
+        [
+            "꽃 (Prod. AVIN) - 김하온 (HAON)",
+            "26.05.18"
+        ],
+        [
+            "I'll Never Love Again - WOODZ",
+            "26.05.12"
+        ],
+        [
+            "Drowning - WOODZ",
+            "26.05.12"
+        ],
+        [
             "CINEMA - WOODZ",
             "26.05.12"
         ],
@@ -21,10 +37,6 @@
             "26.05.12"
         ],
         [
-            "202445033_이주형_응용프로젝트실무_실습일지_3.hwp [C:\\Users\\Joohy\\Downloads\\] - 한글",
-            "26.05.12"
-        ],
-        [
             "소문의 낙원 - AKMU (악뮤)",
             "26.05.12"
         ],
@@ -33,6 +45,7 @@
             "26.05.12"
         ]
     ],
-    "total_lines": 88,
-    "total_play_time_sec": 432
+    "total_lines": 147,
+    "total_play_time_sec": 809,
+    "theme": "dark"
 }
