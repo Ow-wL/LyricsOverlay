@@ -30,7 +30,7 @@ STATS_FILE_PATH = "lyrics_stats.json"
 log_history = []
 is_running = True # 프로그램 실행 상태 플래그 추가
 engine = OcrEngine.try_create_from_user_profile_languages()
-_main_window = None # GUI 연동을 위한 전역 변수
+_window = None # GUI 연동을 위한 전역 변수
 
 def load_stats():
     """파일에서 통계 데이터를 로드합니다."""
@@ -72,7 +72,7 @@ session_stats = {
 
 def add_log(message):
     """최근 로그 5개만 유지하며 GUI에 연동하는 함수"""
-    global log_history, _main_window
+    global log_history, _window
     timestamp = time.strftime("%H:%M:%S")
     log_msg = f"[{timestamp}] {message}"
     log_history.append(log_msg)
@@ -80,18 +80,61 @@ def add_log(message):
         log_history.pop(0)
     
     # GUI 리스트 위젯에 로그 추가
-    if _main_window:
-        _main_window.dashboard_page.log_list.addItem(log_msg)
-        if _main_window.dashboard_page.log_list.count() > 50:
-            _main_window.dashboard_page.log_list.takeItem(0)
-        _main_window.dashboard_page.log_list.scrollToBottom()
+    if _window:
+        _window.dashboard_page.log_list.addItem(log_msg)
+        if _window.dashboard_page.log_list.count() > 50:
+            _window.dashboard_page.log_list.takeItem(0)
+        _window.dashboard_page.log_list.scrollToBottom()
 
 def exit_program():
-    """프로그램 종료 플래그를 설정하는 함수"""
+    """프로그램 종료 플래그를 설정하고 루프를 탈출합니다."""
     global is_running
     is_running = False
     print("\n[🔔] 프로그램 종료 요청됨.")
     add_log("프로그램 종료 요청됨")
+    # Qt 이벤트 루프 종료를 통해 즉각적인 피드백 제공
+    QApplication.quit()
+
+def refresh_hotkeys():
+    global _window
+    try:
+        # 기존 등록된 모든 단축키 해제 (개별 해제가 더 안전할 수 있음)
+        try:
+            keyboard.unhook_all_hotkeys()
+        except:
+            pass
+        
+        if not _window or not _window.config_manager:
+            return
+
+        hk_ghost = _window.config_manager.hotkey_ghost
+        hk_quit = _window.config_manager.hotkey_quit
+        
+        # 유효한 단축키 문자열인지 확인 후 등록
+        if hk_ghost and hk_ghost.strip():
+            try:
+                keyboard.add_hotkey(hk_ghost.strip(), toggle_mode)
+            except Exception as e:
+                add_log(f"고스트 단축키 등록 실패: {hk_ghost}")
+        
+        if hk_quit and hk_quit.strip():
+            try:
+                keyboard.add_hotkey(hk_quit.strip(), exit_program)
+            except Exception as e:
+                add_log(f"종료 단축키 등록 실패: {hk_quit}")
+        
+        print(f"[⌨️] 단축키 갱신: 고스트({hk_ghost}), 종료({hk_quit})")
+        add_log(f"단축키 갱신: {hk_ghost} / {hk_quit}")
+    except Exception as e:
+        print(f"[⚠️] 단축키 시스템 오류: {e}")
+        add_log(f"단축키 시스템 오류")
+
+def toggle_mode():
+    config_manager = _window.config_manager
+    config_manager.set_ghost_mode(not config_manager.ghost_mode)
+    mode_name = "반투명 + 클릭통과" if config_manager.ghost_mode else "불투명 + 클릭가능"
+    print(f"\n[🔔] 모드 전환: {mode_name}")
+    add_log(f"모드 전환: {mode_name}")
 
 async def windows_native_ocr_split(image):
     try:
@@ -155,11 +198,11 @@ async def main():
     # --- 1. 가사 및 UI 엔진 초기화 ---
     app = QApplication(sys.argv)
     
-    # 메인 윈도우 생성 (매니저와 오버레이는 이 안에서 생성됨)
+    # 메인 윈도우 생성
     initial_theme = persistent_stats.get("theme", "light")
     window = MainWindow(initial_theme=initial_theme)
-    global _main_window
-    _main_window = window
+    global _window
+    _window = window
     
     # 테마 변경 시 자동 저장
     def on_theme_changed(theme_name):
@@ -183,19 +226,14 @@ async def main():
 
     last_applied_mode = None 
     
-    def toggle_mode():
-        nonlocal last_applied_mode
-        config_manager.set_ghost_mode(not config_manager.ghost_mode)
-        mode_name = "반투명 + 클릭통과" if config_manager.ghost_mode else "불투명 + 클릭가능"
-        print(f"\n[🔔] 모드 전환: {mode_name}")
-        add_log(f"모드 전환: {mode_name}")
-
-    keyboard.add_hotkey('F10', toggle_mode)
-    keyboard.add_hotkey('shift+q', exit_program) # 'shift+q' 키로 프로그램 종료 기능 추가
+    # 설정 변경 시 오버레이 업데이트
+    window.setting_page.settings_changed.connect(window.update_overlay)
+    # 단축키 변경 시에만 단축키 갱신
+    window.setting_page.hotkeys_changed.connect(refresh_hotkeys)
+    refresh_hotkeys()
 
     print("=" * 50)
     print("🎤 가사 대시보드 및 오버레이 실행 중")
-    print("⌨️  단축키: [F10] 모드 전환 | [shift+q] 종료")
     print("=" * 50)
     add_log("프로그램 시작")
     

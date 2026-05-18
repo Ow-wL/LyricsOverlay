@@ -4,9 +4,9 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QStackedWidget, 
                              QFrame, QListWidget, QSlider, QCheckBox, QGroupBox,
                              QListWidgetItem, QGraphicsDropShadowEffect, QScrollArea,
-                             QColorDialog, QFontDialog)
+                             QColorDialog, QFontDialog, QLineEdit)
 from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QRect, Signal
-from PySide6.QtGui import QIcon, QColor, QFont, QPixmap, QFontDatabase
+from PySide6.QtGui import QIcon, QColor, QFont, QPixmap, QFontDatabase, QKeyEvent, QKeySequence
 
 # Set up path for independent execution
 if __name__ == "__main__":
@@ -16,8 +16,9 @@ from gui.roi_selector import ROISelector
 from lyrics_overlay import LyricsOverlay, OverlayConfigManager
 
 ################################################################################
-# UI CONFIGURATION - Edit these values to customize the appearance
+# UI CONFIGURATION
 ################################################################################
+# ... (UIConfig and Theme classes remain the same)
 class UIConfig:
     # ----- Sidebar Icons -----
     ICON_COLOR_DASHBOARD = "#F17979"
@@ -275,8 +276,98 @@ class MusicListPage(QWidget):
         layout.addWidget(self.list_card)
 
 
+class HotkeyEdit(QLineEdit):
+    changed = Signal(str)
+
+    def __init__(self, current_val, parent=None):
+        super().__init__(parent)
+        self.setText(current_val)
+        self.setReadOnly(True)
+        self.setAlignment(Qt.AlignCenter)
+        self.setCursor(Qt.PointingHandCursor)
+        self.is_recording = False
+        self.setStyleSheet(f"""
+            QLineEdit {{
+                padding: 8px;
+                border-radius: 8px;
+                border: 1px solid {UIConfig.LIGHT_BORDER};
+                background-color: transparent;
+                font-weight: 700;
+            }}
+            QLineEdit:focus {{
+                border: 2px solid #7C4DFF;
+                background-color: rgba(124, 77, 255, 10%);
+            }}
+        """)
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        self.start_recording()
+
+    def start_recording(self):
+        self.is_recording = True
+        self.setText("키 입력 대기 중...")
+        self.setFocus()
+
+    def keyPressEvent(self, event: QKeyEvent):
+        if not self.is_recording:
+            return
+
+        key = event.key()
+        if key == Qt.Key_Escape:
+            self.stop_recording(self.text()) # Cancel
+            return
+
+        modifiers = event.modifiers()
+        combo = []
+        
+        if modifiers & Qt.ControlModifier: combo.append("ctrl")
+        if modifiers & Qt.ShiftModifier: combo.append("shift")
+        if modifiers & Qt.AltModifier: combo.append("alt")
+        if modifiers & Qt.MetaModifier: combo.append("win")
+
+        # 실제 키 이름 가져오기
+        key_text = QKeySequence(key).toString().lower()
+        
+        # 특수 키 처리 (QKeySequence가 종종 이상하게 반환함)
+        special_keys = {
+            Qt.Key_Control: "", Qt.Key_Shift: "", Qt.Key_Alt: "", Qt.Key_Meta: "",
+            Qt.Key_CapsLock: "caps lock", Qt.Key_NumLock: "num lock", Qt.Key_ScrollLock: "scroll lock",
+            Qt.Key_Print: "print screen", Qt.Key_Pause: "pause", Qt.Key_Insert: "insert",
+            Qt.Key_Delete: "delete", Qt.Key_Home: "home", Qt.Key_End: "end",
+            Qt.Key_PageUp: "page up", Qt.Key_PageDown: "page down",
+            Qt.Key_Left: "left", Qt.Key_Right: "right", Qt.Key_Up: "up", Qt.Key_Down: "down",
+            Qt.Key_Backspace: "backspace", Qt.Key_Return: "enter", Qt.Key_Enter: "enter",
+            Qt.Key_Tab: "tab", Qt.Key_Space: "space"
+        }
+        
+        if key in special_keys:
+            key_name = special_keys[key]
+        else:
+            key_name = key_text
+
+        if key_name:
+            if key_name not in combo:
+                combo.append(key_name)
+            
+            final_hotkey = "+".join(combo)
+            self.stop_recording(final_hotkey)
+            self.changed.emit(final_hotkey)
+
+    def focusOutEvent(self, event):
+        if self.is_recording:
+            # 녹화 중 포커스를 잃으면 이전 값으로 복구 (여기선 현재 텍스트 유지)
+            self.is_recording = False
+        super().focusOutEvent(event)
+
+    def stop_recording(self, val):
+        self.is_recording = False
+        self.setText(val)
+        self.clearFocus()
+
 class SettingPage(QWidget):
     settings_changed = Signal()
+    hotkeys_changed = Signal()
 
     def __init__(self, config_manager: OverlayConfigManager):
         super().__init__()
@@ -557,6 +648,42 @@ class SettingPage(QWidget):
         interaction_layout.addLayout(roi_vbox)
         
         scroll_layout.addWidget(interaction_card)
+
+        # Hotkeys Group
+        hotkey_card = Card()
+        hotkey_layout = QVBoxLayout(hotkey_card)
+        hotkey_layout.setContentsMargins(24, 24, 24, 24)
+        hotkey_layout.setSpacing(20)
+        
+        hotkey_title = QLabel("단축키 설정")
+        hotkey_title.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_L}; font-weight: 800; color: {UIConfig.COLOR_SECONDARY_TEXT};")
+        hotkey_layout.addWidget(hotkey_title)
+        
+        def create_hotkey_row(label_text, current_val, callback):
+            hbox = QHBoxLayout()
+            lbl = QLabel(label_text)
+            lbl.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 600;")
+            
+            edit = HotkeyEdit(current_val)
+            edit.setFixedWidth(150)
+            edit.changed.connect(callback)
+            
+            hbox.addWidget(lbl)
+            hbox.addStretch()
+            hbox.addWidget(edit)
+            return hbox, edit
+
+        ghost_hk_hbox, self.ghost_hk_edit = create_hotkey_row(
+            "고스트 모드 토글", self.config.hotkey_ghost, self.on_hotkey_ghost_changed
+        )
+        quit_hk_hbox, self.quit_hk_edit = create_hotkey_row(
+            "프로그램 종료", self.config.hotkey_quit, self.on_hotkey_quit_changed
+        )
+        
+        hotkey_layout.addLayout(ghost_hk_hbox)
+        hotkey_layout.addLayout(quit_hk_hbox)
+        
+        scroll_layout.addWidget(hotkey_card)
         
         scroll_layout.addStretch()
         scroll.setWidget(scroll_content)
@@ -576,6 +703,14 @@ class SettingPage(QWidget):
 
     def on_resize_toggled(self, checked):
         self.config.set_resize_enabled(checked)
+        self.settings_changed.emit()
+
+    def on_hotkey_ghost_changed(self, text):
+        self.config.update_hotkey_ghost(text.strip())
+        self.settings_changed.emit()
+
+    def on_hotkey_quit_changed(self, text):
+        self.config.update_hotkey_quit(text.strip())
         self.settings_changed.emit()
 
     def on_alpha_changed(self, value):

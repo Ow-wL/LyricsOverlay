@@ -21,7 +21,9 @@ class OverlayConfigManager:
         self.ghost_mode = True                   # 클릭 통과 모드
         self.visible = True                      # 표시 여부
         self.move_enabled = False                # 위치 이동 가능 여부
-        self.resize_enabled = False              # 크기 조절 가능 여부
+        self.resize_enabled = False              # 크기 조절 가능 여부 설정
+        self.hotkey_ghost = "F9"                 # 고스트 모드 토글 단축키
+        self.hotkey_quit = "Shift+Q"             # 프로그램 종료 단축키
         self.x = 460                             # 기본 X 위치
         self.y = 800                             # 기본 Y 위치
         self.width = 800                         # 기본 너비
@@ -102,6 +104,14 @@ class OverlayConfigManager:
         self.resize_enabled = enabled
         self.save_to_file()
 
+    def update_hotkey_ghost(self, hotkey):
+        self.hotkey_ghost = hotkey
+        self.save_to_file()
+
+    def update_hotkey_quit(self, hotkey):
+        self.hotkey_quit = hotkey
+        self.save_to_file()
+
     def save_to_file(self):
         """설정을 JSON 파일로 저장"""
         try:
@@ -117,6 +127,8 @@ class OverlayConfigManager:
                 "visible": self.visible,
                 "move_enabled": self.move_enabled,
                 "resize_enabled": self.resize_enabled,
+                "hotkey_ghost": self.hotkey_ghost,
+                "hotkey_quit": self.hotkey_quit,
                 "x": self.x,
                 "y": self.y,
                 "width": self.width,
@@ -154,6 +166,8 @@ class OverlayConfigManager:
             self.visible = data.get("visible", self.visible)
             self.move_enabled = data.get("move_enabled", self.move_enabled)
             self.resize_enabled = data.get("resize_enabled", self.resize_enabled)
+            self.hotkey_ghost = data.get("hotkey_ghost", self.hotkey_ghost)
+            self.hotkey_quit = data.get("hotkey_quit", self.hotkey_quit)
             self.x = data.get("x", self.x)
             self.y = data.get("y", self.y)
             self.width = data.get("width", self.width)

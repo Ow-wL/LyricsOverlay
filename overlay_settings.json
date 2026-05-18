@@ -1,6 +1,6 @@
 {
     "bg_color": "#000000",
-    "bg_alpha": 75,
+    "bg_alpha": 43,
     "text_color": "#aaffff",
     "outline_color": "#054099",
     "outline_width": 2,
@@ -10,8 +10,10 @@
     "visible": true,
     "move_enabled": false,
     "resize_enabled": false,
+    "hotkey_ghost": "f9",
+    "hotkey_quit": "shift+q",
     "x": 1158,
     "y": 0,
-    "width": 645,
-    "height": 102
+    "width": 626,
+    "height": 115
 }
