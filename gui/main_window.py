@@ -363,7 +363,7 @@ class SettingPage(QWidget):
         self.alpha_slider = QSlider(Qt.Horizontal)
         self.alpha_slider.setRange(0, 255)
         self.alpha_slider.setValue(self.config.bg_color.alpha())
-        self.alpha_slider.setFixedHeight(20)
+        self.alpha_slider.setFixedHeight(30)
         self.alpha_slider.valueChanged.connect(self.on_alpha_changed)
         
         trans_vbox.addLayout(trans_header_layout)
@@ -413,6 +413,7 @@ class SettingPage(QWidget):
         self.outline_slider = QSlider(Qt.Horizontal)
         self.outline_slider.setRange(0, 10)
         self.outline_slider.setValue(self.config.outline_width)
+        self.outline_slider.setFixedHeight(30)
         self.outline_slider.valueChanged.connect(self.on_outline_changed)
         
         outline_vbox.addLayout(outline_header)
