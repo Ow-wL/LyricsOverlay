@@ -9,8 +9,36 @@ import win32con
 
 class OverlayConfigManager:
     """오버레이 스타일 및 설정을 관리하는 매니저 클래스"""
+    PRESET_STYLES = {
+        "기본 (반투명 검정)": {
+            "bg_color": "#000000", "bg_alpha": 100, "text_color": "#FFFFFF",
+            "outline_color": "#000000", "outline_width": 2
+        },
+        "깔끔한 화이트": {
+            "bg_color": "#FFFFFF", "bg_alpha": 180, "text_color": "#14043F",
+            "outline_color": "#FFFFFF", "outline_width": 0
+        },
+        "시안 블루 (네이비 테두리)": {
+            "bg_color": "#000000", "bg_alpha": 80, "text_color": "#00FFFF",
+            "outline_color": "#000080", "outline_width": 3
+        },
+        "네온 그린": {
+            "bg_color": "#000000", "bg_alpha": 150, "text_color": "#39FF14",
+            "outline_color": "#000000", "outline_width": 2
+        },
+        "소프트 핑크": {
+            "bg_color": "#FFF0F5", "bg_alpha": 200, "text_color": "#FF69B4",
+            "outline_color": "#FFFFFF", "outline_width": 1
+        },
+        "다크 레드": {
+            "bg_color": "#2C0000", "bg_alpha": 180, "text_color": "#FF4D4D",
+            "outline_color": "#000000", "outline_width": 2
+        }
+    }
+
     def __init__(self, config_path="overlay_settings.json"):
         self.config_path = config_path
+        self.custom_presets = {} # 사용자가 저장한 프리셋
         # 기본 스타일 설정
         self.bg_color = QColor(0, 0, 0, 100)      # 배경색 (RGBA)
         self.text_color = QColor(255, 255, 255)  # 글자색
@@ -31,6 +59,41 @@ class OverlayConfigManager:
         
         # 파일에서 설정 로드
         self.load_from_file()
+
+    def apply_preset(self, preset_data):
+        """프리셋 데이터를 적용합니다."""
+        if "bg_color" in preset_data:
+            self.bg_color = QColor(preset_data["bg_color"])
+            if "bg_alpha" in preset_data:
+                self.bg_color.setAlpha(preset_data["bg_alpha"])
+        
+        if "text_color" in preset_data:
+            self.text_color = QColor(preset_data["text_color"])
+        
+        if "outline_color" in preset_data:
+            self.outline_color = QColor(preset_data["outline_color"])
+        
+        if "outline_width" in preset_data:
+            self.outline_width = preset_data["outline_width"]
+        
+        self.save_to_file()
+
+    def save_custom_preset(self, name):
+        """현재 스타일을 사용자 프리셋으로 저장합니다."""
+        self.custom_presets[name] = {
+            "bg_color": self.bg_color.name(),
+            "bg_alpha": self.bg_color.alpha(),
+            "text_color": self.text_color.name(),
+            "outline_color": self.outline_color.name(),
+            "outline_width": self.outline_width
+        }
+        self.save_to_file()
+
+    def delete_custom_preset(self, name):
+        """사용자 프리셋을 삭제합니다."""
+        if name in self.custom_presets:
+            del self.custom_presets[name]
+            self.save_to_file()
 
     def get_settings(self):
         """현재 설정을 dict 형태로 반환 (LyricsOverlay.apply_settings 호환용)"""
