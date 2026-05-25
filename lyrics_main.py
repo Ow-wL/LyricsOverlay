@@ -35,7 +35,7 @@ _window = None # GUI 연동을 위한 전역 변수
 def load_stats():
     """파일에서 통계 데이터를 로드합니다."""
     default_stats = {
-        "songs": [], # [(title, date), ...]
+        "play_history": [], # [{"title": str, "artist": str, "timestamp": str}, ...]
         "total_lines": 0,
         "total_play_time_sec": 0,
         "theme": "light"
@@ -44,6 +44,28 @@ def load_stats():
         try:
             with open(STATS_FILE_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
+                
+                # 데이터 마이그레이션 (구버전 -> 신버전)
+                if "songs" in data and "play_history" not in data:
+                    print("[🔄] 데이터 형식 마이그레이션 중...")
+                    for song_info in data["songs"]:
+                        if isinstance(song_info, list) and len(song_info) == 2:
+                            full_title, date = song_info
+                            # "Title - Artist" 형식 분리 시도
+                            if " - " in full_title:
+                                parts = full_title.rsplit(" - ", 1)
+                                title, artist = parts[0], parts[1]
+                            else:
+                                title, artist = full_title, "Unknown"
+                            
+                            # 구버전은 날짜만 있으므로 대략적인 시간 추가
+                            data["play_history"].append({
+                                "title": title,
+                                "artist": artist,
+                                "timestamp": f"20{date.replace('.', '-')} 00:00:00"
+                            })
+                    del data["songs"]
+
                 # 누락된 필드 보정
                 for key, val in default_stats.items():
                     if key not in data:
@@ -61,10 +83,17 @@ def save_stats(stats):
     except Exception as e:
         print(f"[⚠️] 통계 저장 실패: {e}")
 
+def parse_song_info(full_title):
+    """창 제목에서 곡 제목과 가수를 분리합니다."""
+    if " - " in full_title:
+        parts = full_title.rsplit(" - ", 1)
+        return parts[0].strip(), parts[1].strip()
+    return full_title.strip(), "Unknown"
+
 # 세션 초기 데이터 로드
 persistent_stats = load_stats()
 session_stats = {
-    "unique_songs": {s[0] for s in persistent_stats.get("songs", [])},
+    "play_count": 0,
     "lines": persistent_stats.get("total_lines", 0),
     "base_play_time": persistent_stats.get("total_play_time_sec", 0),
     "start_time": time.time()
@@ -204,7 +233,7 @@ async def main():
     
     # 메인 윈도우 생성
     initial_theme = persistent_stats.get("theme", "light")
-    window = MainWindow(initial_theme=initial_theme)
+    window = MainWindow(stats=persistent_stats, initial_theme=initial_theme)
     global _window
     _window = window
     
@@ -217,8 +246,15 @@ async def main():
     window.theme_changed.connect(on_theme_changed)
     
     # 히스토리 데이터로 GUI 목록 초기화
-    for song_title, date in persistent_stats.get("songs", []):
-        item = QListWidgetItem(f"{song_title} ({date})")
+    for entry in persistent_stats.get("play_history", []):
+        full_title = f"{entry['title']} - {entry['artist']}"
+        # 타임스탬프에서 날짜만 추출
+        try:
+            date_part = entry['timestamp'].split(" ")[0][2:].replace("-", ".")
+        except:
+            date_part = entry.get('timestamp', "")
+            
+        item = QListWidgetItem(f"{full_title} ({date_part})")
         item.setSizeHint(QSize(0, 60))
         window.music_page.music_list.addItem(item)
     
@@ -287,17 +323,23 @@ async def main():
                 current_song_title = target_win.title.replace(" - Melon", "").strip()
                 if current_song_title != last_song_title:
                     last_song_title = current_song_title
-                    if current_song_title and current_song_title not in session_stats["unique_songs"]:
-                        session_stats["unique_songs"].add(current_song_title)
-                        timestamp = time.strftime("%y.%m.%d")
+                    if current_song_title:
+                        session_stats["play_count"] += 1
+                        title, artist = parse_song_info(current_song_title)
+                        timestamp_full = time.strftime("%Y-%m-%d %H:%M:%S")
+                        timestamp_short = time.strftime("%y.%m.%d")
                         
                         # 리스트 위젯에 추가
-                        item = QListWidgetItem(f"{current_song_title} ({timestamp})")
+                        item = QListWidgetItem(f"{current_song_title} ({timestamp_short})")
                         item.setSizeHint(QSize(0, 60))
                         window.music_page.music_list.insertItem(0, item)
                         
                         # 영구 저장용 리스트에 추가
-                        persistent_stats["songs"].insert(0, (current_song_title, timestamp))
+                        persistent_stats["play_history"].insert(0, {
+                            "title": title,
+                            "artist": artist,
+                            "timestamp": timestamp_full
+                        })
                         add_log(f"새로운 곡 감지: {current_song_title}")
                         save_stats(persistent_stats) # 곡 변경 시 즉시 저장
 
@@ -346,7 +388,7 @@ async def main():
                     total_play_time_sec = session_stats["base_play_time"] + session_duration
                     persistent_stats["total_play_time_sec"] = int(total_play_time_sec)
                     
-                    window.dashboard_page.stat1.findChild(QLabel, "StatValue").setText(f"{len(session_stats['unique_songs'])}곡")
+                    window.dashboard_page.stat1.findChild(QLabel, "StatValue").setText(f"{session_stats['play_count']}곡")
                     window.dashboard_page.stat2.findChild(QLabel, "StatValue").setText(f"{int(total_play_time_sec // 60)}분")
                     window.dashboard_page.stat3.findChild(QLabel, "StatValue").setText(f"{session_stats['lines']}줄")
                     
