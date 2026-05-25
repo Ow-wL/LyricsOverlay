@@ -1,0 +1,44 @@
+{
+    "기본 (반투명 검정)": {
+        "bg_color": "#000000",
+        "bg_alpha": 100,
+        "text_color": "#FFFFFF",
+        "outline_color": "#000000",
+        "outline_width": 2
+    },
+    "깔끔한 화이트": {
+        "bg_color": "#FFFFFF",
+        "bg_alpha": 180,
+        "text_color": "#14043F",
+        "outline_color": "#FFFFFF",
+        "outline_width": 0
+    },
+    "시안 블루 (네이비 테두리)": {
+        "bg_color": "#000000",
+        "bg_alpha": 80,
+        "text_color": "#00FFFF",
+        "outline_color": "#000080",
+        "outline_width": 3
+    },
+    "네온 그린": {
+        "bg_color": "#000000",
+        "bg_alpha": 150,
+        "text_color": "#39FF14",
+        "outline_color": "#000000",
+        "outline_width": 2
+    },
+    "소프트 핑크": {
+        "bg_color": "#FFF0F5",
+        "bg_alpha": 200,
+        "text_color": "#FF69B4",
+        "outline_color": "#FFFFFF",
+        "outline_width": 1
+    },
+    "다크 레드": {
+        "bg_color": "#2C0000",
+        "bg_alpha": 180,
+        "text_color": "#FF4D4D",
+        "outline_color": "#000000",
+        "outline_width": 2
+    }
+}
