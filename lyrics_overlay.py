@@ -45,10 +45,20 @@ class OverlayConfigManager:
         if os.path.exists(self.styles_path):
             try:
                 with open(self.styles_path, "r", encoding="utf-8") as f:
-                    self.PRESET_STYLES = json.load(f)
+                    data = json.load(f)
+                
+                # 새로운 형식 (system_presets, custom_presets 분리)
+                if isinstance(data, dict) and ("system_presets" in data or "custom_presets" in data):
+                    self.PRESET_STYLES = data.get("system_presets", {})
+                    self.custom_presets = data.get("custom_presets", {})
+                else:
+                    # 이전 형식 (전체가 system_presets)
+                    self.PRESET_STYLES = data
+                    self.custom_presets = {}
             except Exception as e:
                 print(f"Failed to load styles from {self.styles_path}: {e}")
                 self.PRESET_STYLES = {}
+                self.custom_presets = {}
         else:
             # 파일이 없을 경우 기본값 설정
             self.PRESET_STYLES = {
@@ -57,13 +67,18 @@ class OverlayConfigManager:
                     "outline_color": "#000000", "outline_width": 2
                 }
             }
+            self.custom_presets = {}
             self.save_styles()
 
     def save_styles(self):
         """현재 프리셋 스타일을 파일에 저장합니다."""
         try:
+            data = {
+                "system_presets": self.PRESET_STYLES,
+                "custom_presets": self.custom_presets
+            }
             with open(self.styles_path, "w", encoding="utf-8") as f:
-                json.dump(self.PRESET_STYLES, f, indent=4, ensure_ascii=False)
+                json.dump(data, f, indent=4, ensure_ascii=False)
         except Exception as e:
             print(f"Failed to save styles to {self.styles_path}: {e}")
 
@@ -139,13 +154,13 @@ class OverlayConfigManager:
             "font_family": self.font_family,
             "font_size": self.font_size
         }
-        self.save_to_file()
+        self.save_styles()
 
     def delete_custom_preset(self, name):
         """사용자 프리셋을 삭제합니다."""
         if name in self.custom_presets:
             del self.custom_presets[name]
-            self.save_to_file()
+            self.save_styles()
 
     def get_settings(self):
         """현재 설정을 dict 형태로 반환 (LyricsOverlay.apply_settings 호환용)"""
@@ -247,8 +262,7 @@ class OverlayConfigManager:
                 "x": self.x,
                 "y": self.y,
                 "width": self.width,
-                "height": self.height,
-                "custom_presets": self.custom_presets
+                "height": self.height
             }
             with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
@@ -288,7 +302,6 @@ class OverlayConfigManager:
             self.y = data.get("y", self.y)
             self.width = data.get("width", self.width)
             self.height = data.get("height", self.height)
-            self.custom_presets = data.get("custom_presets", {})
         except Exception as e:
             print(f"Failed to load settings: {e}")
 
