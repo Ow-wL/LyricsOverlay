@@ -9,36 +9,16 @@ import win32con
 
 class OverlayConfigManager:
     """오버레이 스타일 및 설정을 관리하는 매니저 클래스"""
-    PRESET_STYLES = {
-        "기본 (반투명 검정)": {
-            "bg_color": "#000000", "bg_alpha": 100, "text_color": "#FFFFFF",
-            "outline_color": "#000000", "outline_width": 2
-        },
-        "깔끔한 화이트": {
-            "bg_color": "#FFFFFF", "bg_alpha": 180, "text_color": "#14043F",
-            "outline_color": "#FFFFFF", "outline_width": 0
-        },
-        "시안 블루 (네이비 테두리)": {
-            "bg_color": "#000000", "bg_alpha": 80, "text_color": "#00FFFF",
-            "outline_color": "#000080", "outline_width": 3
-        },
-        "네온 그린": {
-            "bg_color": "#000000", "bg_alpha": 150, "text_color": "#39FF14",
-            "outline_color": "#000000", "outline_width": 2
-        },
-        "소프트 핑크": {
-            "bg_color": "#FFF0F5", "bg_alpha": 200, "text_color": "#FF69B4",
-            "outline_color": "#FFFFFF", "outline_width": 1
-        },
-        "다크 레드": {
-            "bg_color": "#2C0000", "bg_alpha": 180, "text_color": "#FF4D4D",
-            "outline_color": "#000000", "outline_width": 2
-        }
-    }
-
-    def __init__(self, config_path="overlay_settings.json"):
+    
+    def __init__(self, config_path="overlay_settings.json", styles_path="overlay_styles.json"):
         self.config_path = config_path
+        self.styles_path = styles_path
+        self.PRESET_STYLES = {}
         self.custom_presets = {} # 사용자가 저장한 프리셋
+        
+        # 기본 스타일 로드
+        self.load_styles()
+        
         # 기본 스타일 설정
         self.bg_color = QColor(0, 0, 0, 100)      # 배경색 (RGBA)
         self.text_color = QColor(255, 255, 255)  # 글자색
@@ -59,6 +39,70 @@ class OverlayConfigManager:
         
         # 파일에서 설정 로드
         self.load_from_file()
+
+    def load_styles(self):
+        """별도의 파일에서 프리셋 스타일을 로드합니다."""
+        if os.path.exists(self.styles_path):
+            try:
+                with open(self.styles_path, "r", encoding="utf-8") as f:
+                    self.PRESET_STYLES = json.load(f)
+            except Exception as e:
+                print(f"Failed to load styles from {self.styles_path}: {e}")
+                self.PRESET_STYLES = {}
+        else:
+            # 파일이 없을 경우 기본값 설정
+            self.PRESET_STYLES = {
+                "기본 (반투명 검정)": {
+                    "bg_color": "#000000", "bg_alpha": 100, "text_color": "#FFFFFF",
+                    "outline_color": "#000000", "outline_width": 2
+                }
+            }
+            self.save_styles()
+
+    def save_styles(self):
+        """현재 프리셋 스타일을 파일에 저장합니다."""
+        try:
+            with open(self.styles_path, "w", encoding="utf-8") as f:
+                json.dump(self.PRESET_STYLES, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"Failed to save styles to {self.styles_path}: {e}")
+
+    def export_styles(self, export_path):
+        """프리셋 스타일과 커스텀 프리셋을 별도의 파일로 내보냅니다."""
+        try:
+            export_data = {
+                "system_presets": self.PRESET_STYLES,
+                "custom_presets": self.custom_presets
+            }
+            with open(export_path, "w", encoding="utf-8") as f:
+                json.dump(export_data, f, indent=4, ensure_ascii=False)
+            return True
+        except Exception as e:
+            print(f"Failed to export styles: {e}")
+            return False
+
+    def import_styles(self, import_path):
+        """파일에서 프리셋 스타일을 가져옵니다."""
+        try:
+            with open(import_path, "r", encoding="utf-8") as f:
+                import_data = json.load(f)
+            
+            # 형식이 통합된 내보내기 파일인 경우
+            if "system_presets" in import_data or "custom_presets" in import_data:
+                if "system_presets" in import_data:
+                    self.PRESET_STYLES.update(import_data["system_presets"])
+                if "custom_presets" in import_data:
+                    self.custom_presets.update(import_data["custom_presets"])
+            else:
+                # 단순 스타일 그리드 파일인 경우
+                self.PRESET_STYLES.update(import_data)
+            
+            self.save_styles()
+            self.save_to_file()
+            return True
+        except Exception as e:
+            print(f"Failed to import styles: {e}")
+            return False
 
     def apply_preset(self, preset_data):
         """프리셋 데이터를 적용합니다."""

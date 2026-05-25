@@ -4,7 +4,8 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QStackedWidget, 
                              QFrame, QListWidget, QSlider, QCheckBox, QGroupBox,
                              QListWidgetItem, QGraphicsDropShadowEffect, QScrollArea,
-                             QColorDialog, QFontDialog, QLineEdit, QGridLayout)
+                             QColorDialog, QFontDialog, QLineEdit, QGridLayout,
+                             QFileDialog, QMessageBox)
 from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QRect, Signal
 from PySide6.QtGui import QIcon, QColor, QFont, QPixmap, QFontDatabase, QKeyEvent, QKeySequence, QPainter, QBrush, QPen, QPainterPath, QFontMetrics
 import matplotlib.pyplot as plt
@@ -48,7 +49,7 @@ if __name__ == "__main__":
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from gui.roi_selector import ROISelector
-from lyrics_overlay import LyricsOverlay, OverlayConfigManager
+from lyrics_overlay import LyricsOverlay, OverlayConfigManager, OutlinedLabel
 
 class Card(QFrame):
     def __init__(self, parent=None):
@@ -145,67 +146,34 @@ class StylePreview(Card):
         self.preview_layout = QVBoxLayout(self.preview_frame)
         self.preview_layout.setContentsMargins(0, 0, 0, 0)
         
-        self.preview_text = QLabel("미리보기 가사 한 줄입니다. (Preview)")
+        self.preview_text = OutlinedLabel("미리보기 가사 한 줄입니다. (Preview)")
         self.preview_text.setAlignment(Qt.AlignCenter)
         self.preview_text.setStyleSheet("background: transparent;")
         self.preview_layout.addWidget(self.preview_text)
         
         self.layout.addWidget(self.preview_frame)
-        
-        self.config_data = {}
 
     def update_preview(self, config):
-        self.config_data = {
-            "bg_color": config.bg_color,
-            "text_color": config.text_color,
-            "outline_color": config.outline_color,
-            "outline_width": config.outline_width,
-            "font_family": config.font_family,
-            "font_size": config.font_size
-        }
-        
+        """매니저 설정을 바탕으로 미리보기 영역 업데이트"""
         # Update Background
-        bg = self.config_data["bg_color"]
+        bg = config.bg_color
         self.preview_frame.setStyleSheet(f"""
             QFrame#PreviewFrame {{
                 background-color: rgba({bg.red()}, {bg.green()}, {bg.blue()}, {bg.alpha()});
                 border-radius: 12px;
+                border: none;
             }}
         """)
-        self.update()
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        if not self.config_data: return
         
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        
-        # We draw the text manually to handle the outline correctly
-        rect = self.preview_frame.geometry()
-        # Offset for card contents margins
-        rect.translate(self.layout.contentsMargins().left(), self.layout.contentsMargins().top())
-        
-        font = QFont(self.config_data["font_family"], 22)
+        # Update Text Style
+        font = QFont(config.font_family, config.font_size)
         font.setBold(True)
-        text = self.preview_text.text()
-        
-        path = QPainterPath()
-        metrics = QFontMetrics(font)
-        tx = rect.center().x() - metrics.horizontalAdvance(text) / 2
-        ty = rect.center().y() + metrics.ascent() / 2 - 2
-        path.addText(tx, ty, font, text)
-        
-        # Outline
-        out_width = self.config_data["outline_width"]
-        if out_width > 0:
-            pen = QPen(self.config_data["outline_color"], out_width * 1.5)
-            pen.setJoinStyle(Qt.RoundJoin)
-            painter.setPen(pen)
-            painter.drawPath(path)
-            
-        # Text fill
-        painter.fillPath(path, QBrush(self.config_data["text_color"]))
+        self.preview_text.set_style(
+            font, 
+            config.text_color, 
+            config.outline_color, 
+            config.outline_width
+        )
 
 ################################################################################
 # UI CONFIGURATION
@@ -887,9 +855,20 @@ class SettingPage(QWidget):
         preset_header.addWidget(preset_title)
         preset_header.addStretch()
         
+        self.btn_import_styles = QPushButton("가져오기  📥")
+        self.btn_import_styles.setFixedSize(110, 36)
+        self.btn_import_styles.clicked.connect(self.import_styles_dialog)
+        
+        self.btn_export_styles = QPushButton("내보내기  📤")
+        self.btn_export_styles.setFixedSize(110, 36)
+        self.btn_export_styles.clicked.connect(self.export_styles_dialog)
+        
         self.btn_save_preset = QPushButton("현재 스타일 저장  💾")
         self.btn_save_preset.setFixedSize(160, 36)
         self.btn_save_preset.clicked.connect(self.save_current_as_preset)
+        
+        preset_header.addWidget(self.btn_import_styles)
+        preset_header.addWidget(self.btn_export_styles)
         preset_header.addWidget(self.btn_save_preset)
         preset_layout.addLayout(preset_header)
 
@@ -1223,6 +1202,29 @@ class SettingPage(QWidget):
         self.config.apply_preset(preset_data)
         self.refresh_ui_from_config()
         self.settings_changed.emit()
+
+    def import_styles_dialog(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "스타일 가져오기", "", "JSON Files (*.json)"
+        )
+        if file_path:
+            if self.config.import_styles(file_path):
+                QMessageBox.information(self, "성공", "스타일을 성공적으로 가져왔습니다.")
+                self.update_preset_list()
+                self.refresh_ui_from_config()
+                self.settings_changed.emit()
+            else:
+                QMessageBox.critical(self, "오류", "스타일 가져오기에 실패했습니다.")
+
+    def export_styles_dialog(self):
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "스타일 내보내기", "my_styles.json", "JSON Files (*.json)"
+        )
+        if file_path:
+            if self.config.export_styles(file_path):
+                QMessageBox.information(self, "성공", "스타일을 성공적으로 내보냈습니다.")
+            else:
+                QMessageBox.critical(self, "오류", "스타일 내보내기에 실패했습니다.")
 
     def save_current_as_preset(self):
         from PySide6.QtWidgets import QInputDialog
