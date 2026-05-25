@@ -4,9 +4,9 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QStackedWidget, 
                              QFrame, QListWidget, QSlider, QCheckBox, QGroupBox,
                              QListWidgetItem, QGraphicsDropShadowEffect, QScrollArea,
-                             QColorDialog, QFontDialog, QLineEdit)
+                             QColorDialog, QFontDialog, QLineEdit, QGridLayout)
 from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QRect, Signal
-from PySide6.QtGui import QIcon, QColor, QFont, QPixmap, QFontDatabase, QKeyEvent, QKeySequence
+from PySide6.QtGui import QIcon, QColor, QFont, QPixmap, QFontDatabase, QKeyEvent, QKeySequence, QPainter, QBrush, QPen, QPainterPath, QFontMetrics
 import matplotlib.pyplot as plt
 from matplotlib import font_manager, rc
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
@@ -49,6 +49,163 @@ if __name__ == "__main__":
 
 from gui.roi_selector import ROISelector
 from lyrics_overlay import LyricsOverlay, OverlayConfigManager
+
+class Card(QFrame):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("Card")
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(15)
+        shadow.setXOffset(0)
+        shadow.setYOffset(4)
+        shadow.setColor(QColor(*UIConfig.COLOR_SHADOW))
+        self.setGraphicsEffect(shadow)
+
+class PresetItem(QFrame):
+    clicked = Signal(dict)
+    delete_requested = Signal(str)
+
+    def __init__(self, name, data, is_custom=False, parent=None):
+        super().__init__(parent)
+        self.name = name
+        self.data = data
+        self.is_custom = is_custom
+        self.setFixedSize(160, 100)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setObjectName("PresetItem")
+        self.update_style(False)
+
+    def update_style(self, selected):
+        border_color = "#7C4DFF" if selected else "#E0E0E0"
+        bg_color = "#F8F9FA" if not selected else "#F1EBFF"
+        self.setStyleSheet(f"""
+            QFrame#PresetItem {{
+                background-color: {bg_color};
+                border: 2px solid {border_color};
+                border-radius: 12px;
+            }}
+        """)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Draw Preview Background
+        rect = QRect(10, 10, 140, 50)
+        bg_color = QColor(self.data.get("bg_color", "#000000"))
+        bg_color.setAlpha(self.data.get("bg_alpha", 255))
+        painter.setBrush(QBrush(bg_color))
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(rect, 8, 8)
+        
+        # Draw Preview Text with Outline
+        font = QFont(self.data.get("font_family", "Pretendard"), 12)
+        font.setBold(True)
+        text = "가사 미리보기"
+        
+        path = QPainterPath()
+        metrics = painter.fontMetrics()
+        tx = rect.center().x() - metrics.horizontalAdvance(text) / 2
+        ty = rect.center().y() + metrics.ascent() / 2 - 2
+        path.addText(tx, ty, font, text)
+        
+        # Outline
+        out_width = self.data.get("outline_width", 0)
+        if out_width > 0:
+            pen = QPen(QColor(self.data.get("outline_color", "#000000")), out_width)
+            pen.setJoinStyle(Qt.RoundJoin)
+            painter.setPen(pen)
+            painter.drawPath(path)
+            
+        # Text fill
+        painter.fillPath(path, QBrush(QColor(self.data.get("text_color", "#FFFFFF"))))
+        
+        # Draw Name
+        painter.setPen(QColor("#555555"))
+        painter.setFont(QFont("Pretendard", 9, QFont.Bold))
+        name_rect = QRect(0, 65, 160, 30)
+        painter.drawText(name_rect, Qt.AlignCenter, self.name)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self.data)
+        elif event.button() == Qt.RightButton and self.is_custom:
+            self.delete_requested.emit(self.name)
+
+class StylePreview(Card):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(120)
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(20, 20, 20, 20)
+        
+        self.preview_frame = QFrame()
+        self.preview_frame.setObjectName("PreviewFrame")
+        self.preview_layout = QVBoxLayout(self.preview_frame)
+        self.preview_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.preview_text = QLabel("미리보기 가사 한 줄입니다. (Preview)")
+        self.preview_text.setAlignment(Qt.AlignCenter)
+        self.preview_text.setStyleSheet("background: transparent;")
+        self.preview_layout.addWidget(self.preview_text)
+        
+        self.layout.addWidget(self.preview_frame)
+        
+        self.config_data = {}
+
+    def update_preview(self, config):
+        self.config_data = {
+            "bg_color": config.bg_color,
+            "text_color": config.text_color,
+            "outline_color": config.outline_color,
+            "outline_width": config.outline_width,
+            "font_family": config.font_family,
+            "font_size": config.font_size
+        }
+        
+        # Update Background
+        bg = self.config_data["bg_color"]
+        self.preview_frame.setStyleSheet(f"""
+            QFrame#PreviewFrame {{
+                background-color: rgba({bg.red()}, {bg.green()}, {bg.blue()}, {bg.alpha()});
+                border-radius: 12px;
+            }}
+        """)
+        self.update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if not self.config_data: return
+        
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # We draw the text manually to handle the outline correctly
+        rect = self.preview_frame.geometry()
+        # Offset for card contents margins
+        rect.translate(self.layout.contentsMargins().left(), self.layout.contentsMargins().top())
+        
+        font = QFont(self.config_data["font_family"], 22)
+        font.setBold(True)
+        text = self.preview_text.text()
+        
+        path = QPainterPath()
+        metrics = QFontMetrics(font)
+        tx = rect.center().x() - metrics.horizontalAdvance(text) / 2
+        ty = rect.center().y() + metrics.ascent() / 2 - 2
+        path.addText(tx, ty, font, text)
+        
+        # Outline
+        out_width = self.config_data["outline_width"]
+        if out_width > 0:
+            pen = QPen(self.config_data["outline_color"], out_width * 1.5)
+            pen.setJoinStyle(Qt.RoundJoin)
+            painter.setPen(pen)
+            painter.drawPath(path)
+            
+        # Text fill
+        painter.fillPath(path, QBrush(self.config_data["text_color"]))
 
 ################################################################################
 # UI CONFIGURATION
@@ -687,6 +844,14 @@ class SettingPage(QWidget):
         scroll_layout.setContentsMargins(0, 0, 0, 0)
         scroll_layout.setSpacing(24)
 
+        # Style Preview at the top
+        preview_header = QLabel("오버레이 미리보기")
+        preview_header.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 800; color: {UIConfig.COLOR_SECONDARY_TEXT}; margin-bottom: -10px;")
+        scroll_layout.addWidget(preview_header)
+        
+        self.preview_area = StylePreview()
+        scroll_layout.addWidget(self.preview_area)
+
         # Control Group (On/Off)
         control_card = Card()
         control_layout = QHBoxLayout(control_card)
@@ -709,6 +874,35 @@ class SettingPage(QWidget):
         control_layout.addStretch()
         control_layout.addWidget(self.overlay_switch)
         scroll_layout.addWidget(control_card)
+        
+        # Preset Group
+        preset_card = Card()
+        preset_layout = QVBoxLayout(preset_card)
+        preset_layout.setContentsMargins(24, 24, 24, 24)
+        preset_layout.setSpacing(20)
+
+        preset_header = QHBoxLayout()
+        preset_title = QLabel("스타일 프리셋")
+        preset_title.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_L}; font-weight: 800; color: {UIConfig.COLOR_SECONDARY_TEXT};")
+        preset_header.addWidget(preset_title)
+        preset_header.addStretch()
+        
+        self.btn_save_preset = QPushButton("현재 스타일 저장  💾")
+        self.btn_save_preset.setFixedSize(160, 36)
+        self.btn_save_preset.clicked.connect(self.save_current_as_preset)
+        preset_header.addWidget(self.btn_save_preset)
+        preset_layout.addLayout(preset_header)
+
+        # Preset Grid
+        self.preset_container = QWidget()
+        self.preset_grid = QGridLayout(self.preset_container)
+        self.preset_grid.setContentsMargins(0, 0, 0, 0)
+        self.preset_grid.setSpacing(16)
+        
+        self.update_preset_list()
+        preset_layout.addWidget(self.preset_container)
+        
+        scroll_layout.addWidget(preset_card)
         
         # Appearance Group
         appearance_card = Card()
@@ -982,6 +1176,84 @@ class SettingPage(QWidget):
         scroll_layout.addStretch()
         scroll.setWidget(scroll_content)
         layout.addWidget(scroll)
+
+        # Initial Refresh
+        self.refresh_ui_from_config()
+
+    def update_preset_list(self):
+        # Clear existing grid
+        while self.preset_grid.count():
+            item = self.preset_grid.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        row = 0
+        col = 0
+        
+        # 시스템 프리셋
+        for name, data in self.config.PRESET_STYLES.items():
+            preset = PresetItem(name, data, is_custom=False)
+            preset.clicked.connect(self.on_preset_selected)
+            self.preset_grid.addWidget(preset, row, col)
+            col += 1
+            if col > 2: # 3 columns
+                col = 0
+                row += 1
+                
+        # 사용자 프리셋
+        for name, data in self.config.custom_presets.items():
+            preset = PresetItem(name, data, is_custom=True)
+            preset.clicked.connect(self.on_preset_selected)
+            preset.delete_requested.connect(self.on_delete_preset)
+            self.preset_grid.addWidget(preset, row, col)
+            col += 1
+            if col > 2:
+                col = 0
+                row += 1
+
+    def on_delete_preset(self, name):
+        from PySide6.QtWidgets import QMessageBox
+        reply = QMessageBox.question(self, "프리셋 삭제", f"'{name}' 프리셋을 삭제하시겠습니까?", 
+                                   QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            self.config.delete_custom_preset(name)
+            self.update_preset_list()
+
+    def on_preset_selected(self, preset_data):
+        self.config.apply_preset(preset_data)
+        self.refresh_ui_from_config()
+        self.settings_changed.emit()
+
+    def save_current_as_preset(self):
+        from PySide6.QtWidgets import QInputDialog
+        name, ok = QInputDialog.getText(self, "프리셋 저장", "프리셋 이름을 입력하세요:")
+        if ok and name:
+            self.config.save_custom_preset(name)
+            self.update_preset_list()
+
+    def refresh_ui_from_config(self):
+        """설정 변경 후 UI 요소들의 상태를 업데이트합니다."""
+        self.overlay_switch.blockSignals(True)
+        self.overlay_switch.setChecked(self.config.visible)
+        self.overlay_switch.blockSignals(False)
+        
+        self.alpha_slider.setValue(self.config.bg_color.alpha())
+        self.alpha_val_label.setText(str(self.config.bg_color.alpha()))
+        self.outline_slider.setValue(self.config.outline_width)
+        self.outline_val_label.setText(str(self.config.outline_width))
+        self.width_slider.setValue(self.config.width)
+        self.height_slider.setValue(self.config.height)
+        self.size_val_label.setText(f"{self.config.width} x {self.config.height}")
+        self.ghost_check.setChecked(self.config.ghost_mode)
+        self.move_check.setChecked(self.config.move_enabled)
+        self.resize_check.setChecked(self.config.resize_enabled)
+        
+        self.btn_text_color.setStyleSheet(f"background-color: {self.config.text_color.name()}; border-radius: 18px; border: 2px solid #E0E0E0;")
+        self.btn_bg_color.setStyleSheet(f"background-color: {self.config.bg_color.name()}; border-radius: 18px; border: 2px solid #E0E0E0;")
+        self.btn_out_color.setStyleSheet(f"background-color: {self.config.outline_color.name()}; border-radius: 18px; border: 2px solid #E0E0E0;")
+        
+        # Update Preview Area
+        self.preview_area.update_preview(self.config)
 
     def on_visible_toggled(self, checked):
         self.config.visible = checked

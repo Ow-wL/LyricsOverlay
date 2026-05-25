@@ -75,6 +75,12 @@ class OverlayConfigManager:
         
         if "outline_width" in preset_data:
             self.outline_width = preset_data["outline_width"]
+
+        if "font_family" in preset_data:
+            self.font_family = preset_data["font_family"]
+        
+        if "font_size" in preset_data:
+            self.font_size = preset_data["font_size"]
         
         self.save_to_file()
 
@@ -85,7 +91,9 @@ class OverlayConfigManager:
             "bg_alpha": self.bg_color.alpha(),
             "text_color": self.text_color.name(),
             "outline_color": self.outline_color.name(),
-            "outline_width": self.outline_width
+            "outline_width": self.outline_width,
+            "font_family": self.font_family,
+            "font_size": self.font_size
         }
         self.save_to_file()
 
@@ -195,10 +203,11 @@ class OverlayConfigManager:
                 "x": self.x,
                 "y": self.y,
                 "width": self.width,
-                "height": self.height
+                "height": self.height,
+                "custom_presets": self.custom_presets
             }
             with open(self.config_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4)
+                json.dump(data, f, indent=4, ensure_ascii=False)
         except Exception as e:
             print(f"Failed to save settings: {e}")
 
@@ -235,6 +244,7 @@ class OverlayConfigManager:
             self.y = data.get("y", self.y)
             self.width = data.get("width", self.width)
             self.height = data.get("height", self.height)
+            self.custom_presets = data.get("custom_presets", {})
         except Exception as e:
             print(f"Failed to load settings: {e}")
 

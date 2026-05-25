@@ -1,6 +1,31 @@
 {
     "play_history": [
         {
+            "title": "산책",
+            "artist": "성시경",
+            "timestamp": "2026-05-26 08:30:26"
+        },
+        {
+            "title": "잘 지내자, 우리 (여름날 우리 X 로이킴)",
+            "artist": "로이킴",
+            "timestamp": "2026-05-26 08:28:34"
+        },
+        {
+            "title": "잘 지내자, 우리 (여름날 우리 X 로이킴)",
+            "artist": "로이킴",
+            "timestamp": "2026-05-26 08:26:09"
+        },
+        {
+            "title": "사랑은 가슴이 시킨다",
+            "artist": "버즈",
+            "timestamp": "2026-05-26 08:26:07"
+        },
+        {
+            "title": "사랑은 가슴이 시킨다",
+            "artist": "버즈",
+            "timestamp": "2026-05-26 08:23:16"
+        },
+        {
             "title": "언제라도 어디에서라도",
             "artist": "정승환",
             "timestamp": "2026-05-26 08:13:58"
@@ -41,7 +66,7 @@
             "timestamp": "2026-05-26 08:05:35"
         }
     ],
-    "total_lines": 59,
-    "total_play_time_sec": 357,
+    "total_lines": 102,
+    "total_play_time_sec": 664,
     "theme": "dark"
 }
