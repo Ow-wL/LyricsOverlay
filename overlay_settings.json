@@ -1,9 +1,9 @@
 {
     "bg_color": "#000000",
     "bg_alpha": 80,
-    "text_color": "#00ffff",
-    "outline_color": "#000080",
-    "outline_width": 3,
+    "text_color": "#aaaaff",
+    "outline_color": "#5a0180",
+    "outline_width": 2,
     "font_family": "Pretendard ExtraBold",
     "font_size": 22,
     "ghost_mode": false,
@@ -15,16 +15,5 @@
     "x": 1055,
     "y": 1,
     "width": 581,
-    "height": 84,
-    "custom_presets": {
-        "골드": {
-            "bg_color": "#000000",
-            "bg_alpha": 74,
-            "text_color": "#ffff00",
-            "outline_color": "#807d26",
-            "outline_width": 3,
-            "font_family": "Pretendard ExtraBold",
-            "font_size": 22
-        }
-    }
+    "height": 84
 }

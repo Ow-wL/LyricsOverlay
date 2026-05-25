@@ -809,16 +809,17 @@ class SettingPage(QWidget):
         
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
-        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.setContentsMargins(0, 20, 0, 0)
         scroll_layout.setSpacing(24)
 
         # Style Preview at the top
         preview_header = QLabel("오버레이 미리보기")
-        preview_header.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 800; color: {UIConfig.COLOR_SECONDARY_TEXT}; margin-bottom: -10px;")
+        preview_header.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 800; color: {UIConfig.COLOR_SECONDARY_TEXT};")
         scroll_layout.addWidget(preview_header)
         
         self.preview_area = StylePreview()
         scroll_layout.addWidget(self.preview_area)
+        scroll_layout.addSpacing(10)
 
         # Control Group (On/Off)
         control_card = Card()
