@@ -8,6 +8,22 @@
    - rapidfuzz: 가사 검색 결과의 유사도 계산
    - beautifulsoup4 & requests: 웹 가사 크롤링 및 네트워크 요청
 
+# 파이썬 가상 환경 설정
+python -m venv venv 
+
+# CMD 
+call venv\Scripts\activate
+
+# PowerShell
+call venv\Scripts\activate
+## 보안에러 발생 시 아래 명령 
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+
+# 비활성화 
+deactivate
+
+# 삭제
+rmdir /s /q venv
 
 🚀 설치 방법
 터미널에서 아래 명령어를 입력하여 한 번에 설치할 수 있습니다.

@@ -1,6 +1,41 @@
 {
     "play_history": [
         {
+            "title": "거리에서",
+            "artist": "성시경",
+            "timestamp": "2026-05-26 12:39:57"
+        },
+        {
+            "title": "너의 모든 순간",
+            "artist": "성시경",
+            "timestamp": "2026-05-26 12:39:16"
+        },
+        {
+            "title": "겨울을 걷는다",
+            "artist": "윤딴딴",
+            "timestamp": "2026-05-26 12:34:49"
+        },
+        {
+            "title": "니가 보고싶은 밤",
+            "artist": "윤딴딴",
+            "timestamp": "2026-05-26 12:28:08"
+        },
+        {
+            "title": "아퍼 (Feat. Kid Milli, Lil tachi, 김승민, NO:EL, C JAMM)",
+            "artist": "기리보이",
+            "timestamp": "2026-05-26 12:27:51"
+        },
+        {
+            "title": "아퍼 (Feat. Kid Milli, Lil tachi, 김승민, NO:EL, C JAMM)",
+            "artist": "기리보이",
+            "timestamp": "2026-05-26 12:27:34"
+        },
+        {
+            "title": "Melon Player splash",
+            "artist": "Unknown",
+            "timestamp": "2026-05-26 12:25:19"
+        },
+        {
             "title": "아퍼 (Feat. Kid Milli, Lil tachi, 김승민, NO:EL, C JAMM)",
             "artist": "기리보이",
             "timestamp": "2026-05-26 08:51:11"
@@ -91,7 +126,7 @@
             "timestamp": "2026-05-26 08:05:35"
         }
     ],
-    "total_lines": 259,
-    "total_play_time_sec": 1325,
-    "theme": "light"
+    "total_lines": 347,
+    "total_play_time_sec": 1931,
+    "theme": "dark"
 }
