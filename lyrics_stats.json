@@ -1,6 +1,34 @@
 {
     "play_history": [
         {
+            "title": "사랑하긴 했었나요 스쳐가는 인연이었나요 짧지않은 우리 함께했던 시간들이 자꾸 내 마음을 가둬두네",
+            "artist": "잔나비",
+            "timestamp": "2026-06-02 03:07:19",
+            "play_time_sec": 105,
+            "lines": 27
+        },
+        {
+            "title": "if i die (Feat. ASH ISLAND)",
+            "artist": "Skinny Brown",
+            "timestamp": "2026-06-02 03:07:17",
+            "play_time_sec": 2,
+            "lines": 2
+        },
+        {
+            "title": "끝사랑",
+            "artist": "테이",
+            "timestamp": "2026-06-02 03:04:01",
+            "play_time_sec": 195,
+            "lines": 21
+        },
+        {
+            "title": "끝사랑",
+            "artist": "테이",
+            "timestamp": "2026-06-02 03:03:04",
+            "play_time_sec": 18,
+            "lines": 2
+        },
+        {
             "title": "어제보다 슬픈 오늘",
             "artist": "우디 (Woody)",
             "timestamp": "2026-06-02 03:01:00",
@@ -225,7 +253,7 @@
             "lines": 44
         }
     ],
-    "total_lines": 603,
-    "total_play_time_sec": 2674,
+    "total_lines": 655,
+    "total_play_time_sec": 2997,
     "theme": "dark"
 }
