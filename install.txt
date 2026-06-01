@@ -25,6 +25,11 @@ deactivate
 # 삭제
 rmdir /s /q venv
 
+# .exe 파일로 만들기
+pip install pyinstaller
+cd [프로젝트파일]
+pyinstaller --onefile --noconsole --icon=icon.ico main.py
+
 🚀 설치 방법
 터미널에서 아래 명령어를 입력하여 한 번에 설치할 수 있습니다.
 

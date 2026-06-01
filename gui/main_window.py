@@ -51,7 +51,7 @@ class MainWindow(QMainWindow):
 
     theme_changed = Signal(str)
 
-    def __init__(self, stats: dict, initial_theme: str = "light"):
+    def __init__(self, stats: dict, app_config, initial_theme: str = "light"):
         super().__init__()
         self.setWindowTitle("Lyrics Overlay")
         self.setFixedSize(1280, 720)
@@ -67,7 +67,8 @@ class MainWindow(QMainWindow):
         if initial_theme == "dark":
             self.theme_manager.current_theme = Theme.DARK
 
-        self.config_manager = OverlayConfigManager()
+        self.app_config = app_config
+        self.config_manager = OverlayConfigManager(app_config.data_dir)
         self.overlay = LyricsOverlay(self.config_manager)
 
         self._load_fonts()
@@ -134,7 +135,7 @@ class MainWindow(QMainWindow):
         self.dashboard_page = DashboardPage(self.config_manager)
         self.music_page = MusicListPage()
         self.stats_page = StatsPage()
-        self.setting_page = SettingPage(self.config_manager)
+        self.setting_page = SettingPage(self.config_manager, self.app_config)
         self.info_page = InfoPage()
 
         self.setting_page.settings_changed.connect(self.update_overlay)

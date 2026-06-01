@@ -9,11 +9,11 @@ class OverlayConfigManager:
 
     def __init__(
         self,
-        config_path: str = "overlay_settings.json",
-        styles_path: str = "overlay_styles.json",
+        data_dir: str
     ):
-        self.config_path = config_path
-        self.styles_path = styles_path
+        self.data_dir = data_dir
+        self.config_path = os.path.join(data_dir, "overlay_settings.json")
+        self.styles_path = os.path.join(data_dir, "overlay_styles.json")
         self.PRESET_STYLES: dict = {}
         self.custom_presets: dict = {}
 
@@ -70,6 +70,35 @@ class OverlayConfigManager:
                     "text_color": "#FFFFFF",
                     "outline_color": "#000000",
                     "outline_width": 2,
+                    "font_family": "Pretendard",
+                    "font_size": 22
+                },
+                "모던 다크 (Modern Dark)": {
+                    "bg_color": "#1e1e1e",
+                    "bg_alpha": 220,
+                    "text_color": "#FFFFFF",
+                    "outline_color": "#000000",
+                    "outline_width": 1,
+                    "font_family": "Pretendard",
+                    "font_size": 20
+                },
+                "네온 핑크 (Neon Pink)": {
+                    "bg_color": "#0f0f15",
+                    "bg_alpha": 200,
+                    "text_color": "#ff2a75",
+                    "outline_color": "#4a0018",
+                    "outline_width": 2,
+                    "font_family": "Pretendard",
+                    "font_size": 24
+                },
+                "애플 라이트 (Apple Light)": {
+                    "bg_color": "#F5F5F7",
+                    "bg_alpha": 230,
+                    "text_color": "#1D1D1F",
+                    "outline_color": "#FFFFFF",
+                    "outline_width": 1,
+                    "font_family": "Pretendard",
+                    "font_size": 22
                 }
             }
             self.custom_presets = {}
