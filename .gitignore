@@ -1,2 +1,6 @@
+# PyInstaller 빌드 결과물 제외
+build/
+dist/
+*.spec
 /venv
 lyrics_stats.json

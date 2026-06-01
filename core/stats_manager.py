@@ -2,20 +2,21 @@ import json
 import os
 import time
 
-STATS_FILE_PATH = "lyrics_stats.json"
+def get_stats_file_path(data_dir: str) -> str:
+    return os.path.join(data_dir, "lyrics_stats.json")
 
-
-def load_stats() -> dict:
+def load_stats(data_dir: str) -> dict:
     """파일에서 통계 데이터를 로드합니다."""
+    stats_file_path = get_stats_file_path(data_dir)
     default_stats = {
         "play_history": [],  # [{"title": str, "artist": str, "timestamp": str}, ...]
         "total_lines": 0,
         "total_play_time_sec": 0,
         "theme": "light"
     }
-    if os.path.exists(STATS_FILE_PATH):
+    if os.path.exists(stats_file_path):
         try:
-            with open(STATS_FILE_PATH, "r", encoding="utf-8") as f:
+            with open(stats_file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
             # 데이터 마이그레이션 (구버전 -> 신버전)
@@ -47,10 +48,11 @@ def load_stats() -> dict:
     return default_stats
 
 
-def save_stats(stats: dict) -> None:
+def save_stats(stats: dict, data_dir: str) -> None:
     """통계 데이터를 파일에 저장합니다."""
+    stats_file_path = get_stats_file_path(data_dir)
     try:
-        with open(STATS_FILE_PATH, "w", encoding="utf-8") as f:
+        with open(stats_file_path, "w", encoding="utf-8") as f:
             json.dump(stats, f, ensure_ascii=False, indent=4)
     except Exception as e:
         print(f"[⚠️] 통계 저장 실패: {e}")

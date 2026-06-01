@@ -31,9 +31,10 @@ class SettingPage(QWidget):
     settings_changed = Signal()
     hotkeys_changed = Signal()
 
-    def __init__(self, config_manager: OverlayConfigManager):
+    def __init__(self, config_manager: OverlayConfigManager, app_config=None):
         super().__init__()
         self.config = config_manager
+        self.app_config = app_config
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(60, 60, 60, 60)
@@ -309,6 +310,32 @@ class SettingPage(QWidget):
         hotkey_layout.addLayout(quit_hk_hbox)
         scroll_layout.addWidget(hotkey_card)
 
+        # ── 시스템 및 데이터 관리 ──────────────────────────────────────────────
+        sys_card = Card()
+        sys_layout = QVBoxLayout(sys_card)
+        sys_layout.setContentsMargins(24, 24, 24, 24)
+        sys_layout.setSpacing(20)
+        sys_layout.addWidget(self._make_section_title("시스템 및 데이터 관리"))
+
+        data_path_hbox = QHBoxLayout()
+        data_path_vbox = QVBoxLayout()
+        data_path_vbox.addWidget(self._make_label("데이터 저장 경로", UIConfig.FS_TITLE_S, bold=600))
+        
+        current_path = self.app_config.data_dir if self.app_config else "알 수 없음"
+        self.lbl_data_path = self._make_label(current_path, UIConfig.FS_DESC, secondary=True)
+        data_path_vbox.addWidget(self.lbl_data_path)
+        
+        self.btn_change_path = QPushButton("경로 변경하기  📂")
+        self.btn_change_path.setFixedHeight(40)
+        self.btn_change_path.clicked.connect(self._on_change_data_path)
+        
+        data_path_hbox.addLayout(data_path_vbox)
+        data_path_hbox.addStretch()
+        data_path_hbox.addWidget(self.btn_change_path)
+        
+        sys_layout.addLayout(data_path_hbox)
+        scroll_layout.addWidget(sys_card)
+
         scroll_layout.addStretch()
         scroll.setWidget(scroll_content)
         layout.addWidget(scroll)
@@ -578,3 +605,26 @@ class SettingPage(QWidget):
         if ok:
             self.config.update_font(family=font.family(), size=font.pointSize())
             self.settings_changed.emit()
+
+    def _on_change_data_path(self) -> None:
+        if not self.app_config:
+            return
+            
+        new_dir = QFileDialog.getExistingDirectory(
+            self, "새 데이터 저장 경로 선택", self.app_config.data_dir,
+            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
+        )
+        
+        if new_dir:
+            success = self.app_config.set_data_dir(new_dir)
+            if success:
+                self.lbl_data_path.setText(new_dir)
+                QMessageBox.information(
+                    self, "경로 변경 완료",
+                    "데이터 저장 경로가 성공적으로 변경되었습니다.\n새로운 경로에 설정 및 통계 파일이 저장됩니다."
+                )
+            else:
+                QMessageBox.critical(
+                    self, "오류",
+                    "데이터 저장 경로를 변경하는데 실패했습니다."
+                )
