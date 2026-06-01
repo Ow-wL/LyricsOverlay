@@ -6,7 +6,7 @@
     "outline_width": 1,
     "font_family": "Pretendard ExtraBold",
     "font_size": 22,
-    "ghost_mode": true,
+    "ghost_mode": false,
     "visible": true,
     "move_enabled": false,
     "resize_enabled": false,

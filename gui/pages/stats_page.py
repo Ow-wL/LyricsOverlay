@@ -3,10 +3,7 @@
 from collections import Counter
 from datetime import datetime, timedelta
 
-import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
+from gui.widgets.bar_chart import BarChartWidget
 
 from PySide6.QtCore import Qt, QSize  # type: ignore
 from PySide6.QtWidgets import (  # type: ignore
@@ -22,28 +19,7 @@ from PySide6.QtWidgets import (  # type: ignore
 from gui.theme import UIConfig
 from gui.widgets.card import Card
 
-# ------------------------------------------------------------------ #
-# Matplotlib 한글 폰트 설정
-# ------------------------------------------------------------------ #
-try:
-    font_list = fm.findSystemFonts(fontpaths=None, fontext="ttf")
-    target_fonts = [
-        "Malgun Gothic", "NanumGothic", "AppleGothic",
-        "Noto Sans CJK KR", "Gulim", "Batang",
-    ]
-    korean_font = None
-    for target in target_fonts:
-        for fpath in font_list:
-            if target.lower() in fpath.lower():
-                korean_font = target
-                break
-        if korean_font:
-            break
-    plt.rcParams["font.family"] = korean_font or "Malgun Gothic"
-    plt.rcParams["axes.unicode_minus"] = False
-except Exception as e:
-    print(f"Matplotlib font error: {e}")
-
+# matplotlib 폰트 설정 제거됨
 
 class DetailListDialog(QWidget):
     """전체 목록을 별도 창으로 표시하는 다이얼로그."""
@@ -131,9 +107,8 @@ class StatsPage(QWidget):
             f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 600;"
         )
         graph_vbox.addWidget(self.graph_title)
-        self.figure = Figure(figsize=(5, 3), dpi=100)
-        self.canvas = FigureCanvas(self.figure)
-        graph_vbox.addWidget(self.canvas)
+        self.bar_chart = BarChartWidget()
+        graph_vbox.addWidget(self.bar_chart)
         layout.addWidget(self.graph_card)
 
         # 하단: 자주 들은 노래 / 가수
@@ -279,52 +254,8 @@ class StatsPage(QWidget):
             data = [counts.get(m, 0) for m in months]
             labels = [m.strftime("%y/%m") for m in months]
 
-        # 그래프 그리기
-        self.figure.clear()
-        ax = self.figure.add_subplot(111)
-        is_dark = theme_mode == "dark"
-        text_color = "white" if is_dark else "#14043F"
-        grid_color = "#FFFFFF" if is_dark else "#000000"
-        
-        # 투명한 배경으로 설정하여 카드 배경과 일치하도록 함
-        self.figure.patch.set_alpha(0.0)
-        ax.patch.set_alpha(0.0)
-
-        # 미니멀리즘 디자인: Y축 라벨과 눈금 제거, 수평 그리드 추가
-        ax.yaxis.set_visible(False)
-        ax.grid(axis="y", linestyle="--", alpha=0.15, color=grid_color)
-        ax.set_axisbelow(True) # 그리드가 막대 뒤로 가도록 설정
-
-        # 바 스타일링
-        bars = ax.bar(labels, data, color="#7C4DFF", alpha=0.85, width=0.45, edgecolor="none")
-        
-        # X축 눈금 선 없애고 라벨만 남기기
-        ax.tick_params(axis="x", colors=text_color, labelsize=10, length=0, pad=8)
-        
-        # 테두리 모두 제거
-        for spine in ax.spines.values():
-            spine.set_visible(False)
-            
-        # 여백 최적화 및 텍스트를 위한 상단 공간 확보
-        max_val = max(data) if data else 1
-        ax.set_ylim(0, max_val * 1.25)
-        self.figure.subplots_adjust(left=0.02, right=0.98, top=0.9, bottom=0.15)
-        
-        # 각 막대 위에 굵고 예쁜 텍스트 렌더링
-        for bar in bars:
-            height = bar.get_height()
-            if height > 0:
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2.0,
-                    height + (max_val * 0.05),
-                    f"{int(height)}",
-                    ha="center",
-                    va="bottom",
-                    color=text_color,
-                    fontsize=10,
-                    fontweight="bold"
-                )
-        self.canvas.draw()
+        # 네이티브 바 차트 위젯 업데이트
+        self.bar_chart.set_data(labels, data, theme_mode)
 
         # TOP 5 노래
         song_counts = Counter(

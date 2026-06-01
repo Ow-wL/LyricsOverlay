@@ -1,6 +1,41 @@
 {
     "play_history": [
         {
+            "title": "DARLING",
+            "artist": "태양",
+            "timestamp": "2026-06-02 02:34:47",
+            "play_time_sec": 25,
+            "lines": 7
+        },
+        {
+            "title": "좋은 밤 좋은 꿈",
+            "artist": "너드커넥션 (Nerd Connection)",
+            "timestamp": "2026-06-02 02:32:07",
+            "play_time_sec": 36,
+            "lines": 5
+        },
+        {
+            "title": "좋은 밤 좋은 꿈",
+            "artist": "너드커넥션 (Nerd Connection)",
+            "timestamp": "2026-06-02 02:29:41",
+            "play_time_sec": 106,
+            "lines": 14
+        },
+        {
+            "title": "우린 노래가 될까",
+            "artist": "너드커넥션 (Nerd Connection)",
+            "timestamp": "2026-06-02 02:28:24",
+            "play_time_sec": 4,
+            "lines": 3
+        },
+        {
+            "title": "The Last Of The Real Ones (Remix) (Feat. MadeinTYO, bülow)",
+            "artist": "Fall Out Boy",
+            "timestamp": "2026-06-02 02:28:12",
+            "play_time_sec": 11,
+            "lines": 6
+        },
+        {
             "title": "The Last Of The Real Ones (Remix) (Feat. MadeinTYO, bülow)",
             "artist": "Fall Out Boy",
             "timestamp": "2026-06-02 02:24:53",
@@ -113,7 +148,7 @@
             "lines": 44
         }
     ],
-    "total_lines": 438,
-    "total_play_time_sec": 1933,
+    "total_lines": 473,
+    "total_play_time_sec": 2120,
     "theme": "dark"
 }
