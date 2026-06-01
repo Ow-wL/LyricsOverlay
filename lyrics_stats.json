@@ -1,7 +1,6 @@
 {
     "play_history": [
         {
-<<<<<<< HEAD
             "title": "은인",
             "artist": "버즈",
             "timestamp": "2026-06-02 01:47:12"
@@ -25,7 +24,8 @@
             "title": "I DON'T BARGAIN",
             "artist": "ALLDAY PROJECT",
             "timestamp": "2026-06-02 01:44:07"
-=======
+        },
+        {
             "title": "거리에서",
             "artist": "성시경",
             "timestamp": "2026-05-26 12:39:57"
