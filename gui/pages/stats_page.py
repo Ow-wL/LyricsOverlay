@@ -73,7 +73,14 @@ class DetailListDialog(QWidget):
         layout.addWidget(close_btn)
 
         if parent:
-            self.setStyleSheet(parent.styleSheet())
+            if hasattr(parent, "centralWidget") and parent.centralWidget():
+                self.setStyleSheet(parent.centralWidget().styleSheet())
+            else:
+                self.setStyleSheet(parent.styleSheet())
+            
+            # 다이얼로그 배경색이 명시적으로 적용되도록 추가 처리
+            # (QSS의 QWidget 규칙이 상속되지만, 때로는 최상위 위젯 자체에는 안 먹힐 수 있음)
+            self.setAttribute(Qt.WA_StyledBackground, True)
 
 
 class StatsPage(QWidget):

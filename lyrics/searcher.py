@@ -59,11 +59,12 @@ class LyricsSearcher:
             song_id = None
             search_results = soup.select("div.tb_list table tbody tr")
             if not search_results:
+                print(f"[DEBUG] 검색 결과 없음: {search_query}")
                 return [], f"❌ 검색 결과 없음: {display_name}"
 
             first_row = search_results[0]
             links = str(first_row.select("a[href*='goSongDetail']"))
-            id_match = re.search(r"goSongDetail\(['\"](\d+)['\"]\]", links)
+            id_match = re.search(r"goSongDetail\(['\"](\d+)['\"]", links)
 
             if id_match:
                 song_id = id_match.group(1)
@@ -71,8 +72,10 @@ class LyricsSearcher:
                 chk = first_row.select_one("input[name='check_song']")
                 if chk:
                     song_id = chk.get("value")
+                    
+            print(f"[DEBUG] 찾은 곡 ID: {song_id}")
 
-            if not song_id or len(song_id) < 5:
+            if not song_id or len(str(song_id)) < 5:
                 return [], f"❌ 올바른 곡 ID를 찾지 못함: {display_name}"
 
             lyrics_url = (
