@@ -6,6 +6,15 @@ LyricsOverlay — 엔트리 포인트
 import asyncio
 import sys
 import time
+import os
+import ctypes
+
+if os.name == 'nt':
+    try:
+        myappid = 'owwl.lyricsoverlay.app.1.0'
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    except Exception:
+        pass
 
 import cv2
 import pygetwindow as gw  # type: ignore
