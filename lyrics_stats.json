@@ -1,6 +1,13 @@
 {
     "play_history": [
         {
+            "title": "Butter-Fly",
+            "artist": "전영호",
+            "timestamp": "2026-06-02 02:17:19",
+            "play_time_sec": 17,
+            "lines": 6
+        },
+        {
             "title": "너에게 난 나에게 넌",
             "artist": "자전거 탄 풍경",
             "timestamp": "2026-06-02 02:14:35",
@@ -78,7 +85,7 @@
             "lines": 44
         }
     ],
-    "total_lines": 356,
-    "total_play_time_sec": 1702,
+    "total_lines": 362,
+    "total_play_time_sec": 1720,
     "theme": "dark"
 }
