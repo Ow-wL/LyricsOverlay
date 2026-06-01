@@ -1,6 +1,27 @@
 {
     "play_history": [
         {
+            "title": "The Last Of The Real Ones (Remix) (Feat. MadeinTYO, bülow)",
+            "artist": "Fall Out Boy",
+            "timestamp": "2026-06-02 02:24:53",
+            "play_time_sec": 49,
+            "lines": 12
+        },
+        {
+            "title": "ㅋㅋ",
+            "artist": "페노메코 (PENOMECO)",
+            "timestamp": "2026-06-02 02:22:47",
+            "play_time_sec": 125,
+            "lines": 50
+        },
+        {
+            "title": "물들이자 (With. PENOMECO)",
+            "artist": "Marv",
+            "timestamp": "2026-06-02 02:20:45",
+            "play_time_sec": 12,
+            "lines": 7
+        },
+        {
             "title": "Butter-Fly",
             "artist": "전영호",
             "timestamp": "2026-06-02 02:19:21",
@@ -92,7 +113,7 @@
             "lines": 44
         }
     ],
-    "total_lines": 369,
-    "total_play_time_sec": 1744,
+    "total_lines": 438,
+    "total_play_time_sec": 1933,
     "theme": "dark"
 }

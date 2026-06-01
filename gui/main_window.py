@@ -111,7 +111,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(menu_label)
 
         self.btn_dashboard = SidebarButton("대시보드  🏠", UIConfig.ICON_COLOR_DASHBOARD)
-        self.btn_music = SidebarButton("가사 목록  🎵", UIConfig.ICON_COLOR_MUSIC)
+        self.btn_music = SidebarButton("감상 기록  🎵", UIConfig.ICON_COLOR_MUSIC)
         self.btn_stats = SidebarButton("통계  📊", UIConfig.ICON_COLOR_STATS)
         self.btn_settings = SidebarButton("설정  ⚙️", UIConfig.ICON_COLOR_SETTINGS)
 
