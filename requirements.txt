@@ -4,11 +4,8 @@ pywin32
 opencv-python
 numpy
 mss
-pygetwindow
+PyGetWindow
 keyboard
 rapidfuzz
-beautifulsoup4
 requests
-urllib3
-charset-normalizer
-matplotlib
+beautifulsoup4
