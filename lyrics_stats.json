@@ -1,6 +1,31 @@
 {
     "play_history": [
         {
+            "title": "은인",
+            "artist": "버즈",
+            "timestamp": "2026-06-02 01:47:12"
+        },
+        {
+            "title": "은인",
+            "artist": "버즈",
+            "timestamp": "2026-06-02 01:45:53"
+        },
+        {
+            "title": "KNOCK",
+            "artist": "이채연",
+            "timestamp": "2026-06-02 01:45:41"
+        },
+        {
+            "title": "BOOMPALA",
+            "artist": "LE SSERAFIM (르세라핌)",
+            "timestamp": "2026-06-02 01:45:04"
+        },
+        {
+            "title": "I DON'T BARGAIN",
+            "artist": "ALLDAY PROJECT",
+            "timestamp": "2026-06-02 01:44:07"
+        },
+        {
             "title": "아퍼 (Feat. Kid Milli, Lil tachi, 김승민, NO:EL, C JAMM)",
             "artist": "기리보이",
             "timestamp": "2026-05-26 08:51:11"
@@ -91,7 +116,7 @@
             "timestamp": "2026-05-26 08:05:35"
         }
     ],
-    "total_lines": 259,
-    "total_play_time_sec": 1325,
-    "theme": "light"
+    "total_lines": 400,
+    "total_play_time_sec": 1647,
+    "theme": "dark"
 }
