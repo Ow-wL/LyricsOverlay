@@ -1,6 +1,48 @@
 {
     "play_history": [
         {
+            "title": "어제보다 슬픈 오늘",
+            "artist": "우디 (Woody)",
+            "timestamp": "2026-06-02 03:01:00",
+            "play_time_sec": 14,
+            "lines": 2
+        },
+        {
+            "title": "Pretender",
+            "artist": "OFFICIAL HIGE DANDISM",
+            "timestamp": "2026-06-02 02:57:58",
+            "play_time_sec": 77,
+            "lines": 13
+        },
+        {
+            "title": "BETELGEUSE",
+            "artist": "Yuuri",
+            "timestamp": "2026-06-02 02:55:30",
+            "play_time_sec": 18,
+            "lines": 5
+        },
+        {
+            "title": "5월의 밤",
+            "artist": "Zion.T",
+            "timestamp": "2026-06-02 02:55:11",
+            "play_time_sec": 6,
+            "lines": 3
+        },
+        {
+            "title": "5월의 밤",
+            "artist": "Zion.T",
+            "timestamp": "2026-06-02 02:54:40",
+            "play_time_sec": 27,
+            "lines": 10
+        },
+        {
+            "title": "Too Good To Say Goodbye",
+            "artist": "Bruno Mars",
+            "timestamp": "2026-06-02 02:54:38",
+            "play_time_sec": 1,
+            "lines": 1
+        },
+        {
             "title": "잊을께",
             "artist": "YB (윤도현 밴드)",
             "timestamp": "2026-06-02 02:50:32",
@@ -183,7 +225,7 @@
             "lines": 44
         }
     ],
-    "total_lines": 569,
-    "total_play_time_sec": 2525,
+    "total_lines": 603,
+    "total_play_time_sec": 2674,
     "theme": "dark"
 }

@@ -7,6 +7,7 @@ from gui.widgets.bar_chart import BarChartWidget
 
 from PySide6.QtCore import Qt, QSize  # type: ignore
 from PySide6.QtWidgets import (  # type: ignore
+    QDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -21,7 +22,7 @@ from gui.widgets.card import Card
 
 # matplotlib 폰트 설정 제거됨
 
-class DetailListDialog(QWidget):
+class DetailListDialog(QDialog):
     """전체 목록을 별도 창으로 표시하는 다이얼로그."""
 
     def __init__(self, title: str, items: list[str], parent=None):

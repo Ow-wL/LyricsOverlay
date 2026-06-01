@@ -36,6 +36,7 @@ class OverlayConfigManager:
         self.y = 800
         self.width = 800
         self.height = 150
+        self.dashboard_view_mode = "session"
 
         self.load_from_file()
 
@@ -272,6 +273,7 @@ class OverlayConfigManager:
                 "y": self.y,
                 "width": self.width,
                 "height": self.height,
+                "dashboard_view_mode": self.dashboard_view_mode,
             }
             with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
@@ -308,5 +310,6 @@ class OverlayConfigManager:
             self.y = data.get("y", self.y)
             self.width = data.get("width", self.width)
             self.height = data.get("height", self.height)
+            self.dashboard_view_mode = data.get("dashboard_view_mode", self.dashboard_view_mode)
         except Exception as e:
             print(f"Failed to load settings: {e}")

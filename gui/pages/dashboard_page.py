@@ -14,11 +14,14 @@ from gui.theme import UIConfig
 from gui.widgets.card import Card
 
 
+from overlay.config_manager import OverlayConfigManager
+
 class DashboardPage(QWidget):
     """실시간 가사 미리보기 및 시스템 로그를 보여주는 대시보드 페이지."""
 
-    def __init__(self):
+    def __init__(self, config_manager: OverlayConfigManager):
         super().__init__()
+        self.config = config_manager
         layout = QVBoxLayout(self)
         layout.setContentsMargins(60, 60, 60, 60)
         layout.setSpacing(40)
@@ -46,10 +49,10 @@ class DashboardPage(QWidget):
             btn.setCursor(Qt.PointingHandCursor)
             view_group.addWidget(btn)
             
-        self.btn_session.setChecked(True)
-        self.current_view_mode = "session"
+        self.current_view_mode = self.config.dashboard_view_mode
         
         for btn, mode in zip(self.view_buttons, ["session", "daily", "weekly", "monthly"]):
+            btn.setChecked(mode == self.current_view_mode)
             btn.clicked.connect(lambda checked, m=mode: self.change_view(m))
             
         header_layout.addLayout(view_group)
@@ -126,6 +129,8 @@ class DashboardPage(QWidget):
 
     def change_view(self, mode: str) -> None:
         self.current_view_mode = mode
+        self.config.dashboard_view_mode = mode
+        self.config.save_to_file()
         for btn, m in zip(self.view_buttons, ["session", "daily", "weekly", "monthly"]):
             btn.setChecked(m == mode)
         if hasattr(self, "latest_session_stats") and hasattr(self, "latest_play_history"):

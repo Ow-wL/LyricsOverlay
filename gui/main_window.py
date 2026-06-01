@@ -22,6 +22,7 @@ from gui.pages.dashboard_page import DashboardPage
 from gui.pages.music_list_page import MusicListPage
 from gui.pages.stats_page import StatsPage
 from gui.pages.setting_page import SettingPage
+from gui.pages.info_page import InfoPage
 from overlay.config_manager import OverlayConfigManager
 from overlay.lyrics_overlay import LyricsOverlay
 
@@ -115,8 +116,9 @@ class MainWindow(QMainWindow):
         self.btn_music = SidebarButton("감상 기록  🎵", UIConfig.ICON_COLOR_MUSIC)
         self.btn_stats = SidebarButton("통계  📊", UIConfig.ICON_COLOR_STATS)
         self.btn_settings = SidebarButton("설정  ⚙️", UIConfig.ICON_COLOR_SETTINGS)
+        self.btn_info = SidebarButton("정보  ℹ️", "#777777")
 
-        for btn in [self.btn_dashboard, self.btn_music, self.btn_stats, self.btn_settings]:
+        for btn in [self.btn_dashboard, self.btn_music, self.btn_stats, self.btn_settings, self.btn_info]:
             sidebar_layout.addWidget(btn)
         sidebar_layout.addStretch()
 
@@ -129,10 +131,11 @@ class MainWindow(QMainWindow):
 
         # 콘텐츠 스택
         self.content_stack = QStackedWidget()
-        self.dashboard_page = DashboardPage()
+        self.dashboard_page = DashboardPage(self.config_manager)
         self.music_page = MusicListPage()
         self.stats_page = StatsPage()
         self.setting_page = SettingPage(self.config_manager)
+        self.info_page = InfoPage()
 
         self.setting_page.settings_changed.connect(self.update_overlay)
 
@@ -140,18 +143,20 @@ class MainWindow(QMainWindow):
         self.content_stack.addWidget(self.music_page)       # index 1
         self.content_stack.addWidget(self.stats_page)       # index 2
         self.content_stack.addWidget(self.setting_page)     # index 3
+        self.content_stack.addWidget(self.info_page)        # index 4
 
         main_layout.addWidget(self.sidebar)
         main_layout.addWidget(self.content_stack)
 
         self.nav_buttons = [
-            self.btn_dashboard, self.btn_music, self.btn_stats, self.btn_settings
+            self.btn_dashboard, self.btn_music, self.btn_stats, self.btn_settings, self.btn_info
         ]
         self.btn_dashboard.setChecked(True)
         self.btn_dashboard.clicked.connect(lambda: self.switch_page(0))
         self.btn_music.clicked.connect(lambda: self.switch_page(1))
         self.btn_stats.clicked.connect(lambda: self.switch_page(2))
         self.btn_settings.clicked.connect(lambda: self.switch_page(3))
+        self.btn_info.clicked.connect(lambda: self.switch_page(4))
 
     # ------------------------------------------------------------------ #
     # 공개 메서드
@@ -192,7 +197,7 @@ class MainWindow(QMainWindow):
                 color: {theme["text_primary"]};
                 font-family: 'Pretendard';
             }}
-            QMainWindow, QWidget#CentralWidget {{
+            QMainWindow, QWidget#CentralWidget, QDialog {{
                 background-color: {theme["bg_main"]};
             }}
             QFrame#Sidebar {{
@@ -325,6 +330,9 @@ class MainWindow(QMainWindow):
             QCheckBox::indicator:hover {{
                 border: 2px solid {theme["accent"]};
             }}
+            QSlider::horizontal {{
+                min-height: 24px;
+            }}
             QSlider::groove:horizontal {{
                 border: none;
                 height: 6px;
@@ -337,12 +345,11 @@ class MainWindow(QMainWindow):
                 border: 2px solid {theme["bg_card"]};
                 width: 16px;
                 height: 16px;
-                margin: -5px 0;
-                border-radius: 8px;
+                margin: -7px 0;
+                border-radius: 10px;
             }}
             QSlider::handle:horizontal:hover {{
                 background: {theme["accent_hover"]};
-                transform: scale(1.1);
             }}
             QScrollArea {{
                 border: none;

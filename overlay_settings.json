@@ -15,5 +15,6 @@
     "x": 1161,
     "y": 2,
     "width": 575,
-    "height": 80
+    "height": 80,
+    "dashboard_view_mode": "daily"
 }
