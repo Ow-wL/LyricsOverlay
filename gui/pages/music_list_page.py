@@ -14,7 +14,7 @@ class MusicListPage(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(40, 40, 40, 40)
 
-        header = QLabel("가사 목록")
+        header = QLabel("감상 기록")
         header.setObjectName("PageHeader")
         header.setStyleSheet(
             f"font-size: {UIConfig.FS_HEADER_MAIN}; font-weight: 900;"

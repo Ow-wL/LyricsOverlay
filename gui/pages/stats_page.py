@@ -84,7 +84,7 @@ class DetailListDialog(QWidget):
 
 
 class StatsPage(QWidget):
-    """음악 감상 통계 (그래프, TOP5 노래/가수)를 보여주는 페이지."""
+    """음악 감상 통계 (그래프, 자주 감상한 노래/가수)를 보여주는 페이지."""
 
     def __init__(self):
         super().__init__()
@@ -136,7 +136,7 @@ class StatsPage(QWidget):
         graph_vbox.addWidget(self.canvas)
         layout.addWidget(self.graph_card)
 
-        # 하단: TOP5 노래 / 가수
+        # 하단: 자주 들은 노래 / 가수
         bottom_layout = QHBoxLayout()
         bottom_layout.setSpacing(24)
 
@@ -144,7 +144,7 @@ class StatsPage(QWidget):
         songs_vbox = QVBoxLayout(self.songs_card)
         songs_vbox.setContentsMargins(20, 20, 20, 20)
         songs_header = QHBoxLayout()
-        songs_title = QLabel("가장 많이 들은 노래 TOP 5")
+        songs_title = QLabel("자주 들은 노래")
         songs_title.setStyleSheet("font-size: 16px; font-weight: 700;")
         songs_header.addWidget(songs_title)
         songs_header.addStretch()
@@ -161,7 +161,7 @@ class StatsPage(QWidget):
         artists_vbox = QVBoxLayout(self.artists_card)
         artists_vbox.setContentsMargins(20, 20, 20, 20)
         artists_header = QHBoxLayout()
-        artists_title = QLabel("가장 많이 들은 가수 TOP 5")
+        artists_title = QLabel("자주 들은 가수")
         artists_title.setStyleSheet("font-size: 16px; font-weight: 700;")
         artists_header.addWidget(artists_title)
         artists_header.addStretch()
@@ -284,27 +284,46 @@ class StatsPage(QWidget):
         ax = self.figure.add_subplot(111)
         is_dark = theme_mode == "dark"
         text_color = "white" if is_dark else "#14043F"
-        bg_color = "#121212" if is_dark else "white"
-        self.figure.patch.set_facecolor(bg_color)
-        ax.set_facecolor(bg_color)
+        grid_color = "#FFFFFF" if is_dark else "#000000"
+        
+        # 투명한 배경으로 설정하여 카드 배경과 일치하도록 함
+        self.figure.patch.set_alpha(0.0)
+        ax.patch.set_alpha(0.0)
 
-        bars = ax.bar(labels, data, color="#7C4DFF", alpha=0.7, width=0.6)
-        ax.set_ylabel("곡 수", color=text_color, fontsize=10)
-        ax.tick_params(axis="x", colors=text_color, labelsize=9)
-        ax.tick_params(axis="y", colors=text_color, labelsize=9)
+        # 미니멀리즘 디자인: Y축 라벨과 눈금 제거, 수평 그리드 추가
+        ax.yaxis.set_visible(False)
+        ax.grid(axis="y", linestyle="--", alpha=0.15, color=grid_color)
+        ax.set_axisbelow(True) # 그리드가 막대 뒤로 가도록 설정
+
+        # 바 스타일링
+        bars = ax.bar(labels, data, color="#7C4DFF", alpha=0.85, width=0.45, edgecolor="none")
+        
+        # X축 눈금 선 없애고 라벨만 남기기
+        ax.tick_params(axis="x", colors=text_color, labelsize=10, length=0, pad=8)
+        
+        # 테두리 모두 제거
         for spine in ax.spines.values():
             spine.set_visible(False)
+            
+        # 여백 최적화 및 텍스트를 위한 상단 공간 확보
+        max_val = max(data) if data else 1
+        ax.set_ylim(0, max_val * 1.25)
+        self.figure.subplots_adjust(left=0.02, right=0.98, top=0.9, bottom=0.15)
+        
+        # 각 막대 위에 굵고 예쁜 텍스트 렌더링
         for bar in bars:
             height = bar.get_height()
-            ax.text(
-                bar.get_x() + bar.get_width() / 2.0,
-                height + 0.1,
-                f"{int(height)}",
-                ha="center",
-                va="bottom",
-                color=text_color,
-                fontsize=9,
-            )
+            if height > 0:
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2.0,
+                    height + (max_val * 0.05),
+                    f"{int(height)}",
+                    ha="center",
+                    va="bottom",
+                    color=text_color,
+                    fontsize=10,
+                    fontweight="bold"
+                )
         self.canvas.draw()
 
         # TOP 5 노래
