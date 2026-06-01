@@ -25,6 +25,7 @@ from gui.pages.setting_page import SettingPage
 from gui.pages.info_page import InfoPage
 from overlay.config_manager import OverlayConfigManager
 from overlay.lyrics_overlay import LyricsOverlay
+from core.utils import resource_path
 
 
 class SidebarButton(QPushButton):
@@ -58,9 +59,7 @@ class MainWindow(QMainWindow):
         self.setFixedSize(1280, 720)
         self.persistent_stats = stats
 
-        icon_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "asset", "icon.ico"
-        )
+        icon_path = resource_path(os.path.join("asset", "icon.ico"))
         if os.path.exists(icon_path):
             app_icon = QIcon(icon_path)
             self.setWindowIcon(app_icon)
@@ -84,9 +83,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ #
 
     def _load_fonts(self) -> None:
-        font_dir = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "asset", "Font"
-        )
+        font_dir = resource_path(os.path.join("asset", "Font"))
         if os.path.exists(font_dir):
             for font_file in os.listdir(font_dir):
                 if font_file.endswith(".ttf"):
