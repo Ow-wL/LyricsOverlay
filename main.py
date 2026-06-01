@@ -1,0 +1,277 @@
+"""
+LyricsOverlay — 엔트리 포인트
+실행: python main.py
+"""
+
+import asyncio
+import sys
+import time
+
+import cv2
+import pygetwindow as gw  # type: ignore
+from PySide6.QtCore import QSize  # type: ignore
+from PySide6.QtWidgets import QApplication, QLabel, QListWidgetItem  # type: ignore
+
+from core.hotkey_manager import HotkeyManager
+from core.ocr_engine import windows_native_ocr_split
+from core.stats_manager import load_stats, make_session_stats, parse_song_info, save_stats
+from core.window_capture import apply_transparency, capture_covered_window
+from gui.main_window import MainWindow
+from lyrics.matcher import LyricMatcher
+from overlay.config_manager import OverlayConfigManager
+
+# ------------------------------------------------------------------ #
+# 전역 상태
+# ------------------------------------------------------------------ #
+log_history: list[str] = []
+is_running: bool = True
+_window: MainWindow | None = None
+
+# 세션 시작 시 통계 로드
+persistent_stats = load_stats()
+session_stats = make_session_stats(persistent_stats)
+
+
+# ------------------------------------------------------------------ #
+# 로그
+# ------------------------------------------------------------------ #
+
+def add_log(message: str) -> None:
+    """최근 5개 로그를 유지하며 GUI 리스트에도 연동합니다."""
+    global log_history, _window
+    timestamp = time.strftime("%H:%M:%S")
+    log_msg = f"[{timestamp}] {message}"
+    log_history.append(log_msg)
+    if len(log_history) > 5:
+        log_history.pop(0)
+
+    if _window:
+        _window.dashboard_page.log_list.addItem(log_msg)
+        if _window.dashboard_page.log_list.count() > 50:
+            _window.dashboard_page.log_list.takeItem(0)
+        _window.dashboard_page.log_list.scrollToBottom()
+
+
+# ------------------------------------------------------------------ #
+# 단축키 콜백
+# ------------------------------------------------------------------ #
+
+def _on_toggle_mode() -> None:
+    if _window is None:
+        return
+    cfg: OverlayConfigManager = _window.config_manager
+    cfg.set_ghost_mode(not cfg.ghost_mode)
+    mode_name = "반투명 + 클릭통과" if cfg.ghost_mode else "불투명 + 클릭가능"
+    print(f"\n[🔔] 모드 전환: {mode_name}")
+    add_log(f"모드 전환: {mode_name}")
+
+
+def _on_quit() -> None:
+    global is_running
+    is_running = False
+    print("\n[🔔] 프로그램 종료 요청됨.")
+    add_log("프로그램 종료 요청됨")
+    QApplication.quit()
+
+
+# ------------------------------------------------------------------ #
+# 메인 루프
+# ------------------------------------------------------------------ #
+
+async def main() -> None:
+    global _window, is_running
+
+    app = QApplication(sys.argv)
+
+    # 메인 윈도우 생성
+    initial_theme = persistent_stats.get("theme", "light")
+    window = MainWindow(stats=persistent_stats, initial_theme=initial_theme)
+    _window = window
+
+    # 테마 저장
+    def on_theme_changed(theme_name: str) -> None:
+        persistent_stats["theme"] = theme_name
+        save_stats(persistent_stats)
+        add_log(f"테마 변경: {theme_name}")
+
+    window.theme_changed.connect(on_theme_changed)
+
+    # 히스토리 목록 초기화
+    for entry in persistent_stats.get("play_history", []):
+        full_title = f"{entry['title']} - {entry['artist']}"
+        try:
+            date_part = entry["timestamp"].split(" ")[0][2:].replace("-", ".")
+        except Exception:
+            date_part = entry.get("timestamp", "")
+        item = QListWidgetItem(f"{full_title} ({date_part})")
+        item.setSizeHint(QSize(0, 60))
+        window.music_page.music_list.addItem(item)
+
+    window.show()
+
+    overlay = window.overlay
+    config_manager = window.config_manager
+    matcher = LyricMatcher()
+
+    # 단축키 매니저
+    hotkey_mgr = HotkeyManager(on_ghost_toggle=_on_toggle_mode, on_quit=_on_quit)
+
+    def refresh_hotkeys() -> None:
+        hotkey_mgr.refresh(
+            config_manager.hotkey_ghost,
+            config_manager.hotkey_quit,
+            log_fn=add_log,
+        )
+
+    window.setting_page.settings_changed.connect(window.update_overlay)
+    window.setting_page.hotkeys_changed.connect(refresh_hotkeys)
+    refresh_hotkeys()
+
+    print("=" * 50)
+    print("🎤 가사 대시보드 및 오버레이 실행 중")
+    print("=" * 50)
+    add_log("프로그램 시작")
+
+    exclude = [
+        "Visual Studio Code", "Whale", "Gemini", "OBS", "Overlay",
+        "Discord", "파일 탐색기", "메모장", "PowerPoint", "한글",
+        "Hancom", "Hwp", "Edge",
+    ]
+
+    last_hwnd = None
+    last_song_title = ""
+    last_lyric_text = ""
+    last_applied_mode = None
+    save_timer = 0.0
+
+    try:
+        while is_running:
+            app.processEvents()
+
+            target_win = None
+            all_windows = gw.getAllWindows()
+
+            # 1순위: 'Melon' 포함 창
+            for w in all_windows:
+                if "Melon" in w.title and not any(ex in w.title for ex in exclude):
+                    if w.width > 200 and not w.isMinimized:
+                        target_win = w
+                        break
+
+            # 2순위: ' - ' 형식
+            if not target_win:
+                for w in all_windows:
+                    if " - " in w.title and not any(ex in w.title for ex in exclude):
+                        if w.width > 200 and not w.isMinimized:
+                            target_win = w
+                            break
+
+            if target_win:
+                hwnd = target_win._hWnd
+                last_hwnd = hwnd
+                is_ghost_mode = config_manager.ghost_mode
+
+                # 모드 변경 시 창 스타일 적용
+                if is_ghost_mode != last_applied_mode:
+                    apply_transparency(hwnd, is_ghost_mode)
+                    overlay.set_ghost_mode(is_ghost_mode)
+                    last_applied_mode = is_ghost_mode
+                    add_log(f"창 스타일 변경 완료: {'고스트' if is_ghost_mode else '일반'}")
+
+                # 곡 변경 감지
+                current_song_title = target_win.title.replace(" - Melon", "").strip()
+                if current_song_title != last_song_title:
+                    last_song_title = current_song_title
+                    if current_song_title:
+                        session_stats["play_count"] += 1
+                        title, artist = parse_song_info(current_song_title)
+                        timestamp_full = time.strftime("%Y-%m-%d %H:%M:%S")
+                        timestamp_short = time.strftime("%y.%m.%d")
+
+                        item = QListWidgetItem(f"{current_song_title} ({timestamp_short})")
+                        item.setSizeHint(QSize(0, 60))
+                        window.music_page.music_list.insertItem(0, item)
+
+                        persistent_stats["play_history"].insert(0, {
+                            "title": title,
+                            "artist": artist,
+                            "timestamp": timestamp_full,
+                        })
+                        add_log(f"새로운 곡 감지: {current_song_title}")
+                        save_stats(persistent_stats)
+
+                # 캡처 및 OCR
+                full_img = capture_covered_window(hwnd)
+                if full_img is not None:
+                    roi = full_img[216:216 + 46, 28:28 + 251]
+                    scaled = cv2.resize(roi, None, fx=5, fy=5, interpolation=cv2.INTER_LANCZOS4)
+
+                    lines = await windows_native_ocr_split(scaled)
+
+                    fixed_lines: list[str] = []
+                    for line in lines:
+                        fixed_text, status = matcher.get_best_match(line, target_win.title)
+                        if status:
+                            add_log(status)
+                        fixed_lines.append(fixed_text)
+
+                    # 터미널 출력
+                    print("\033[H\033[J")
+                    mode_status = "👻 게임 모드" if is_ghost_mode else "🖱️  조작 모드"
+                    print(f"상태: {mode_status} | 대상: {target_win.title}")
+                    print("-" * 40)
+
+                    curr = fixed_lines[0] if len(fixed_lines) > 0 else "..."
+                    nxt = fixed_lines[1] if len(fixed_lines) > 1 else ""
+
+                    if curr != "..." and curr != last_lyric_text:
+                        session_stats["lines"] += 1
+                        last_lyric_text = curr
+                        persistent_stats["total_lines"] = session_stats["lines"]
+
+                    print(f"🔥 현재: {curr}")
+                    print(f"💤 다음: {nxt}")
+                    print("-" * 40)
+                    print("[ 시스템 로그 ]")
+                    for log in log_history:
+                        print(f" > {log}")
+
+                    # 오버레이 + 대시보드 업데이트
+                    overlay.update_lyrics(curr, nxt)
+                    window.dashboard_page.curr_lyric.setText(curr)
+
+                    session_duration = time.time() - session_stats["start_time"]
+                    total_play_time_sec = session_stats["base_play_time"] + session_duration
+                    persistent_stats["total_play_time_sec"] = int(total_play_time_sec)
+
+                    window.dashboard_page.stat1.findChild(QLabel, "StatValue").setText(
+                        f"{session_stats['play_count']}곡"
+                    )
+                    window.dashboard_page.stat2.findChild(QLabel, "StatValue").setText(
+                        f"{int(total_play_time_sec // 60)}분"
+                    )
+                    window.dashboard_page.stat3.findChild(QLabel, "StatValue").setText(
+                        f"{session_stats['lines']}줄"
+                    )
+
+                    # 1분마다 자동 저장
+                    save_timer += 0.05
+                    if save_timer >= 60:
+                        save_stats(persistent_stats)
+                        save_timer = 0.0
+
+                    QApplication.processEvents()
+
+            await asyncio.sleep(0.05)
+
+    finally:
+        save_stats(persistent_stats)
+        if last_hwnd:
+            print("\n[🧹] 멜론 창 상태 원복 중...")
+            apply_transparency(last_hwnd, False)
+        hotkey_mgr.unhook_all()
+        cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
