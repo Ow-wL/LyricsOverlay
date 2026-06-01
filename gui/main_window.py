@@ -58,11 +58,13 @@ class MainWindow(QMainWindow):
         self.setFixedSize(1280, 720)
         self.persistent_stats = stats
 
-        logo_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "asset", "logo.png"
+        icon_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "asset", "icon.ico"
         )
-        if os.path.exists(logo_path):
-            self.setWindowIcon(QIcon(logo_path))
+        if os.path.exists(icon_path):
+            app_icon = QIcon(icon_path)
+            self.setWindowIcon(app_icon)
+            QApplication.setWindowIcon(app_icon)
 
         self.theme_manager = ThemeManager()
         if initial_theme == "dark":
