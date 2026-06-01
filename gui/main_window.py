@@ -103,8 +103,9 @@ class MainWindow(QMainWindow):
         self.sidebar.setObjectName("Sidebar")
         self.sidebar.setFixedWidth(280)
         sidebar_layout = QVBoxLayout(self.sidebar)
-        sidebar_layout.setContentsMargins(16, 24, 16, 24)
-        sidebar_layout.setSpacing(8)
+        # 사이드바 여백 확대 (숨통 트이게)
+        sidebar_layout.setContentsMargins(24, 40, 24, 40)
+        sidebar_layout.setSpacing(12)
 
         menu_label = QLabel("메뉴")
         menu_label.setObjectName("SidebarMenuLabel")
@@ -185,11 +186,14 @@ class MainWindow(QMainWindow):
 
     def apply_theme(self, theme: dict) -> None:
         """전체 위젯에 테마 스타일시트를 적용합니다."""
+        self.central_widget.setObjectName("CentralWidget")
         style = f"""
-            QMainWindow, QWidget {{
-                background-color: {theme["bg_main"]};
+            QWidget {{
                 color: {theme["text_primary"]};
                 font-family: 'Pretendard';
+            }}
+            QMainWindow, QWidget#CentralWidget {{
+                background-color: {theme["bg_main"]};
             }}
             QFrame#Sidebar {{
                 background-color: {theme["bg_sidebar"]};
@@ -199,39 +203,48 @@ class MainWindow(QMainWindow):
                 font-size: {UIConfig.FS_SIDEBAR_TITLE};
                 font-family: 'Pretendard';
                 font-weight: 800;
-                margin-bottom: 20px;
-                padding-left: 12px;
+                margin-bottom: 24px;
+                padding-left: 16px;
                 color: {theme["text_primary"]};
                 letter-spacing: -0.5px;
                 background-color: transparent;
             }}
             QFrame#Card {{
                 background-color: {theme["bg_card"]};
-                border-radius: 16px;
+                border-radius: 12px;
                 border: 1px solid {theme["border"]};
             }}
             QPushButton {{
                 background-color: {theme["btn_bg"]};
                 color: {theme["btn_text"]};
                 border: 1px solid {theme["btn_border"]};
-                border-radius: 10px;
-                padding: 8px 16px;
+                border-radius: 8px;
+                padding: 10px 20px;
                 font-weight: 600;
                 font-size: {UIConfig.FS_BUTTON};
+                transition: background-color 0.2s, border 0.2s;
             }}
             QPushButton:hover {{
                 background-color: {theme["sb_hover_bg"]};
                 border: 1px solid {theme["accent"]};
             }}
+            QPushButton:pressed {{
+                background-color: {theme["sb_active_bg"]};
+                border: 1px solid {theme["accent_hover"]};
+            }}
             QPushButton#ThemeButton {{
                 background-color: {theme["accent"]};
                 color: white;
                 border: none;
+                border-radius: 12px;
                 font-size: {UIConfig.FS_THEME_BUTTON};
                 margin-top: 10px;
             }}
             QPushButton#ThemeButton:hover {{
                 background-color: {theme["accent_hover"]};
+            }}
+            QPushButton#ThemeButton:pressed {{
+                background-color: {theme["accent"]};
             }}
             SidebarButton {{
                 background-color: transparent;
@@ -243,7 +256,7 @@ class MainWindow(QMainWindow):
                 font-weight: 600;
                 font-size: {UIConfig.FS_SIDEBAR_BTN};
                 color: {theme["sb_normal_text"]};
-                margin: 2px 0px;
+                margin: 4px 0px;
             }}
             SidebarButton:hover {{
                 background-color: {theme["sb_hover_bg"]};
@@ -263,8 +276,9 @@ class MainWindow(QMainWindow):
                 outline: none;
             }}
             QListWidget::item {{
-                padding: 12px;
+                padding: 14px;
                 border-radius: 8px;
+                margin-bottom: 4px;
             }}
             QListWidget::item:hover {{
                 background-color: {theme["sb_hover_bg"]};
@@ -272,12 +286,13 @@ class MainWindow(QMainWindow):
             QListWidget::item:selected {{
                 background-color: {theme["list_sel_bg"]};
                 color: {theme["list_sel_text"]};
+                font-weight: 700;
             }}
             QLabel#PageHeader {{
                 color: {theme["text_primary"]};
                 font-weight: 900;
                 letter-spacing: -1px;
-                margin-bottom: 20px;
+                margin-bottom: 12px;
             }}
             QPushButton#AccentButton {{
                 background-color: {theme["btn_font_bg"]};
@@ -288,14 +303,17 @@ class MainWindow(QMainWindow):
             QPushButton#AccentButton:hover {{
                 background-color: {theme["accent_hover"]};
             }}
+            QPushButton#AccentButton:pressed {{
+                background-color: {theme["accent"]};
+            }}
             QCheckBox {{
                 spacing: 12px;
                 font-size: {UIConfig.FS_CHECKBOX};
                 font-weight: 500;
             }}
             QCheckBox::indicator {{
-                width: 24px;
-                height: 24px;
+                width: 22px;
+                height: 22px;
                 border-radius: 6px;
                 border: 2px solid {theme["btn_border"]};
                 background-color: {theme["bg_card"]};
@@ -308,19 +326,23 @@ class MainWindow(QMainWindow):
                 border: 2px solid {theme["accent"]};
             }}
             QSlider::groove:horizontal {{
-                border: 1px solid {theme["btn_border"]};
+                border: none;
                 height: 6px;
-                background: {theme["sb_hover_bg"]};
-                margin: 2px 0;
+                background: {theme["btn_border"]};
+                margin: 0px 0px;
                 border-radius: 3px;
             }}
             QSlider::handle:horizontal {{
                 background: {theme["accent"]};
-                border: none;
-                width: 18px;
-                height: 18px;
-                margin: -7px 0;
-                border-radius: 9px;
+                border: 2px solid {theme["bg_card"]};
+                width: 16px;
+                height: 16px;
+                margin: -5px 0;
+                border-radius: 8px;
+            }}
+            QSlider::handle:horizontal:hover {{
+                background: {theme["accent_hover"]};
+                transform: scale(1.1);
             }}
             QScrollArea {{
                 border: none;
@@ -334,7 +356,7 @@ class MainWindow(QMainWindow):
             }}
             QScrollBar::handle:vertical {{
                 background: {theme["btn_border"]};
-                min-height: 30px;
+                min-height: 40px;
                 border-radius: 5px;
             }}
             QScrollBar::handle:vertical:hover {{
@@ -356,7 +378,7 @@ class MainWindow(QMainWindow):
             }}
             QScrollBar::handle:horizontal {{
                 background: {theme["btn_border"]};
-                min-width: 30px;
+                min-width: 40px;
                 border-radius: 5px;
             }}
             QScrollBar::handle:horizontal:hover {{

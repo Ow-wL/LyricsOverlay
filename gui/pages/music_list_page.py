@@ -12,7 +12,8 @@ class MusicListPage(QWidget):
     def __init__(self):
         super().__init__()
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(40, 40, 40, 40)
+        layout.setContentsMargins(60, 60, 60, 60)
+        layout.setSpacing(32)
 
         header = QLabel("감상 기록")
         header.setObjectName("PageHeader")
