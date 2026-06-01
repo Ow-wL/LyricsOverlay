@@ -61,6 +61,15 @@
             "outline_width": 2,
             "font_family": "Pretendard ExtraBold",
             "font_size": 22
+        },
+        "시안블루(SB어그로)": {
+            "bg_color": "#000000",
+            "bg_alpha": 80,
+            "text_color": "#00ffff",
+            "outline_color": "#000080",
+            "outline_width": 1,
+            "font_family": "SB 어그로",
+            "font_size": 22
         }
     }
 }

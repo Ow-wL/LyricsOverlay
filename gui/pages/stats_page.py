@@ -69,8 +69,8 @@ class StatsPage(QWidget):
         self.view_mode = "daily"  # "daily" | "weekly" | "monthly"
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(40, 40, 40, 40)
-        layout.setSpacing(24)
+        layout.setContentsMargins(60, 60, 60, 60)
+        layout.setSpacing(32)
 
         # 헤더 + 뷰 모드 선택
         header_layout = QHBoxLayout()
@@ -83,6 +83,7 @@ class StatsPage(QWidget):
         header_layout.addStretch()
 
         view_group = QHBoxLayout()
+        view_group.setSpacing(8)
         self.btn_daily = QPushButton("일별")
         self.btn_weekly = QPushButton("주별")
         self.btn_monthly = QPushButton("월별")

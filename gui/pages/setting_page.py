@@ -36,8 +36,8 @@ class SettingPage(QWidget):
         self.config = config_manager
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(40, 40, 40, 40)
-        layout.setSpacing(24)
+        layout.setContentsMargins(60, 60, 60, 60)
+        layout.setSpacing(32)
 
         header = QLabel("오버레이 설정")
         header.setObjectName("PageHeader")
@@ -103,15 +103,15 @@ class SettingPage(QWidget):
         preset_header.addStretch()
 
         self.btn_import_styles = QPushButton("가져오기  📥")
-        self.btn_import_styles.setFixedSize(110, 36)
+        self.btn_import_styles.setFixedHeight(40)
         self.btn_import_styles.clicked.connect(self._import_styles_dialog)
 
         self.btn_export_styles = QPushButton("내보내기  📤")
-        self.btn_export_styles.setFixedSize(110, 36)
+        self.btn_export_styles.setFixedHeight(40)
         self.btn_export_styles.clicked.connect(self._export_styles_dialog)
 
         self.btn_save_preset = QPushButton("현재 스타일 저장  💾")
-        self.btn_save_preset.setFixedSize(160, 36)
+        self.btn_save_preset.setFixedHeight(40)
         self.btn_save_preset.clicked.connect(self._save_current_as_preset)
 
         preset_header.addWidget(self.btn_import_styles)

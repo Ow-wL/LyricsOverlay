@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (  # type: ignore
     QHBoxLayout,
     QLabel,
     QListWidget,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -19,8 +20,8 @@ class DashboardPage(QWidget):
     def __init__(self):
         super().__init__()
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(40, 40, 40, 40)
-        layout.setSpacing(32)
+        layout.setContentsMargins(60, 60, 60, 60)
+        layout.setSpacing(40)
 
         header_layout = QHBoxLayout()
         header = QLabel("대시보드")
@@ -31,9 +32,8 @@ class DashboardPage(QWidget):
         header_layout.addWidget(header)
         header_layout.addStretch()
 
-        from PySide6.QtWidgets import QPushButton
-        
         view_group = QHBoxLayout()
+        view_group.setSpacing(8)
         self.btn_session = QPushButton("세션")
         self.btn_daily = QPushButton("오늘")
         self.btn_weekly = QPushButton("이번 주")

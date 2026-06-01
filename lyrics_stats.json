@@ -1,6 +1,41 @@
 {
     "play_history": [
         {
+            "title": "잊을께",
+            "artist": "YB (윤도현 밴드)",
+            "timestamp": "2026-06-02 02:50:32",
+            "play_time_sec": 104,
+            "lines": 17
+        },
+        {
+            "title": "그게 뭐라고",
+            "artist": "어쿠루브",
+            "timestamp": "2026-06-02 02:49:47",
+            "play_time_sec": 45,
+            "lines": 8
+        },
+        {
+            "title": "그게 뭐라고",
+            "artist": "어쿠루브",
+            "timestamp": "2026-06-02 02:49:36",
+            "play_time_sec": 5,
+            "lines": 3
+        },
+        {
+            "title": "그게 뭐라고",
+            "artist": "어쿠루브",
+            "timestamp": "2026-06-02 02:47:23",
+            "play_time_sec": 116,
+            "lines": 25
+        },
+        {
+            "title": "남아있어 (Feat. Crush)",
+            "artist": "로꼬",
+            "timestamp": "2026-06-02 02:43:19",
+            "play_time_sec": 131,
+            "lines": 43
+        },
+        {
             "title": "DARLING",
             "artist": "태양",
             "timestamp": "2026-06-02 02:34:47",
@@ -148,7 +183,7 @@
             "lines": 44
         }
     ],
-    "total_lines": 473,
-    "total_play_time_sec": 2120,
+    "total_lines": 569,
+    "total_play_time_sec": 2525,
     "theme": "dark"
 }
