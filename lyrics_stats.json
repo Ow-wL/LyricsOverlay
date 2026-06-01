@@ -1,163 +1,84 @@
 {
     "play_history": [
         {
-            "title": "은인",
-            "artist": "버즈",
-            "timestamp": "2026-06-02 01:47:12"
+            "title": "너에게 난 나에게 넌",
+            "artist": "자전거 탄 풍경",
+            "timestamp": "2026-06-02 02:14:35",
+            "play_time_sec": 41,
+            "lines": 10
         },
         {
-            "title": "은인",
-            "artist": "버즈",
-            "timestamp": "2026-06-02 01:45:53"
+            "title": "너에게 난 나에게 넌",
+            "artist": "자전거 탄 풍경",
+            "timestamp": "2026-06-02 02:11:49",
+            "play_time_sec": 59,
+            "lines": 9
         },
         {
-            "title": "KNOCK",
-            "artist": "이채연",
-            "timestamp": "2026-06-02 01:45:41"
+            "title": "눈, 코, 입",
+            "artist": "태양",
+            "timestamp": "2026-06-02 02:10:43",
+            "play_time_sec": 59,
+            "lines": 21
         },
         {
-            "title": "BOOMPALA",
-            "artist": "LE SSERAFIM (르세라핌)",
-            "timestamp": "2026-06-02 01:45:04"
+            "title": "사건의 지평선",
+            "artist": "윤하 (YOUNHA)",
+            "timestamp": "2026-06-02 01:15:00",
+            "play_time_sec": 210,
+            "lines": 45
         },
         {
-            "title": "I DON'T BARGAIN",
-            "artist": "ALLDAY PROJECT",
-            "timestamp": "2026-06-02 01:44:07"
+            "title": "Hype Boy",
+            "artist": "NewJeans",
+            "timestamp": "2026-06-02 01:20:00",
+            "play_time_sec": 180,
+            "lines": 35
         },
         {
-            "title": "거리에서",
-            "artist": "성시경",
-            "timestamp": "2026-05-26 12:39:57"
+            "title": "Supernova",
+            "artist": "aespa",
+            "timestamp": "2026-06-01 22:15:00",
+            "play_time_sec": 195,
+            "lines": 40
         },
         {
-            "title": "너의 모든 순간",
-            "artist": "성시경",
-            "timestamp": "2026-05-26 12:39:16"
+            "title": "How Sweet",
+            "artist": "NewJeans",
+            "timestamp": "2026-06-01 22:20:00",
+            "play_time_sec": 200,
+            "lines": 42
         },
         {
-            "title": "겨울을 걷는다",
-            "artist": "윤딴딴",
-            "timestamp": "2026-05-26 12:34:49"
+            "title": "Ditto",
+            "artist": "NewJeans",
+            "timestamp": "2026-05-15 15:30:00",
+            "play_time_sec": 190,
+            "lines": 38
         },
         {
-            "title": "니가 보고싶은 밤",
-            "artist": "윤딴딴",
-            "timestamp": "2026-05-26 12:28:08"
+            "title": "ETA",
+            "artist": "NewJeans",
+            "timestamp": "2026-05-20 18:40:00",
+            "play_time_sec": 175,
+            "lines": 33
         },
         {
-            "title": "아퍼 (Feat. Kid Milli, Lil tachi, 김승민, NO:EL, C JAMM)",
-            "artist": "기리보이",
-            "timestamp": "2026-05-26 12:27:51"
+            "title": "Love Dive",
+            "artist": "IVE",
+            "timestamp": "2026-05-21 09:10:00",
+            "play_time_sec": 185,
+            "lines": 39
         },
         {
-            "title": "아퍼 (Feat. Kid Milli, Lil tachi, 김승민, NO:EL, C JAMM)",
-            "artist": "기리보이",
-            "timestamp": "2026-05-26 12:27:34"
-        },
-        {
-            "title": "Melon Player splash",
-            "artist": "Unknown",
-            "timestamp": "2026-05-26 12:25:19"
->>>>>>> 07eaa3641eafd736f9d94227346d2d5d5f0d627a
-        },
-        {
-            "title": "아퍼 (Feat. Kid Milli, Lil tachi, 김승민, NO:EL, C JAMM)",
-            "artist": "기리보이",
-            "timestamp": "2026-05-26 08:51:11"
-        },
-        {
-            "title": "High",
-            "artist": "5 Seconds of Summer",
-            "timestamp": "2026-05-26 08:48:19"
-        },
-        {
-            "title": "숨",
-            "artist": "박효신",
-            "timestamp": "2026-05-26 08:39:17"
-        },
-        {
-            "title": "Change",
-            "artist": "Neffex",
-            "timestamp": "2026-05-26 08:38:15"
-        },
-        {
-            "title": "Change",
-            "artist": "Neffex",
-            "timestamp": "2026-05-26 08:36:09"
-        },
-        {
-            "title": "산책",
-            "artist": "성시경",
-            "timestamp": "2026-05-26 08:30:26"
-        },
-        {
-            "title": "잘 지내자, 우리 (여름날 우리 X 로이킴)",
-            "artist": "로이킴",
-            "timestamp": "2026-05-26 08:28:34"
-        },
-        {
-            "title": "잘 지내자, 우리 (여름날 우리 X 로이킴)",
-            "artist": "로이킴",
-            "timestamp": "2026-05-26 08:26:09"
-        },
-        {
-            "title": "사랑은 가슴이 시킨다",
-            "artist": "버즈",
-            "timestamp": "2026-05-26 08:26:07"
-        },
-        {
-            "title": "사랑은 가슴이 시킨다",
-            "artist": "버즈",
-            "timestamp": "2026-05-26 08:23:16"
-        },
-        {
-            "title": "언제라도 어디에서라도",
-            "artist": "정승환",
-            "timestamp": "2026-05-26 08:13:58"
-        },
-        {
-            "title": "눈사람",
-            "artist": "정승환",
-            "timestamp": "2026-05-26 08:13:54"
-        },
-        {
-            "title": "사랑에 빠지고 싶다",
-            "artist": "정승환",
-            "timestamp": "2026-05-26 08:13:19"
-        },
-        {
-            "title": "나의 사춘기에게",
-            "artist": "볼빨간사춘기",
-            "timestamp": "2026-05-26 08:06:49"
-        },
-        {
-            "title": "씨스루 (Feat. Zion.T, 개코 Of 다이나믹듀오)",
-            "artist": "프라이머리",
-            "timestamp": "2026-05-26 08:06:35"
-        },
-        {
-            "title": "하늘을 달리다",
-            "artist": "이적",
-            "timestamp": "2026-05-26 08:06:27"
-        },
-        {
-            "title": "삭제",
-            "artist": "이승기",
-            "timestamp": "2026-05-26 08:05:51"
-        },
-        {
-            "title": "하늘을 달리다",
-            "artist": "이적",
-            "timestamp": "2026-05-26 08:05:35"
+            "title": "I AM",
+            "artist": "IVE",
+            "timestamp": "2026-05-25 21:05:00",
+            "play_time_sec": 205,
+            "lines": 44
         }
     ],
-<<<<<<< HEAD
-    "total_lines": 400,
-    "total_play_time_sec": 1647,
-=======
-    "total_lines": 347,
-    "total_play_time_sec": 1931,
->>>>>>> 07eaa3641eafd736f9d94227346d2d5d5f0d627a
+    "total_lines": 356,
+    "total_play_time_sec": 1702,
     "theme": "dark"
 }

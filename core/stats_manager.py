@@ -69,6 +69,7 @@ def make_session_stats(persistent_stats: dict) -> dict:
     return {
         "play_count": 0,
         "lines": persistent_stats.get("total_lines", 0),
+        "session_lines": 0,
         "base_play_time": persistent_stats.get("total_play_time_sec", 0),
         "start_time": time.time()
     }

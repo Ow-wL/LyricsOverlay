@@ -3,21 +3,17 @@
     "bg_alpha": 80,
     "text_color": "#00ffff",
     "outline_color": "#000080",
-<<<<<<< HEAD
     "outline_width": 1,
-=======
-    "outline_width": 2,
->>>>>>> 07eaa3641eafd736f9d94227346d2d5d5f0d627a
     "font_family": "Pretendard ExtraBold",
     "font_size": 22,
-    "ghost_mode": true,
+    "ghost_mode": false,
     "visible": true,
-    "move_enabled": true,
+    "move_enabled": false,
     "resize_enabled": false,
-    "hotkey_ghost": "f9",
-    "hotkey_quit": "shift+q",
-    "x": 1055,
-    "y": 1,
-    "width": 581,
+    "hotkey_ghost": "F9",
+    "hotkey_quit": "Shift+Q",
+    "x": 1161,
+    "y": 2,
+    "width": 597,
     "height": 80
 }

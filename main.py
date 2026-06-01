@@ -126,6 +126,9 @@ async def main() -> None:
     window.setting_page.settings_changed.connect(window.update_overlay)
     window.setting_page.hotkeys_changed.connect(refresh_hotkeys)
     refresh_hotkeys()
+    
+    # 대시보드 통계 초기 업데이트
+    window.dashboard_page.update_stats(session_stats, persistent_stats.get("play_history", []))
 
     print("=" * 50)
     print("🎤 가사 대시보드 및 오버레이 실행 중")
@@ -135,7 +138,7 @@ async def main() -> None:
     exclude = [
         "Visual Studio Code", "Whale", "Gemini", "OBS", "Overlay",
         "Discord", "파일 탐색기", "메모장", "PowerPoint", "한글",
-        "Hancom", "Hwp", "Edge",
+        "Hancom", "Hwp", "Edge", "Antigravity"
     ]
 
     last_hwnd = None
@@ -143,6 +146,10 @@ async def main() -> None:
     last_lyric_text = ""
     last_applied_mode = None
     save_timer = 0.0
+    
+    current_song_info = None
+    current_song_start_time = 0.0
+    current_song_lines = 0
 
     try:
         while is_running:
@@ -187,16 +194,22 @@ async def main() -> None:
                         title, artist = parse_song_info(current_song_title)
                         timestamp_full = time.strftime("%Y-%m-%d %H:%M:%S")
                         timestamp_short = time.strftime("%y.%m.%d")
+                        
+                        current_song_start_time = time.time()
+                        current_song_lines = 0
+                        current_song_info = {
+                            "title": title,
+                            "artist": artist,
+                            "timestamp": timestamp_full,
+                            "play_time_sec": 0,
+                            "lines": 0
+                        }
 
                         item = QListWidgetItem(f"{current_song_title} ({timestamp_short})")
                         item.setSizeHint(QSize(0, 60))
                         window.music_page.music_list.insertItem(0, item)
 
-                        persistent_stats["play_history"].insert(0, {
-                            "title": title,
-                            "artist": artist,
-                            "timestamp": timestamp_full,
-                        })
+                        persistent_stats["play_history"].insert(0, current_song_info)
                         add_log(f"새로운 곡 감지: {current_song_title}")
                         save_stats(persistent_stats)
 
@@ -226,8 +239,16 @@ async def main() -> None:
 
                     if curr != "..." and curr != last_lyric_text:
                         session_stats["lines"] += 1
+                        session_stats["session_lines"] += 1
                         last_lyric_text = curr
                         persistent_stats["total_lines"] = session_stats["lines"]
+                        
+                        if current_song_info is not None:
+                            current_song_lines += 1
+                            current_song_info["lines"] = current_song_lines
+
+                    if current_song_info is not None:
+                        current_song_info["play_time_sec"] = int(time.time() - current_song_start_time)
 
                     print(f"🔥 현재: {curr}")
                     print(f"💤 다음: {nxt}")
@@ -241,18 +262,11 @@ async def main() -> None:
                     window.dashboard_page.curr_lyric.setText(curr)
 
                     session_duration = time.time() - session_stats["start_time"]
+                    session_stats["session_duration"] = session_duration
                     total_play_time_sec = session_stats["base_play_time"] + session_duration
                     persistent_stats["total_play_time_sec"] = int(total_play_time_sec)
 
-                    window.dashboard_page.stat1.findChild(QLabel, "StatValue").setText(
-                        f"{session_stats['play_count']}곡"
-                    )
-                    window.dashboard_page.stat2.findChild(QLabel, "StatValue").setText(
-                        f"{int(total_play_time_sec // 60)}분"
-                    )
-                    window.dashboard_page.stat3.findChild(QLabel, "StatValue").setText(
-                        f"{session_stats['lines']}줄"
-                    )
+                    window.dashboard_page.update_stats(session_stats, persistent_stats.get("play_history", []))
 
                     # 1분마다 자동 저장
                     save_timer += 0.05
