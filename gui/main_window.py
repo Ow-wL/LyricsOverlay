@@ -86,7 +86,10 @@ class MainWindow(QMainWindow):
             for font_file in os.listdir(font_dir):
                 if font_file.endswith(".ttf"):
                     QFontDatabase.addApplicationFont(os.path.join(font_dir, font_file))
-        QApplication.setFont(QFont("Pretendard", 10))
+        font = QFont("Pretendard", 10)
+        font.setStyleStrategy(QFont.PreferAntialias | QFont.PreferQuality)
+        font.setHintingPreference(QFont.PreferNoHinting)
+        QApplication.setFont(font)
 
     def _setup_ui(self) -> None:
         self.central_widget = QWidget()
@@ -194,7 +197,7 @@ class MainWindow(QMainWindow):
             }}
             QLabel#SidebarMenuLabel {{
                 font-size: {UIConfig.FS_SIDEBAR_TITLE};
-                font-family: 'Pretendard SemiBold', 'Pretendard';
+                font-family: 'Pretendard';
                 font-weight: 800;
                 margin-bottom: 20px;
                 padding-left: 12px;
@@ -236,7 +239,7 @@ class MainWindow(QMainWindow):
                 border-radius: 12px;
                 text-align: left;
                 padding-left: 55px;
-                font-family: 'Pretendard SemiBold', 'Pretendard';
+                font-family: 'Pretendard';
                 font-weight: 600;
                 font-size: {UIConfig.FS_SIDEBAR_BTN};
                 color: {theme["sb_normal_text"]};
@@ -249,7 +252,7 @@ class MainWindow(QMainWindow):
             SidebarButton:checked {{
                 background-color: {theme["sb_active_bg"]};
                 color: {theme["sb_active_text"]};
-                font-family: 'Pretendard SemiBold', 'Pretendard';
+                font-family: 'Pretendard';
                 font-weight: 800;
             }}
             QListWidget {{
