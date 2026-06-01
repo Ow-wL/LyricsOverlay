@@ -18,6 +18,7 @@ from core.stats_manager import load_stats, make_session_stats, parse_song_info, 
 from core.window_capture import apply_transparency, capture_covered_window
 from gui.main_window import MainWindow
 from lyrics.matcher import LyricMatcher
+from core.app_config import AppConfig
 from overlay.config_manager import OverlayConfigManager
 
 # ------------------------------------------------------------------ #
@@ -27,9 +28,9 @@ log_history: list[str] = []
 is_running: bool = True
 _window: MainWindow | None = None
 
-# 세션 시작 시 통계 로드
-persistent_stats = load_stats()
-session_stats = make_session_stats(persistent_stats)
+persistent_stats: dict = {}
+session_stats: dict = {}
+_app_config: AppConfig | None = None
 
 
 # ------------------------------------------------------------------ #
@@ -79,22 +80,33 @@ def _on_quit() -> None:
 # ------------------------------------------------------------------ #
 
 async def main() -> None:
-    global _window, is_running
+    global _window, is_running, persistent_stats, session_stats, _app_config
 
     app = QApplication(sys.argv)
+    
+    _app_config = AppConfig()
+    persistent_stats = load_stats(_app_config.data_dir)
+    session_stats = make_session_stats(persistent_stats)
 
     # 메인 윈도우 생성
     initial_theme = persistent_stats.get("theme", "light")
-    window = MainWindow(stats=persistent_stats, initial_theme=initial_theme)
+    window = MainWindow(stats=persistent_stats, app_config=_app_config, initial_theme=initial_theme)
     _window = window
 
     # 테마 저장
     def on_theme_changed(theme_name: str) -> None:
         persistent_stats["theme"] = theme_name
-        save_stats(persistent_stats)
+        save_stats(persistent_stats, _app_config.data_dir)
         add_log(f"테마 변경: {theme_name}")
 
     window.theme_changed.connect(on_theme_changed)
+
+    def on_window_closed() -> None:
+        global is_running
+        is_running = False
+        print("\n[🔔] GUI 종료 감지. 백그라운드 루프 중지...")
+
+    window.window_closed.connect(on_window_closed)
 
     # 히스토리 목록 초기화
     for entry in persistent_stats.get("play_history", []):
@@ -211,7 +223,7 @@ async def main() -> None:
 
                         persistent_stats["play_history"].insert(0, current_song_info)
                         add_log(f"새로운 곡 감지: {current_song_title}")
-                        save_stats(persistent_stats)
+                        save_stats(persistent_stats, _app_config.data_dir)
 
                 # 캡처 및 OCR
                 full_img = capture_covered_window(hwnd)
@@ -271,7 +283,7 @@ async def main() -> None:
                     # 1분마다 자동 저장
                     save_timer += 0.05
                     if save_timer >= 60:
-                        save_stats(persistent_stats)
+                        save_stats(persistent_stats, _app_config.data_dir)
                         save_timer = 0.0
 
                     QApplication.processEvents()
@@ -279,7 +291,8 @@ async def main() -> None:
             await asyncio.sleep(0.05)
 
     finally:
-        save_stats(persistent_stats)
+        if _app_config:
+            save_stats(persistent_stats, _app_config.data_dir)
         if last_hwnd:
             print("\n[🧹] 멜론 창 상태 원복 중...")
             apply_transparency(last_hwnd, False)

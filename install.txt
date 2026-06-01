@@ -16,6 +16,8 @@ call venv\Scripts\activate
 
 # PowerShell
 call venv\Scripts\activate
+.\venv\Scripts\activate
+
 ## 보안에러 발생 시 아래 명령 
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 

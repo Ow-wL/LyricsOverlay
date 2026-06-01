@@ -50,6 +50,7 @@ class MainWindow(QMainWindow):
     """애플리케이션 메인 윈도우."""
 
     theme_changed = Signal(str)
+    window_closed = Signal()
 
     def __init__(self, stats: dict, app_config, initial_theme: str = "light"):
         super().__init__()
@@ -162,6 +163,13 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ #
     # 공개 메서드
     # ------------------------------------------------------------------ #
+
+    def closeEvent(self, event) -> None:
+        """메인 윈도우 닫기 이벤트 시 프로그램 전체를 명시적으로 종료합니다."""
+        self.window_closed.emit()
+        if hasattr(self, 'overlay') and self.overlay:
+            self.overlay.close()
+        super().closeEvent(event)
 
     def update_overlay(self) -> None:
         """설정 변경 시 오버레이에 동기화합니다."""
