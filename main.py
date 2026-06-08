@@ -227,6 +227,9 @@ async def main() -> None:
                             "lines": 0
                         }
 
+                        # 오버레이에 곡 정보 업데이트
+                        overlay.update_song_info(title, artist)
+
                         item = QListWidgetItem(f"{current_song_title} ({timestamp_short})")
                         item.setSizeHint(QSize(0, 60))
                         window.music_page.music_list.insertItem(0, item)

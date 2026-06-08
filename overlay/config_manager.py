@@ -37,6 +37,7 @@ class OverlayConfigManager:
         self.width = 800
         self.height = 150
         self.dashboard_view_mode = "session"
+        self.show_song_info = True
 
         self.load_from_file()
 
@@ -206,6 +207,7 @@ class OverlayConfigManager:
             "y": self.y,
             "width": self.width,
             "height": self.height,
+            "show_song_info": self.show_song_info,
         }
 
     def update_background(self, color=None, opacity: int | None = None) -> None:
@@ -303,6 +305,7 @@ class OverlayConfigManager:
                 "width": self.width,
                 "height": self.height,
                 "dashboard_view_mode": self.dashboard_view_mode,
+                "show_song_info": self.show_song_info,
             }
             with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
@@ -340,5 +343,6 @@ class OverlayConfigManager:
             self.width = data.get("width", self.width)
             self.height = data.get("height", self.height)
             self.dashboard_view_mode = data.get("dashboard_view_mode", self.dashboard_view_mode)
+            self.show_song_info = data.get("show_song_info", self.show_song_info)
         except Exception as e:
             print(f"Failed to load settings: {e}")
