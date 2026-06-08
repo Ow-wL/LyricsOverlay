@@ -40,7 +40,7 @@ class InfoPage(QWidget):
         title_label.setStyleSheet(
             f"font-size: 28px; font-weight: 900;"
         )
-        version_label = QLabel("Version 1.0.0")
+        version_label = QLabel("Version 1.0.1")
         version_label.setStyleSheet(
             f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 600; color: {UIConfig.COLOR_SECONDARY_TEXT};"
         )
