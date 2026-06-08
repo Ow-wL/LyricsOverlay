@@ -141,6 +141,9 @@ async def main() -> None:
         hotkey_mgr.refresh(
             config_manager.hotkey_ghost,
             config_manager.hotkey_quit,
+            hotkey_next=config_manager.hotkey_next,
+            hotkey_prev=config_manager.hotkey_prev,
+            hotkey_pause=config_manager.hotkey_pause,
             log_fn=add_log,
         )
 

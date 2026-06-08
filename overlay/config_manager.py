@@ -32,6 +32,9 @@ class OverlayConfigManager:
         self.resize_enabled = False
         self.hotkey_ghost = "F9"
         self.hotkey_quit = "Shift+Q"
+        self.hotkey_next = "ctrl+shift+right"
+        self.hotkey_prev = "ctrl+shift+left"
+        self.hotkey_pause = "F8"
         self.x = 460
         self.y = 800
         self.width = 800
@@ -279,6 +282,18 @@ class OverlayConfigManager:
         self.hotkey_quit = hotkey
         self.save_to_file()
 
+    def update_hotkey_next(self, hotkey: str) -> None:
+        self.hotkey_next = hotkey
+        self.save_to_file()
+
+    def update_hotkey_prev(self, hotkey: str) -> None:
+        self.hotkey_prev = hotkey
+        self.save_to_file()
+
+    def update_hotkey_pause(self, hotkey: str) -> None:
+        self.hotkey_pause = hotkey
+        self.save_to_file()
+
     # ------------------------------------------------------------------ #
     # 파일 I/O
     # ------------------------------------------------------------------ #
@@ -300,6 +315,9 @@ class OverlayConfigManager:
                 "resize_enabled": self.resize_enabled,
                 "hotkey_ghost": self.hotkey_ghost,
                 "hotkey_quit": self.hotkey_quit,
+                "hotkey_next": self.hotkey_next,
+                "hotkey_prev": self.hotkey_prev,
+                "hotkey_pause": self.hotkey_pause,
                 "x": self.x,
                 "y": self.y,
                 "width": self.width,
@@ -338,6 +356,9 @@ class OverlayConfigManager:
             self.resize_enabled = data.get("resize_enabled", self.resize_enabled)
             self.hotkey_ghost = data.get("hotkey_ghost", self.hotkey_ghost)
             self.hotkey_quit = data.get("hotkey_quit", self.hotkey_quit)
+            self.hotkey_next = data.get("hotkey_next", self.hotkey_next)
+            self.hotkey_prev = data.get("hotkey_prev", self.hotkey_prev)
+            self.hotkey_pause = data.get("hotkey_pause", self.hotkey_pause)
             self.x = data.get("x", self.x)
             self.y = data.get("y", self.y)
             self.width = data.get("width", self.width)
