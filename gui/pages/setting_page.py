@@ -143,7 +143,6 @@ class SettingPage(QWidget):
             self._make_label("오버레이 글꼴", UIConfig.FS_TITLE_S, bold=600)
         )
         self.btn_font = QPushButton("글꼴 변경  🔤")
-        self.btn_font.setObjectName("AccentButton")
         self.btn_font.setFixedSize(140, 40)
         self.btn_font.clicked.connect(self._pick_font)
         font_hbox.addStretch()
@@ -601,7 +600,7 @@ class SettingPage(QWidget):
 
     def _pick_font(self) -> None:
         current_font = QFont(self.config.font_family, self.config.font_size)
-        ok, font = QFontDialog.getFont(current_font, self)
+        ok, font = QFontDialog.getFont(current_font)
         if ok:
             self.config.update_font(family=font.family(), size=font.pointSize())
             self.settings_changed.emit()

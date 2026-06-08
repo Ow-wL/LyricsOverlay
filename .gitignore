@@ -2,5 +2,7 @@
 build/
 dist/
 *.spec
+
+__pycache__/
 /venv
 lyrics_stats.json
