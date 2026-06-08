@@ -307,18 +307,6 @@ class MainWindow(QMainWindow):
                 letter-spacing: -1px;
                 margin-bottom: 12px;
             }}
-            QPushButton#AccentButton {{
-                background-color: {theme["btn_font_bg"]};
-                color: {theme["btn_font_text"]};
-                border: none;
-                font-weight: 700;
-            }}
-            QPushButton#AccentButton:hover {{
-                background-color: {theme["accent_hover"]};
-            }}
-            QPushButton#AccentButton:pressed {{
-                background-color: {theme["accent"]};
-            }}
             QCheckBox {{
                 spacing: 12px;
                 font-size: {UIConfig.FS_CHECKBOX};
