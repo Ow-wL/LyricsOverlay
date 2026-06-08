@@ -45,7 +45,12 @@ class LyricsOverlay(QWidget):
         self.frame_layout = QVBoxLayout(self.bg_frame)
         self.frame_layout.setSpacing(5)
 
-        self.curr_label = OutlinedLabel("현재 가사 대기 중...")
+        self.song_info_label = OutlinedLabel("")
+        self.song_info_label.setAlignment(Qt.AlignCenter)
+        self.song_info_label.setStyleSheet("background: transparent;")
+        self.song_info_label.hide()
+
+        self.curr_label = OutlinedLabel("아직 가사 대기 중...")
         self.curr_label.setAlignment(Qt.AlignCenter)
         self.curr_label.setStyleSheet("background: transparent;")
 
@@ -53,6 +58,7 @@ class LyricsOverlay(QWidget):
         self.next_label.setAlignment(Qt.AlignCenter)
         self.next_label.setStyleSheet("background: transparent;")
 
+        self.frame_layout.addWidget(self.song_info_label)
         self.frame_layout.addWidget(self.curr_label)
         self.frame_layout.addWidget(self.next_label)
 
@@ -123,6 +129,21 @@ class LyricsOverlay(QWidget):
             self.move_enabled = settings["move_enabled"]
         if "resize_enabled" in settings:
             self.resize_enabled = settings["resize_enabled"]
+        if "show_song_info" in settings:
+            if settings["show_song_info"]:
+                self.song_info_label.show()
+            else:
+                self.song_info_label.hide()
+
+        # 곡 정보 레이블 폰트 (curr 보다 작게)
+        info_font = QFont(font)
+        info_font.setPointSize(max(7, font.pointSize() - 8))
+        self.song_info_label.set_style(
+            info_font,
+            QColor(text_color.red(), text_color.green(), text_color.blue(), 160),
+            out_color,
+            max(0, out_width - 1),
+        )
 
     # ------------------------------------------------------------------ #
     # 공개 메서드
@@ -157,6 +178,16 @@ class LyricsOverlay(QWidget):
             self.curr_label.setText(curr)
         if self.next_label.text() != nxt:
             self.next_label.setText(nxt)
+        self.update()
+
+    def update_song_info(self, title: str, artist: str) -> None:
+        """오버레이에 제목/가수 정보를 설정합니다."""
+        if title or artist:
+            text = f"🎵  {title}  \u2014  {artist} 🎵" if title and artist else (title or artist)
+        else:
+            text = ""
+        if self.song_info_label.text() != text:
+            self.song_info_label.setText(text)
         self.update()
 
     # ------------------------------------------------------------------ #

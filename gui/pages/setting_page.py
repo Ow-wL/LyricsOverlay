@@ -270,6 +270,16 @@ class SettingPage(QWidget):
             )
         )
         interaction_layout.addWidget(self._make_hline())
+        interaction_layout.addLayout(
+            self._make_toggle_row(
+                "곡 정보 표시",
+                "오버레이에 현재 재생 중인 곡의 제목과 가수를 표시합니다.",
+                self.config.show_song_info,
+                self._on_show_song_info_toggled,
+                "song_info_check",
+            )
+        )
+        interaction_layout.addWidget(self._make_hline())
 
         # ROI (비활성화됨)
         roi_vbox = QVBoxLayout()
@@ -524,6 +534,7 @@ class SettingPage(QWidget):
         self.ghost_check.setChecked(self.config.ghost_mode)
         self.move_check.setChecked(self.config.move_enabled)
         self.resize_check.setChecked(self.config.resize_enabled)
+        self.song_info_check.setChecked(self.config.show_song_info)
 
         self.btn_text_color.setStyleSheet(
             f"background-color: {self.config.text_color.name()}; border-radius: 18px; border: 2px solid #E0E0E0;"
@@ -554,6 +565,11 @@ class SettingPage(QWidget):
 
     def _on_resize_toggled(self, checked: bool) -> None:
         self.config.set_resize_enabled(checked)
+        self.settings_changed.emit()
+
+    def _on_show_song_info_toggled(self, checked: bool) -> None:
+        self.config.show_song_info = checked
+        self.config.save_to_file()
         self.settings_changed.emit()
 
     def _on_hotkey_ghost_changed(self, text: str) -> None:
