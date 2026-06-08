@@ -218,6 +218,7 @@ async def main() -> None:
                         
                         current_song_start_time = time.time()
                         current_song_lines = 0
+                        matcher.reset_recent()  # 새 곡 시작 시 매핑 이력 초기화
                         current_song_info = {
                             "title": title,
                             "artist": artist,
