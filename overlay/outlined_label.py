@@ -20,6 +20,10 @@ class OutlinedLabel(QLabel):
         self.outline_color = QColor(0, 0, 0)
         self.outline_width = 2
         self.text_color = QColor(255, 255, 255)
+        # 글자 아래 은은한 그림자: 밝은 배경 위에서도 또렷하고, 외곽선이 얇아도 입체감이 납니다.
+        self.shadow = False
+        # 글자 사이 간격(%). 작은 보조 글씨를 살짝 벌리면 깔끔해 보입니다.
+        self.letter_spacing = 100.0
         # 텍스트 길이가 창 크기를 밀어내지 않도록 가로 크기 요구를 무시하게 합니다.
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.setMinimumWidth(0)
@@ -36,7 +40,9 @@ class OutlinedLabel(QLabel):
     ) -> None:
         # 앱 스타일시트(font-family 등)가 덮어쓰지 않도록 글꼴을 따로 보관해 직접 그립니다.
         self._style_font = QFont(font)
-        self.setFont(font)
+        if self.letter_spacing != 100.0:
+            self._style_font.setLetterSpacing(QFont.PercentageSpacing, self.letter_spacing)
+        self.setFont(self._style_font)
         self.text_color = QColor(text_color)
         self.outline_color = QColor(outline_color)
         self.outline_width = outline_width
@@ -89,6 +95,13 @@ class OutlinedLabel(QLabel):
         y = (self.height() + font_metrics.ascent() - font_metrics.descent()) / 2
         path = QPainterPath()
         path.addText(x, y, font, text)
+
+        if self.shadow:
+            # 아래로 살짝 내린 같은 모양을 몇 겹 겹쳐 부드러운 그림자처럼 보이게 합니다.
+            for dy, alpha in ((2.2, 38), (1.4, 55), (0.8, 70)):
+                painter.fillPath(path.translated(0, dy), QBrush(QColor(0, 0, 0, alpha)))
+                if self.outline_width > 0:
+                    painter.strokePath(path.translated(0, dy), QPen(QColor(0, 0, 0, alpha), self.outline_width * 2))
 
         if self.outline_width > 0:
             pen = QPen(self.outline_color, self.outline_width * 2)
