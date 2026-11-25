@@ -464,6 +464,18 @@ class SettingPage(QWidget):
         sys_l.addLayout(path_row)
         lay.addWidget(sys_card)
 
+        lay.addWidget(self._section_lbl("창"))
+        win_card = Card()
+        wl = QVBoxLayout(win_card)
+        wl.setContentsMargins(22, 16, 22, 16)
+        wl.addLayout(self._toggle_row(
+            "창을 닫으면 트레이로 최소화",
+            "켜면 창의 X 버튼을 눌러도 가사 오버레이가 계속 실행됩니다. "
+            "완전히 끄려면 트레이 아이콘 메뉴의 '종료'나 종료 단축키를 쓰세요.",
+            self.config.close_to_tray, self._on_close_to_tray_toggled, "close_to_tray_check",
+        ))
+        lay.addWidget(win_card)
+
         lay.addStretch()
         return self._wrap_scroll(inner)
 
@@ -708,6 +720,10 @@ class SettingPage(QWidget):
         self.config.show_media_controls = checked
         self.config.save_to_file()
         self.settings_changed.emit()
+
+    def _on_close_to_tray_toggled(self, checked: bool) -> None:
+        self.config.close_to_tray = checked
+        self.config.save_to_file()
 
     def _on_hide_melon_toggled(self, checked: bool) -> None:
         self.config.hide_melon_window = checked
