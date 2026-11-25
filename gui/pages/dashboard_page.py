@@ -53,7 +53,18 @@ class DashboardPage(QWidget):
         self.stat3 = self._create_stat_card(icons.LINES, "매칭된 가사", "0줄")
         for card in (self.stat1, self.stat2, self.stat3):
             stats_layout.addWidget(card)
-        layout.addLayout(stats_layout)
+        self.stats_row = QWidget()
+        self.stats_row.setLayout(stats_layout)
+        stats_layout.setContentsMargins(0, 0, 0, 0)
+
+        # ── 처음 쓰는 사람을 위한 시작 안내 (통계 카드 자리에, 닫거나 다 마치면 통계로 바뀜)
+        self.onboarding = self._build_onboarding()
+        layout.addWidget(self.onboarding)
+        layout.addWidget(self.stats_row)
+        self._steps_done: set[int] = set()
+        self.onboarding.setVisible(not self.config.onboarding_done)
+        self.stats_row.setVisible(self.config.onboarding_done)
+        self.view_control.setVisible(self.config.onboarding_done)  # 통계가 없을 땐 기간 선택도 숨김
 
         # ── 하단: 지금 재생 중 + 로그
         bottom_layout = QHBoxLayout()
@@ -171,6 +182,75 @@ class DashboardPage(QWidget):
             sw.blockSignals(False)
         self.edit_btn.setText("조정 완료" if editing else "위치·크기 조정")
 
+    _STEPS = [
+        ("멜론에서 노래 틀기", "가사가 보이는 상태로 멜론 창을 띄워 두세요. 최소화하면 안 돼요.", None),
+        ("가사가 나오는지 확인", "오버레이에 가사가 안 나오면 가사가 있는 곳을 직접 지정하세요.", "영역 지정"),
+        ("오버레이 자리 잡기", "보기 편한 곳으로 옮기고 크기를 맞추세요.", "위치·크기 조정"),
+    ]
+
+    def _build_onboarding(self) -> Card:
+        card = Card()
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(22, 14, 22, 14)
+        lay.setSpacing(8)
+        head = QHBoxLayout()
+        head.addWidget(label("시작하기 · 세 단계면 끝나요", "CardTitle"))
+        head.addStretch()
+        close = QPushButton("안내 닫기")
+        close.setObjectName("LinkButton")
+        close.setCursor(Qt.PointingHandCursor)
+        close.clicked.connect(self.finish_onboarding)
+        head.addWidget(close)
+        lay.addLayout(head)
+
+        row = QHBoxLayout()
+        row.setSpacing(14)
+        self._step_marks: list[QLabel] = []
+        for i, (title, desc, action) in enumerate(self._STEPS):
+            col = QVBoxLayout()
+            col.setSpacing(2)
+            top = QHBoxLayout()
+            mark = label(f"{i + 1}", "StepMark")
+            mark.setAlignment(Qt.AlignCenter)
+            mark.setFixedSize(22, 22)
+            self._step_marks.append(mark)
+            top.addWidget(mark)
+            top.addWidget(label(title, "", "font-weight: 700;"))
+            top.addStretch()
+            col.addLayout(top)
+            d = label(desc, "Secondary", "font-size: 12px;")
+            d.setWordWrap(True)
+            col.addWidget(d)
+            if action:
+                btn = QPushButton(action)
+                btn.setCursor(Qt.PointingHandCursor)
+                btn.clicked.connect(self.roi_requested.emit if i == 1 else self.overlay_edit_requested.emit)
+                col.addWidget(btn, 0, Qt.AlignLeft)
+            col.addStretch()
+            row.addLayout(col, 1)
+        lay.addLayout(row)
+        return card
+
+    def mark_step(self, index: int) -> None:
+        """시작 안내의 단계를 완료 표시합니다. (0: 곡 감지, 1: 가사 인식, 2: 위치 조정)"""
+        if self.config.onboarding_done or index in self._steps_done:
+            return
+        self._steps_done.add(index)
+        mark = self._step_marks[index]
+        mark.setText("✓")
+        mark.setProperty("done", True)
+        mark.style().unpolish(mark)
+        mark.style().polish(mark)
+        if len(self._steps_done) == len(self._STEPS):
+            self.finish_onboarding()
+
+    def finish_onboarding(self) -> None:
+        self.config.onboarding_done = True
+        self.config.save_to_file()
+        self.onboarding.hide()
+        self.stats_row.show()
+        self.view_control.show()
+
     def _create_stat_card(self, glyph: str, title: str, value: str) -> Card:
         card = Card()
         vbox = QVBoxLayout(card)
@@ -192,6 +272,8 @@ class DashboardPage(QWidget):
         action="roi"이면 바로 해결할 수 있게 '가사 인식 영역 다시 지정' 버튼을 붙입니다.
         """
         self.status_action.setVisible(action == "roi")
+        if level == "ok":
+            self.mark_step(1)
         self.status_title.setProperty("level", level)
         self.status_title.setText(f"●  {title}")
         self.status_title.style().unpolish(self.status_title)
@@ -200,6 +282,7 @@ class DashboardPage(QWidget):
         self.status_detail.setVisible(bool(detail))
 
     def set_now_playing(self, title: str, artist: str) -> None:
+        self.mark_step(0)
         self.song_title.setText(title or "알 수 없는 곡")
         self.song_artist.setText(artist or "")
 

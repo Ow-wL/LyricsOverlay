@@ -120,6 +120,8 @@ class OverlayConfigManager:
         self.show_media_controls = True
         # 창 닫기(X)를 누르면 종료하지 않고 트레이로 숨김
         self.close_to_tray = True
+        # 대시보드 시작 안내를 다 봤는지. 설정 파일이 이미 있던 기존 사용자는 보지 않습니다.
+        self.onboarding_done = False
         self.roi = list(DEFAULT_ROI)
 
         self.load_from_file()
@@ -445,6 +447,7 @@ class OverlayConfigManager:
                 "hide_melon_window": self.hide_melon_window,
                 "show_media_controls": self.show_media_controls,
                 "close_to_tray": self.close_to_tray,
+                "onboarding_done": self.onboarding_done,
                 "roi": self.roi,
             }
             atomic_write_json(self.config_path, data)
@@ -464,6 +467,10 @@ class OverlayConfigManager:
             print(f"Failed to load settings: {e}")
             return
 
+        # 예전 버전부터 쓰던 사람(키가 없는 설정 파일)은 시작 안내가 필요 없습니다.
+        if "onboarding_done" not in data:
+            self.onboarding_done = True
+
         # 값마다 형식을 확인하고, 틀린 값은 버리고 기본값을 유지합니다.
         style = sanitize_preset(data) or {}
         if "bg_color" in style:
@@ -480,7 +487,7 @@ class OverlayConfigManager:
 
         for key in ("ghost_mode", "visible", "move_enabled", "resize_enabled",
                     "show_song_info", "hide_melon_window", "show_media_controls",
-                    "close_to_tray"):
+                    "close_to_tray", "onboarding_done"):
             if isinstance(data.get(key), bool):
                 setattr(self, key, data[key])
         for key in ("hotkey_ghost", "hotkey_quit", "hotkey_next", "hotkey_prev", "hotkey_pause"):
