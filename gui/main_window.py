@@ -10,6 +10,8 @@ from PySide6.QtWidgets import (  # type: ignore
     QApplication,
     QHBoxLayout,
     QMainWindow,
+    QMenu,
+    QSystemTrayIcon,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -59,6 +61,7 @@ class MainWindow(QMainWindow):
 
     theme_changed = Signal(str)
     window_closed = Signal()
+    quit_requested = Signal()  # 트레이 메뉴의 '종료'
 
     def __init__(self, stats: dict, app_config, initial_theme: str = "light"):
         super().__init__()
@@ -84,7 +87,9 @@ class MainWindow(QMainWindow):
         self._load_fonts()
         self._setup_ui()
         self.apply_theme(self.theme_manager.current_theme)
-        self.overlay.show()
+        self._setup_tray()
+        self._tray_notice_shown = False
+        self._quitting = False
 
     # ------------------------------------------------------------------ #
     # 초기화
@@ -193,9 +198,70 @@ class MainWindow(QMainWindow):
     # 공개 메서드
     # ------------------------------------------------------------------ #
 
+    def _setup_tray(self) -> None:
+        """트레이 아이콘: 창을 닫아도 가사 오버레이는 계속 실행됩니다."""
+        self.tray: QSystemTrayIcon | None = None
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        tray = QSystemTrayIcon(self.windowIcon(), self)
+        tray.setToolTip("Lyrics Overlay")
+        menu = QMenu(self)
+        menu.addAction("창 열기", self.show_from_tray)
+        self.tray_overlay_action = menu.addAction("오버레이 표시", self._tray_toggle_overlay)
+        self.tray_overlay_action.setCheckable(True)
+        self.tray_ghost_action = menu.addAction("고스트 모드 (클릭 통과)", self._tray_toggle_ghost)
+        self.tray_ghost_action.setCheckable(True)
+        menu.addSeparator()
+        menu.addAction("종료", self.request_quit)
+        menu.aboutToShow.connect(self._sync_tray_menu)
+        tray.setContextMenu(menu)
+        tray.activated.connect(self._on_tray_activated)
+        tray.show()
+        self.tray = tray
+
+    def _sync_tray_menu(self) -> None:
+        self.tray_overlay_action.setChecked(self.config_manager.visible)
+        self.tray_ghost_action.setChecked(self.config_manager.ghost_mode)
+
+    def _tray_toggle_overlay(self) -> None:
+        self.config_manager.set_visible(not self.config_manager.visible)
+        self.setting_page.refresh_ui_from_config()
+        self.update_overlay()
+
+    def _tray_toggle_ghost(self) -> None:
+        self.config_manager.set_ghost_mode(not self.config_manager.ghost_mode)
+        self.setting_page.refresh_ui_from_config()
+        self.update_overlay()
+
+    def _on_tray_activated(self, reason) -> None:
+        if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
+            self.show_from_tray()
+
+    def show_from_tray(self) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def request_quit(self) -> None:
+        self._quitting = True
+        self.quit_requested.emit()
+
     def closeEvent(self, event) -> None:
-        """메인 윈도우 닫기 이벤트 시 프로그램 전체를 명시적으로 종료합니다."""
+        """X 버튼: 설정에 따라 트레이로 숨기거나 프로그램을 종료합니다."""
+        if not self._quitting and self.tray is not None and self.config_manager.close_to_tray:
+            event.ignore()
+            self.hide()
+            if not self._tray_notice_shown:
+                self._tray_notice_shown = True
+                self.tray.showMessage(
+                    "Lyrics Overlay",
+                    "트레이에서 계속 실행 중이에요. 아이콘을 클릭하면 창이 다시 열립니다.",
+                    QSystemTrayIcon.Information, 3000,
+                )
+            return
         self.window_closed.emit()
+        if self.tray is not None:
+            self.tray.hide()
         if hasattr(self, "overlay") and self.overlay:
             self.overlay.close()
         super().closeEvent(event)

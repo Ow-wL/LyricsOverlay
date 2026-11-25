@@ -110,6 +110,8 @@ class OverlayConfigManager:
         self.hide_melon_window = True
         # 오버레이에 마우스를 올리면 재생 버튼 표시 (고스트 모드가 꺼져 있을 때만 동작)
         self.show_media_controls = True
+        # 창 닫기(X)를 누르면 종료하지 않고 트레이로 숨김
+        self.close_to_tray = True
         self.roi = list(DEFAULT_ROI)
 
         self.load_from_file()
@@ -419,6 +421,7 @@ class OverlayConfigManager:
                 "show_song_info": self.show_song_info,
                 "hide_melon_window": self.hide_melon_window,
                 "show_media_controls": self.show_media_controls,
+                "close_to_tray": self.close_to_tray,
                 "roi": self.roi,
             }
             atomic_write_json(self.config_path, data)
@@ -453,7 +456,8 @@ class OverlayConfigManager:
         self.font_size = style.get("font_size", self.font_size)
 
         for key in ("ghost_mode", "visible", "move_enabled", "resize_enabled",
-                    "show_song_info", "hide_melon_window", "show_media_controls"):
+                    "show_song_info", "hide_melon_window", "show_media_controls",
+                    "close_to_tray"):
             if isinstance(data.get(key), bool):
                 setattr(self, key, data[key])
         for key in ("hotkey_ghost", "hotkey_quit", "hotkey_next", "hotkey_prev", "hotkey_pause"):

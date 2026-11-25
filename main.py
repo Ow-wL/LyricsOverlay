@@ -35,6 +35,7 @@ from core.window_capture import WindowStyleGuard, capture_covered_window, find_m
 from gui.main_window import MainWindow
 from lyrics.matcher import LyricMatcher
 from core.app_config import AppConfig
+from core.single_instance import SingleInstance
 from overlay.config_manager import OverlayConfigManager
 
 # ------------------------------------------------------------------ #
@@ -102,6 +103,13 @@ async def main() -> None:
     global _window, is_running, persistent_stats, session_stats, _app_config
 
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)  # 창을 트레이로 숨겨도 계속 실행
+
+    # 이미 실행 중이면 그 창을 앞으로 불러오고 끝냅니다.
+    instance = SingleInstance()
+    if not instance.acquire():
+        print("[ℹ️] 이미 실행 중입니다. 기존 창을 엽니다.")
+        return
     
     _app_config = AppConfig()
 
@@ -132,6 +140,8 @@ async def main() -> None:
         print("\n[🔔] GUI 종료 감지. 백그라운드 루프 중지...")
 
     window.window_closed.connect(on_window_closed)
+    window.quit_requested.connect(_on_quit)
+    instance.activate_requested.connect(window.show_from_tray)
 
     # 히스토리 목록 초기화
     for entry in persistent_stats.get("play_history", []):
@@ -411,6 +421,8 @@ async def main() -> None:
 
     finally:
         hotkey_mgr.unhook_all()
+        if window.tray is not None:
+            window.tray.hide()
         print("\n[🧹] 멜론 창 상태 원복 중...")
         style_guard.restore_all()
         if _app_config:
