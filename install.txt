@@ -3,7 +3,6 @@
    - winsdk: 윈도우 기본 OCR 엔진 사용을 위한 SDK
    - pywin32: 윈도우 API 제어 (win32gui, win32ui 등)
    - opencv-python & numpy: 이미지 처리 및 데이터 계산
-   - mss & pygetwindow: 화면 캡처 및 윈도우 창 관리
    - keyboard: 단축키 입력을 위한 라이브러리
    - rapidfuzz: 가사 검색 결과의 유사도 계산
    - beautifulsoup4 & requests: 웹 가사 크롤링 및 네트워크 요청
@@ -28,9 +27,10 @@ deactivate
 rmdir /s /q venv
 
 # .exe 파일로 만들기
-pip install pyinstaller
+pip install -r requirements-build.txt
 cd [프로젝트파일]
-pyinstaller --onefile --noconsole --icon=icon.ico --add-data "icon.ico;." main.py
+.\build.ps1
+(main.spec으로 빌드하고 체크섬 파일을 만듭니다. 자세한 내용은 INSTALL.md 4번)
 
 🚀 설치 방법
 터미널에서 아래 명령어를 입력하여 한 번에 설치할 수 있습니다.
