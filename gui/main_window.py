@@ -194,6 +194,7 @@ class MainWindow(QMainWindow):
         dp.overlay_ghost_toggled.connect(self._set_overlay_ghost)
         dp.overlay_edit_requested.connect(self._toggle_overlay_edit)
         dp.overlay_reset_requested.connect(self.reset_overlay_position)
+        dp.roi_requested.connect(self.setting_page._on_pick_roi)
         self.setting_page.overlay_edit_requested.connect(self.start_overlay_edit)
         self.setting_page.overlay_reset_requested.connect(self.reset_overlay_position)
 

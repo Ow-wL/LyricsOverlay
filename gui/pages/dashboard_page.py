@@ -26,6 +26,7 @@ class DashboardPage(QWidget):
     overlay_ghost_toggled = Signal(bool)
     overlay_edit_requested = Signal()
     overlay_reset_requested = Signal()
+    roi_requested = Signal()
 
     def __init__(self, config_manager: OverlayConfigManager):
         super().__init__()
@@ -76,9 +77,14 @@ class DashboardPage(QWidget):
         self.status_detail = label("", "Tertiary", "font-size: 12px;")
         self.status_detail.setWordWrap(True)
         self.status_detail.hide()
+        self.status_action = QPushButton("가사 인식 영역 다시 지정")
+        self.status_action.setCursor(Qt.PointingHandCursor)
+        self.status_action.clicked.connect(self.roi_requested.emit)
+        self.status_action.hide()
         lyrics_vbox.addSpacing(6)
         lyrics_vbox.addWidget(self.status_title)
         lyrics_vbox.addWidget(self.status_detail)
+        lyrics_vbox.addWidget(self.status_action, 0, Qt.AlignLeft)
 
         self.curr_lyric = QLabel("가사를 기다리는 중…")
         self.curr_lyric.setTextFormat(Qt.PlainText)
@@ -180,8 +186,12 @@ class DashboardPage(QWidget):
         card.findChildren(QLabel)[-1].setObjectName("StatSub")
         return card
 
-    def set_status(self, level: str, title: str, detail: str = "") -> None:
-        """level: ok / warn / error. 색 점과 함께 상태를 보여 줍니다."""
+    def set_status(self, level: str, title: str, detail: str = "", action: str = "") -> None:
+        """level: ok / warn / error. 색 점과 함께 상태를 보여 줍니다.
+
+        action="roi"이면 바로 해결할 수 있게 '가사 인식 영역 다시 지정' 버튼을 붙입니다.
+        """
+        self.status_action.setVisible(action == "roi")
         self.status_title.setProperty("level", level)
         self.status_title.setText(f"●  {title}")
         self.status_title.style().unpolish(self.status_title)
