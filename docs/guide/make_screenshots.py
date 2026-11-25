@@ -21,11 +21,11 @@ README_IMAGES = ROOT / "asset" / "screenshots"
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
-from PySide6.QtCore import QPoint, QPointF, QSize  # noqa: E402
+from PySide6.QtCore import QPoint, QPointF  # noqa: E402
 from PySide6.QtGui import (  # noqa: E402
     QBrush, QColor, QEnterEvent, QImage, QLinearGradient, QPainter, QRadialGradient,
 )
-from PySide6.QtWidgets import QApplication, QListWidgetItem  # noqa: E402
+from PySide6.QtWidgets import QApplication  # noqa: E402
 
 app = QApplication(sys.argv)
 
@@ -74,10 +74,7 @@ window = MainWindow(
     stats={"play_history": history, "total_lines": 0, "total_play_time_sec": 0},
     app_config=_SampleConfig(),
 )
-for e in history[:20]:
-    item = QListWidgetItem(f"{e['title']} - {e['artist']} ({e['timestamp'][2:10].replace('-', '.')})")
-    item.setSizeHint(QSize(0, 52))
-    window.music_page.music_list.addItem(item)
+window.music_page.set_history(history[:20])
 window.show()
 
 dash = window.dashboard_page
