@@ -386,7 +386,25 @@ class SettingPage(QWidget):
             "오버레이에 현재 재생 중인 곡의 제목과 가수를 표시합니다.",
             self.config.show_song_info, self._on_show_song_info_toggled, "song_info_check",
         ))
+        bl.addLayout(self._toggle_row(
+            "오버레이 재생 버튼",
+            "고스트 모드가 꺼져 있을 때 오버레이에 마우스를 올리면 이전 곡·재생/일시정지·다음 곡 버튼을 표시합니다.",
+            self.config.show_media_controls, self._on_show_media_controls_toggled, "media_controls_check",
+        ))
         lay.addWidget(beh_card)
+
+        lay.addWidget(self._section_lbl("멜론 창"))
+        melon_card = Card()
+        ml = QVBoxLayout(melon_card)
+        ml.setContentsMargins(24, 18, 24, 18)
+        ml.setSpacing(14)
+        ml.addLayout(self._toggle_row(
+            "고스트 모드에서 멜론 창 숨기기",
+            "켜면 고스트 모드일 때 멜론 창을 투명하게 숨기고 클릭이 통과되게 합니다. "
+            "듀얼 모니터처럼 멜론 창과 오버레이를 함께 쓰려면 끄세요.",
+            self.config.hide_melon_window, self._on_hide_melon_toggled, "hide_melon_check",
+        ))
+        lay.addWidget(melon_card)
 
         # ROI (비활성화)
         lay.addWidget(self._section_lbl("영역 설정"))
@@ -560,15 +578,17 @@ class SettingPage(QWidget):
         hbox = QHBoxLayout()
         vbox = QVBoxLayout()
         vbox.addWidget(self._lbl(title, UIConfig.FS_TITLE_S, bold=600))
-        vbox.addWidget(self._lbl(desc, UIConfig.FS_DESC, secondary=True))
+        desc_lbl = self._lbl(desc, UIConfig.FS_DESC, secondary=True)
+        desc_lbl.setWordWrap(True)  # 긴 설명이 페이지를 가로로 늘리지 않도록
+        vbox.addWidget(desc_lbl)
         chk = QCheckBox()
         chk.setCursor(Qt.PointingHandCursor)
         chk.setChecked(checked)
         chk.setStyleSheet("QCheckBox::indicator { width: 24px; height: 24px; }")
         chk.toggled.connect(callback)
         setattr(self, attr_name, chk)
-        hbox.addLayout(vbox)
-        hbox.addStretch()
+        hbox.addLayout(vbox, 1)
+        hbox.addSpacing(16)
         hbox.addWidget(chk)
         return hbox
 
@@ -714,6 +734,8 @@ class SettingPage(QWidget):
         self.move_check.setChecked(self.config.move_enabled)
         self.resize_check.setChecked(self.config.resize_enabled)
         self.song_info_check.setChecked(self.config.show_song_info)
+        self.media_controls_check.setChecked(self.config.show_media_controls)
+        self.hide_melon_check.setChecked(self.config.hide_melon_window)
 
         self.btn_text_color.setStyleSheet(
             f"background-color: {self.config.text_color.name()}; border-radius: 18px; border: 2px solid #E0E0E0;"
@@ -748,6 +770,16 @@ class SettingPage(QWidget):
 
     def _on_show_song_info_toggled(self, checked: bool) -> None:
         self.config.show_song_info = checked
+        self.config.save_to_file()
+        self.settings_changed.emit()
+
+    def _on_show_media_controls_toggled(self, checked: bool) -> None:
+        self.config.show_media_controls = checked
+        self.config.save_to_file()
+        self.settings_changed.emit()
+
+    def _on_hide_melon_toggled(self, checked: bool) -> None:
+        self.config.hide_melon_window = checked
         self.config.save_to_file()
         self.settings_changed.emit()
 
