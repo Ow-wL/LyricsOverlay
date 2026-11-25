@@ -606,13 +606,14 @@ class SettingPage(QWidget):
             self, "스타일 가져오기", "", "JSON Files (*.json)"
         )
         if file_path:
-            if self.config.import_styles(file_path):
-                QMessageBox.information(self, "성공", "스타일을 성공적으로 가져왔습니다.")
+            count = self.config.import_styles(file_path)
+            if count:
+                QMessageBox.information(self, "가져오기 완료", f"프리셋 {count}개를 '내 프리셋'으로 가져왔습니다.")
                 self._update_preset_list()
                 self.refresh_ui_from_config()
                 self.settings_changed.emit()
             else:
-                QMessageBox.critical(self, "오류", "스타일 가져오기에 실패했습니다.")
+                QMessageBox.critical(self, "가져오기 실패", "올바른 프리셋 파일이 아니거나, 쓸 수 있는 프리셋이 없습니다.")
 
     def _export_styles_dialog(self) -> None:
         file_path, _ = QFileDialog.getSaveFileName(
@@ -773,16 +774,46 @@ class SettingPage(QWidget):
             self.app_config.data_dir,
             QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks,
         )
-        if new_dir:
-            success = self.app_config.set_data_dir(new_dir)
-            if success:
-                self.lbl_data_path.setText(new_dir)
+        if not new_dir:
+            return
+        if not self.app_config.is_writable(new_dir):
+            QMessageBox.critical(self, "경로 변경 실패", "선택한 폴더에 파일을 쓸 수 없습니다.\n다른 폴더를 골라 주세요.")
+            return
+
+        overwrite = False
+        existing = self.app_config.existing_data_files(new_dir)
+        if existing:
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Question)
+            box.setWindowTitle("이 폴더에 기존 데이터가 있어요")
+            box.setText(
+                "선택한 폴더에 이미 LyricsOverlay 데이터가 있습니다.\n"
+                "어느 데이터를 사용할까요?"
+            )
+            box.setInformativeText("· " + "\n· ".join(existing))
+            use_current = box.addButton("지금 데이터로 덮어쓰기 (기존 파일은 백업)", QMessageBox.AcceptRole)
+            use_existing = box.addButton("그 폴더의 데이터 사용 (재시작 후 적용)", QMessageBox.ActionRole)
+            box.addButton("취소", QMessageBox.RejectRole)
+            box.exec()
+            clicked = box.clickedButton()
+            if clicked is use_existing:
+                self.app_config.set_data_dir_on_next_start(new_dir)
                 QMessageBox.information(
-                    self,
-                    "경로 변경 완료",
-                    "데이터 저장 경로가 성공적으로 변경되었습니다.\n새로운 경로에 설정 및 통계 파일이 저장됩니다.",
+                    self, "다음 실행부터 적용",
+                    "프로그램을 다시 시작하면 선택한 폴더의 데이터를 사용합니다.\n"
+                    "그때까지는 지금 폴더에 계속 저장합니다.",
                 )
-            else:
-                QMessageBox.critical(
-                    self, "오류", "데이터 저장 경로를 변경하는데 실패했습니다."
-                )
+                return
+            if clicked is not use_current:
+                return
+            overwrite = True
+
+        if self.app_config.set_data_dir(new_dir, overwrite_existing=overwrite):
+            self.lbl_data_path.setText(self.app_config.data_dir)
+            QMessageBox.information(
+                self,
+                "경로 변경 완료",
+                "이제부터 새 폴더에 설정과 감상 기록을 저장합니다.\n이전 폴더의 파일은 지우지 않고 그대로 둡니다.",
+            )
+        else:
+            QMessageBox.critical(self, "오류", "데이터 저장 경로를 변경하는데 실패했습니다.")
