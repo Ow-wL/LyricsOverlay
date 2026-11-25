@@ -4,7 +4,6 @@ from PySide6.QtCore import Qt, Signal  # type: ignore
 from PySide6.QtGui import QKeyEvent, QKeySequence  # type: ignore
 from PySide6.QtWidgets import QLineEdit  # type: ignore
 
-from gui.theme import UIConfig
 
 
 class HotkeyEdit(QLineEdit):
@@ -19,21 +18,7 @@ class HotkeyEdit(QLineEdit):
         self.setAlignment(Qt.AlignCenter)
         self.setCursor(Qt.PointingHandCursor)
         self.is_recording = False
-        self.setStyleSheet(
-            f"""
-            QLineEdit {{
-                padding: 8px;
-                border-radius: 8px;
-                border: 1px solid {UIConfig.LIGHT_BORDER};
-                background-color: transparent;
-                font-weight: 700;
-            }}
-            QLineEdit:focus {{
-                border: 2px solid #7C4DFF;
-                background-color: rgba(124, 77, 255, 10%);
-            }}
-            """
-        )
+        self.setObjectName("HotkeyEdit")  # 색은 전역 스타일시트에서
 
     def mousePressEvent(self, event) -> None:
         super().mousePressEvent(event)

@@ -1,120 +1,102 @@
 from PySide6.QtCore import Qt, QRectF
-from PySide6.QtGui import QPainter, QColor, QFont, QLinearGradient
+from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath
 from PySide6.QtWidgets import QWidget
 
+from gui import theme
+from gui.widgets.glass import _qcolor
+
+
 class BarChartWidget(QWidget):
-    """QPainter를 사용하여 네이티브 스타일로 렌더링되는 모던 바 차트."""
+    """QPainter로 그리는 막대 그래프 (현재 테마 색을 따름)."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.labels = []
-        self.data = []
-        self.theme_mode = "light"
-        self.setMinimumHeight(220)
+        self.labels: list[str] = []
+        self.data: list[int] = []
+        self.setMinimumHeight(200)
 
     def set_data(self, labels, data, theme_mode="light"):
+        # theme_mode는 예전 호출과의 호환용이며, 색은 현재 테마에서 읽습니다.
         self.labels = labels
         self.data = data
-        self.theme_mode = theme_mode
         self.update()
 
     def paintEvent(self, event):
-        if not self.labels or not self.data:
-            return
-
+        t = theme.active()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setRenderHint(QPainter.TextAntialiasing)
 
-        w = self.width()
-        h = self.height()
+        w, h = self.width(), self.height()
+        font = QFont("Pretendard")
 
-        is_dark = self.theme_mode == "dark"
-        text_color = QColor("#FFFFFF" if is_dark else "#14043F")
-        grid_color = QColor("#FFFFFF" if is_dark else "#000000")
-        grid_color.setAlpha(15)
-
-        max_val = max(self.data) if self.data else 1
-        if max_val == 0: max_val = 1
-
-        # 여백 설정
-        margin_bottom = 30
-        margin_top = 40
-        margin_left = 30
-        margin_right = 30
-        
-        chart_h = h - margin_top - margin_bottom
-        chart_w = w - margin_left - margin_right
-
-        # 수평 그리드 그리기 (매우 연한 실선)
-        pen = painter.pen()
-        pen.setColor(grid_color)
-        pen.setStyle(Qt.SolidLine)
-        pen.setWidth(1)
-        painter.setPen(pen)
-        
-        num_lines = 4
-        for i in range(num_lines + 1):
-            y = margin_top + chart_h - (i * chart_h / num_lines)
-            painter.drawLine(margin_left, int(y), w - margin_right, int(y))
-
-        # 바 그리기
-        bar_count = len(self.data)
-        if bar_count == 0:
+        if not self.data or max(self.data) == 0:
+            font.setPixelSize(14)
+            painter.setFont(font)
+            painter.setPen(QColor(t["text_tertiary"]))
+            painter.drawText(self.rect(), Qt.AlignCenter, "아직 이 기간의 감상 기록이 없어요")
             return
-            
-        bar_spacing = chart_w / bar_count
-        # 바의 최대 너비를 제한하여 깔끔하게 보이도록 함
-        bar_width = min(32.0, bar_spacing * 0.4)
 
-        painter.setPen(Qt.NoPen)
-        # 보라색 대신 시원하고 프로페셔널한 느낌의 블루 컬러 적용
-        bar_color = QColor("#3B82F6")
-        bar_color.setAlpha(220)
-        painter.setBrush(bar_color)
+        max_val = max(self.data)
+        margin_top, margin_bottom, margin_x = 34, 28, 12
+        chart_h = h - margin_top - margin_bottom
+        chart_w = w - margin_x * 2
 
-        font = painter.font()
-        font.setPixelSize(16)
-        
-        for i, (label, val) in enumerate(zip(self.labels, self.data)):
-            cx = margin_left + (i * bar_spacing) + (bar_spacing / 2)
-            
-            # 높이 계산 (여유 공간 20% 확보)
-            bh = (val / (max_val * 1.2)) * chart_h
-            if bh < 2: bh = 2  # 최소 높이 보장
-            
-            bx = cx - (bar_width / 2)
+        # 가로 보조선 (점선)
+        grid_pen = painter.pen()
+        grid_pen.setColor(_qcolor(t["hairline"]))
+        grid_pen.setStyle(Qt.DashLine)
+        grid_pen.setWidth(1)
+        painter.setPen(grid_pen)
+        for i in range(4):
+            y = margin_top + chart_h - (i * chart_h / 3)
+            painter.drawLine(margin_x, int(y), w - margin_x, int(y))
+
+        bar_spacing = chart_w / len(self.data)
+        bar_width = min(36.0, bar_spacing * 0.46)
+        top_val = max_val * 1.2
+
+        for i, (lbl, val) in enumerate(zip(self.labels, self.data)):
+            cx = margin_x + i * bar_spacing + bar_spacing / 2
+            bh = max((val / top_val) * chart_h, 4.0)
+            bx = cx - bar_width / 2
             by = margin_top + chart_h - bh
-            
-            # 상단만 살짝 둥근 모서리 (반지름 4px) 적용
-            radius = 2.0
-            if bh < radius * 1:
-                radius = bh / 1.0
-                
-            painter.drawRoundedRect(QRectF(bx, by, bar_width, bh), radius, radius)
-            # 하단은 직각으로 덮어쓰기 (이음새가 보이지 않도록 1px 위로 겹쳐서 렌더링)
-            if bh > radius:
-                painter.drawRect(QRectF(bx, by + radius - 1.0, bar_width, bh - radius + 1.0))
+            is_peak = val == max_val and val > 0
 
-            # 값 텍스트 (막대 위)
+            # 막대: 위쪽 모서리만 둥글게, 세로 그라데이션
+            r = min(8.0, bar_width / 2, bh)
+            path = QPainterPath()
+            path.moveTo(bx, by + bh)
+            path.lineTo(bx, by + r)
+            path.quadTo(bx, by, bx + r, by)
+            path.lineTo(bx + bar_width - r, by)
+            path.quadTo(bx + bar_width, by, bx + bar_width, by + r)
+            path.lineTo(bx + bar_width, by + bh)
+            path.closeSubpath()
+
+            grad = QLinearGradient(bx, by, bx, by + bh)
+            top = QColor(t["accent"])
+            bottom = QColor(t["accent_2"])
+            if not is_peak:
+                top.setAlpha(150)
+                bottom.setAlpha(90)
+            grad.setColorAt(0, top)
+            grad.setColorAt(1, bottom)
+            painter.setPen(Qt.NoPen)
+            painter.fillPath(path, grad)
+
             if val > 0:
-                painter.setPen(text_color)
+                font.setPixelSize(12)
                 font.setWeight(QFont.Bold)
                 painter.setFont(font)
-                painter.drawText(
-                    QRectF(bx - 20, by - 25, bar_width + 40, 20),
-                    Qt.AlignCenter | Qt.AlignBottom,
-                    str(val)
-                )
-                painter.setPen(Qt.NoPen)
-                painter.setBrush(bar_color)
+                painter.setPen(QColor(t["accent"] if is_peak else t["text_secondary"]))
+                painter.drawText(QRectF(bx - 20, by - 22, bar_width + 40, 18), Qt.AlignCenter, str(val))
 
-            # 라벨 텍스트 (X축)
-            painter.setPen(text_color)
-            font.setWeight(QFont.Normal)
             font.setPixelSize(11)
+            font.setWeight(QFont.Normal)
             painter.setFont(font)
+            painter.setPen(QColor(t["text_tertiary"]))
             painter.drawText(
-                QRectF(cx - bar_spacing/2, margin_top + chart_h + 10, bar_spacing, 20),
-                Qt.AlignCenter | Qt.AlignTop,
-                label
+                QRectF(cx - bar_spacing / 2, margin_top + chart_h + 8, bar_spacing, 18),
+                Qt.AlignCenter, lbl,
             )

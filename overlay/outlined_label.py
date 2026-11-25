@@ -16,6 +16,7 @@ class OutlinedLabel(QLabel):
 
     def __init__(self, text: str = "", parent=None):
         super().__init__(text, parent)
+        self._style_font = QFont("Pretendard", 22)
         self.outline_color = QColor(0, 0, 0)
         self.outline_width = 2
         self.text_color = QColor(255, 255, 255)
@@ -33,6 +34,8 @@ class OutlinedLabel(QLabel):
         outline_color: QColor,
         outline_width: int,
     ) -> None:
+        # 앱 스타일시트(font-family 등)가 덮어쓰지 않도록 글꼴을 따로 보관해 직접 그립니다.
+        self._style_font = QFont(font)
         self.setFont(font)
         self.text_color = QColor(text_color)
         self.outline_color = QColor(outline_color)
@@ -41,16 +44,19 @@ class OutlinedLabel(QLabel):
         self.update()
 
     # 높이는 글꼴 기준, 너비는 요구하지 않음
+    def _line_height(self) -> int:
+        return QFontMetrics(self._style_font).height() + self.outline_width * 2
+
     def sizeHint(self) -> QSize:
-        return QSize(0, self.fontMetrics().height() + self.outline_width * 2)
+        return QSize(0, self._line_height())
 
     def minimumSizeHint(self) -> QSize:
-        return QSize(0, self.fontMetrics().height() + self.outline_width * 2)
+        return QSize(0, self._line_height())
 
     def _fitted_font_and_text(self, available: float) -> tuple[QFont, str]:
         """주어진 너비에 들어가도록 글꼴을 줄이고, 그래도 넘치면 말줄임한 텍스트를 반환."""
         text = self.text()
-        font = QFont(self.font())
+        font = QFont(self._style_font)
         if available <= 0 or not text:
             return font, text
 

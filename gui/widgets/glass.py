@@ -1,0 +1,264 @@
+"""글래스모피즘 공통 위젯: 오로라 배경, 내비게이션 버튼, 토글 스위치, 세그먼트 컨트롤 등."""
+
+from PySide6.QtCore import (  # type: ignore
+    Property, QEasingCurve, QPointF, QPropertyAnimation, QRectF, QSize, Qt, Signal,
+)
+from PySide6.QtGui import (  # type: ignore
+    QBrush, QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient,
+)
+from PySide6.QtWidgets import (  # type: ignore
+    QAbstractButton, QCheckBox, QFrame, QHBoxLayout, QLabel, QPushButton, QWidget,
+)
+
+from gui import theme
+from gui.icons import icon_font
+
+
+def _qcolor(css: str) -> QColor:
+    """'rgba(r, g, b, a)' 또는 '#hex' 문자열을 QColor로 변환."""
+    css = css.strip()
+    if css.startswith("rgba("):
+        r, g, b, a = (int(float(v)) for v in css[5:-1].split(","))
+        return QColor(r, g, b, a)
+    return QColor(css)
+
+
+# ------------------------------------------------------------------ #
+# 배경
+# ------------------------------------------------------------------ #
+
+class GlassBackground(QWidget):
+    """그라데이션 위에 큰 색 번짐을 그려, 유리 패널이 비쳐 보일 배경을 만듭니다."""
+
+    def paintEvent(self, event) -> None:
+        t = theme.active()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+
+        base = QLinearGradient(0, 0, 0, h)
+        base.setColorAt(0, QColor(t["bg_top"]))
+        base.setColorAt(1, QColor(t["bg_bottom"]))
+        p.fillRect(self.rect(), base)
+
+        size = max(w, h)
+        for fx, fy, fr, color, alpha in t["blobs"]:
+            center = QPointF(w * fx, h * fy)
+            radius = size * fr
+            grad = QRadialGradient(center, radius)
+            c = QColor(color)
+            c.setAlphaF(alpha)
+            grad.setColorAt(0.0, c)
+            c2 = QColor(color)
+            c2.setAlphaF(alpha * 0.35)
+            grad.setColorAt(0.45, c2)
+            c3 = QColor(color)
+            c3.setAlphaF(0.0)
+            grad.setColorAt(1.0, c3)
+            p.fillRect(self.rect(), QBrush(grad))
+
+
+# ------------------------------------------------------------------ #
+# 내비게이션 버튼 (아이콘 + 글자, 선택 시 강조 배경)
+# ------------------------------------------------------------------ #
+
+class NavButton(QAbstractButton):
+    def __init__(self, glyph: str, text: str, height: int = 44, parent=None):
+        super().__init__(parent)
+        self.glyph = glyph
+        self.setText(text)
+        self.setCheckable(True)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedHeight(height)
+        self._hover = False
+
+    def sizeHint(self) -> QSize:
+        return QSize(160, self.height())
+
+    def enterEvent(self, event) -> None:
+        self._hover = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self._hover = False
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event) -> None:
+        t = theme.active()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+
+        if self.isChecked():
+            grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
+            grad.setColorAt(0, QColor(t["accent"]))
+            grad.setColorAt(1, QColor(t["accent_2"]))
+            p.setBrush(grad)
+            p.setPen(Qt.NoPen)
+            p.drawRoundedRect(rect, 12, 12)
+            fg = QColor(t["text_on_accent"])
+        else:
+            if self._hover:
+                p.setBrush(_qcolor(t["glass_hover"]))
+                p.setPen(Qt.NoPen)
+                p.drawRoundedRect(rect, 12, 12)
+            fg = QColor(t["text_primary"] if self._hover else t["text_secondary"])
+
+        p.setPen(fg)
+        p.setFont(icon_font(16))
+        p.drawText(QRectF(14, 0, 22, self.height()), Qt.AlignVCenter | Qt.AlignHCenter, self.glyph)
+
+        font = QFont(self.font())
+        font.setFamily("Pretendard")
+        font.setPixelSize(14)
+        font.setWeight(QFont.Bold if self.isChecked() else QFont.DemiBold)
+        p.setFont(font)
+        p.drawText(QRectF(46, 0, self.width() - 50, self.height()), Qt.AlignVCenter | Qt.AlignLeft, self.text())
+
+
+# ------------------------------------------------------------------ #
+# 토글 스위치 (QCheckBox와 같은 신호/메서드)
+# ------------------------------------------------------------------ #
+
+class ToggleSwitch(QCheckBox):
+    _W, _H = 44, 24
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedSize(self._W, self._H)
+        self._offset = 0.0
+        self._anim = QPropertyAnimation(self, b"offset", self)
+        self._anim.setDuration(140)
+        self._anim.setEasingCurve(QEasingCurve.OutCubic)
+        self.toggled.connect(self._animate)
+
+    def _get_offset(self) -> float:
+        return self._offset
+
+    def _set_offset(self, value: float) -> None:
+        self._offset = value
+        self.update()
+
+    offset = Property(float, _get_offset, _set_offset)
+
+    def setChecked(self, checked: bool) -> None:  # 애니메이션 없이 바로 반영
+        super().setChecked(checked)
+        self._anim.stop()
+        self._offset = 1.0 if checked else 0.0
+        self.update()
+
+    def _animate(self, checked: bool) -> None:
+        self._anim.stop()
+        self._anim.setStartValue(self._offset)
+        self._anim.setEndValue(1.0 if checked else 0.0)
+        self._anim.start()
+
+    def hitButton(self, pos) -> bool:
+        return self.rect().contains(pos)
+
+    def sizeHint(self) -> QSize:
+        return QSize(self._W, self._H)
+
+    def paintEvent(self, event) -> None:
+        t = theme.active()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        track = QRectF(0.5, 0.5, self._W - 1, self._H - 1)
+
+        off_color = _qcolor(t["track"])
+        on_grad = QLinearGradient(track.topLeft(), track.topRight())
+        on_grad.setColorAt(0, QColor(t["accent"]))
+        on_grad.setColorAt(1, QColor(t["accent_2"]))
+
+        p.setPen(Qt.NoPen)
+        p.setBrush(off_color)
+        p.drawRoundedRect(track, self._H / 2, self._H / 2)
+        if self._offset > 0:
+            p.setOpacity(self._offset)
+            p.setBrush(on_grad)
+            p.drawRoundedRect(track, self._H / 2, self._H / 2)
+            p.setOpacity(1.0)
+
+        d = self._H - 6
+        x = 3 + (self._W - d - 6) * self._offset
+        p.setBrush(QColor(0, 0, 0, 40))
+        p.drawEllipse(QRectF(x, 4, d, d))
+        p.setBrush(QColor("#FFFFFF"))
+        p.drawEllipse(QRectF(x, 3, d, d))
+
+
+# ------------------------------------------------------------------ #
+# 작은 도우미들
+# ------------------------------------------------------------------ #
+
+def icon_chip(glyph: str, size: int = 36) -> QLabel:
+    """둥근 강조 배경 위 아이콘 (통계 카드 등)."""
+    lbl = QLabel(glyph)
+    lbl.setObjectName("IconChip")
+    lbl.setAlignment(Qt.AlignCenter)
+    lbl.setFixedSize(size, size)
+    return lbl
+
+
+def label(text: str, object_name: str = "", style: str = "") -> QLabel:
+    lbl = QLabel(text)
+    if object_name:
+        lbl.setObjectName(object_name)
+    if style:
+        lbl.setStyleSheet(style)
+    return lbl
+
+
+def divider() -> QFrame:
+    line = QFrame()
+    line.setObjectName("Divider")
+    line.setFixedHeight(1)
+    return line
+
+
+def page_header(title: str, subtitle: str = "") -> QWidget:
+    """페이지 제목 + 부제목."""
+    w = QWidget()
+    from PySide6.QtWidgets import QVBoxLayout  # type: ignore
+    lay = QVBoxLayout(w)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.setSpacing(4)
+    lay.addWidget(label(title, "PageHeader"))
+    if subtitle:
+        lay.addWidget(label(subtitle, "PageSubtitle"))
+    return w
+
+
+class SegmentedControl(QFrame):
+    """여러 선택지 중 하나를 고르는 알약 모양 버튼 묶음."""
+
+    changed = Signal(str)
+
+    def __init__(self, options: list[tuple[str, str]], current: str, parent=None):
+        super().__init__(parent)
+        self.setObjectName("SegmentGroup")
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(4, 4, 4, 4)
+        lay.setSpacing(2)
+        self.buttons: dict[str, QPushButton] = {}
+        for key, text in options:
+            btn = QPushButton(text)
+            btn.setObjectName("Segment")
+            btn.setCheckable(True)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.clicked.connect(lambda _=False, k=key: self._select(k, emit=True))
+            lay.addWidget(btn)
+            self.buttons[key] = btn
+        self._select(current, emit=False)
+
+    def _select(self, key: str, emit: bool) -> None:
+        for k, b in self.buttons.items():
+            b.setChecked(k == key)
+        if emit:
+            self.changed.emit(key)
+
+    def set_current(self, key: str) -> None:
+        self._select(key, emit=False)

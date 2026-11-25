@@ -92,8 +92,8 @@ class LyricsOverlay(QWidget):
             f"""
             QFrame#LyricsBgFrame {{
                 background-color: rgba({c.red()}, {c.green()}, {c.blue()}, {c.alpha()});
-                border-radius: 15px;
-                border: none;
+                border-radius: 18px;
+                border: 1px solid rgba(255, 255, 255, {min(70, c.alpha() // 3 + 10)});
             }}
             """
         )
