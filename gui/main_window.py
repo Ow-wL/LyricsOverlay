@@ -33,6 +33,7 @@ from gui.pages.info_page import InfoPage
 from overlay.config_manager import OverlayConfigManager
 from overlay.lyrics_overlay import LyricsOverlay
 from core.utils import resource_path
+from core.version import APP_VERSION
 
 
 class BrandMark(QWidget):
@@ -189,7 +190,8 @@ class MainWindow(QMainWindow):
         self.music_page = MusicListPage()
         self.stats_page = StatsPage()
         self.setting_page = SettingPage(self.config_manager, self.app_config)
-        self.info_page = InfoPage()
+        self.info_page = InfoPage(auto_check=getattr(self.app_config, "auto_update_check", True))
+        self.pending_update = None  # core.updater.ReleaseInfo
 
         self.setting_page.settings_changed.connect(self.update_overlay)
         dp = self.dashboard_page
@@ -200,6 +202,10 @@ class MainWindow(QMainWindow):
         dp.roi_requested.connect(self.setting_page._on_pick_roi)
         self.setting_page.overlay_edit_requested.connect(self.start_overlay_edit)
         self.setting_page.overlay_reset_requested.connect(self.reset_overlay_position)
+        dp.update_notes_requested.connect(self._open_update_page)
+        dp.update_skip_requested.connect(self._skip_update)
+        dp.update_install_requested.connect(self._install_update)
+        self.info_page.auto_check_toggled.connect(self._set_auto_update_check)
         self.music_page.delete_requested.connect(self.delete_history)
         self.music_page.clear_requested.connect(self.clear_history)
         self.music_page.export_requested.connect(self.export_history)
@@ -245,6 +251,7 @@ class MainWindow(QMainWindow):
         menu.aboutToShow.connect(self._sync_tray_menu)
         tray.setContextMenu(menu)
         tray.activated.connect(self._on_tray_activated)
+        tray.messageClicked.connect(self.show_from_tray)
         tray.show()
         self.tray = tray
 
@@ -346,6 +353,73 @@ class MainWindow(QMainWindow):
             self._set_overlay_visible(True)
         self.overlay.reset_position()
         self.sync_controls()
+
+    # ------------------------------------------------------------------ #
+    # 업데이트 알림
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _can_self_update() -> bool:
+        return bool(getattr(sys, "frozen", False))  # 소스 실행은 git으로 업데이트
+
+    def show_update_available(self, info, manual: bool) -> None:
+        self.pending_update = info
+        can_install = self._can_self_update() and info.can_auto_update
+        self.dashboard_page.show_update(info.version, can_install)
+        self.info_page.set_update_status(f"새 버전 {info.version}이 있어요 (지금 버전: {APP_VERSION})")
+        if not manual and self.tray is not None:
+            self.tray.showMessage(
+                "Lyrics Overlay 업데이트",
+                f"새 버전 {info.version}이 나왔어요. 눌러서 열고 대시보드에서 업데이트하세요.",
+                QSystemTrayIcon.Information, 6000,
+            )
+
+    def _set_auto_update_check(self, on: bool) -> None:
+        if hasattr(self.app_config, "auto_update_check"):
+            self.app_config.auto_update_check = on
+
+    def _open_update_page(self) -> None:
+        from PySide6.QtCore import QUrl  # type: ignore
+        from PySide6.QtGui import QDesktopServices  # type: ignore
+        from core.updater import RELEASES_PAGE
+
+        url = self.pending_update.html_url if self.pending_update else RELEASES_PAGE
+        QDesktopServices.openUrl(QUrl(url))
+
+    def _skip_update(self) -> None:
+        if self.pending_update and hasattr(self.app_config, "skipped_version"):
+            self.app_config.skipped_version = self.pending_update.version
+        self.dashboard_page.update_banner.hide()
+
+    def _install_update(self) -> None:
+        info = self.pending_update
+        if info is None:
+            return
+        if not (self._can_self_update() and info.can_auto_update):
+            self._open_update_page()
+            return
+        from gui.update_dialog import UpdateDialog
+
+        if getattr(self, "_update_dialog", None) is not None and self._update_dialog.isVisible():
+            self._update_dialog.raise_()
+            return
+        dlg = UpdateDialog(info, self)
+        dlg.accepted.connect(lambda: self._apply_update(info, dlg.staged_path))
+        self._update_dialog = dlg
+        dlg.open()  # exec()와 달리 앱 메인 루프를 멈추지 않음
+
+    def _apply_update(self, info, staged: str | None) -> None:
+        from core import update_install
+
+        if not staged:
+            return
+        try:
+            update_install.hand_off(staged, info.exe_sha256, APP_VERSION)
+        except Exception as e:
+            QMessageBox.critical(self, "업데이트 실패", f"새 버전을 실행하지 못했어요. 지금 버전은 그대로예요.\n{e}")
+            return
+        # 새 exe가 이 프로그램이 완전히 끝나길 기다렸다가 교체하므로, 정상 종료 절차(멜론 창 복구·저장)를 밟습니다.
+        self.request_quit()
 
     # ------------------------------------------------------------------ #
     # 감상 기록 관리 (삭제·내보내기)
