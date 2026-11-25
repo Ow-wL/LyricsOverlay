@@ -27,6 +27,9 @@ class DashboardPage(QWidget):
     overlay_edit_requested = Signal()
     overlay_reset_requested = Signal()
     roi_requested = Signal()
+    update_install_requested = Signal()
+    update_notes_requested = Signal()
+    update_skip_requested = Signal()
 
     def __init__(self, config_manager: OverlayConfigManager):
         super().__init__()
@@ -56,6 +59,33 @@ class DashboardPage(QWidget):
         self.stats_row = QWidget()
         self.stats_row.setLayout(stats_layout)
         stats_layout.setContentsMargins(0, 0, 0, 0)
+
+        # ── 새 버전 알림 (평소엔 숨김)
+        self.update_banner = Card()
+        ub = QHBoxLayout(self.update_banner)
+        ub.setContentsMargins(20, 12, 14, 12)
+        ub.setSpacing(10)
+        ub.addWidget(label(icons.INFO, "IconGlyph", "font-size: 16px;"))
+        self.update_text = label("", "", "font-weight: 700;")
+        self.update_text.setTextFormat(Qt.PlainText)
+        ub.addWidget(self.update_text, 1)
+        notes = QPushButton("변경 내용")
+        notes.setObjectName("LinkButton")
+        notes.setCursor(Qt.PointingHandCursor)
+        notes.clicked.connect(self.update_notes_requested.emit)
+        skip = QPushButton("이 버전 건너뛰기")
+        skip.setObjectName("LinkButton")
+        skip.setCursor(Qt.PointingHandCursor)
+        skip.clicked.connect(self.update_skip_requested.emit)
+        self.update_btn = QPushButton("업데이트")
+        self.update_btn.setObjectName("PrimaryButton")
+        self.update_btn.clicked.connect(self.update_install_requested.emit)
+        later = QPushButton("나중에")
+        later.clicked.connect(self.update_banner.hide)
+        for w_ in (notes, skip, later, self.update_btn):
+            ub.addWidget(w_)
+        self.update_banner.hide()
+        layout.addWidget(self.update_banner)
 
         # ── 처음 쓰는 사람을 위한 시작 안내 (통계 카드 자리에, 닫거나 다 마치면 통계로 바뀜)
         self.onboarding = self._build_onboarding()
@@ -274,6 +304,11 @@ class DashboardPage(QWidget):
         vbox.addWidget(label("현재 세션 기준", "Tertiary", "font-size: 12px;"))
         card.findChildren(QLabel)[-1].setObjectName("StatSub")
         return card
+
+    def show_update(self, version: str, can_install: bool) -> None:
+        self.update_text.setText(f"새 버전 {version}이 나왔어요")
+        self.update_btn.setText("업데이트" if can_install else "다운로드 페이지 열기")
+        self.update_banner.show()
 
     def set_status(self, level: str, title: str, detail: str = "", action: str = "") -> None:
         """level: ok / warn / error. 색 점과 함께 상태를 보여 줍니다.
