@@ -3,6 +3,12 @@ import os
 
 from PySide6.QtGui import QColor, QFont  # type: ignore
 
+from core.utils import atomic_write_json
+
+# 예전 기본값. 전역 단축키라 다른 프로그램에서 대문자 Q만 쳐도 종료돼서 바꿨습니다.
+_LEGACY_QUIT_HOTKEY = "shift+q"
+DEFAULT_QUIT_HOTKEY = "ctrl+alt+q"
+
 
 class OverlayConfigManager:
     """오버레이 스타일 및 설정을 관리하는 매니저 클래스."""
@@ -31,7 +37,7 @@ class OverlayConfigManager:
         self.move_enabled = False
         self.resize_enabled = False
         self.hotkey_ghost = "F9"
-        self.hotkey_quit = "Shift+Q"
+        self.hotkey_quit = DEFAULT_QUIT_HOTKEY
         self.hotkey_next = "ctrl+shift+right"
         self.hotkey_prev = "ctrl+shift+left"
         self.hotkey_pause = "F8"
@@ -115,8 +121,7 @@ class OverlayConfigManager:
                 "system_presets": self.PRESET_STYLES,
                 "custom_presets": self.custom_presets,
             }
-            with open(self.styles_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
+            atomic_write_json(self.styles_path, data)
         except Exception as e:
             print(f"Failed to save styles to {self.styles_path}: {e}")
 
@@ -325,8 +330,7 @@ class OverlayConfigManager:
                 "dashboard_view_mode": self.dashboard_view_mode,
                 "show_song_info": self.show_song_info,
             }
-            with open(self.config_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
+            atomic_write_json(self.config_path, data)
         except Exception as e:
             print(f"Failed to save settings: {e}")
 
@@ -367,3 +371,13 @@ class OverlayConfigManager:
             self.show_song_info = data.get("show_song_info", self.show_song_info)
         except Exception as e:
             print(f"Failed to load settings: {e}")
+            return
+
+        if not isinstance(self.hotkey_quit, str):
+            self.hotkey_quit = DEFAULT_QUIT_HOTKEY
+        if self.hotkey_quit.replace(" ", "").lower() in (
+            _LEGACY_QUIT_HOTKEY, "leftshift+q", "rightshift+q"
+        ):
+            print(f"[⌨️] 종료 단축키를 {self.hotkey_quit} → {DEFAULT_QUIT_HOTKEY}로 변경합니다.")
+            self.hotkey_quit = DEFAULT_QUIT_HOTKEY
+            self.save_to_file()

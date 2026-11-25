@@ -4,6 +4,7 @@ LyricsOverlay — 엔트리 포인트
 """
 
 import asyncio
+import queue
 import sys
 import time
 import os
@@ -17,14 +18,13 @@ if os.name == 'nt':
         pass
 
 import cv2
-import pygetwindow as gw  # type: ignore
 from PySide6.QtCore import QSize  # type: ignore
 from PySide6.QtWidgets import QApplication, QLabel, QListWidgetItem  # type: ignore
 
 from core.hotkey_manager import HotkeyManager
 from core.ocr_engine import windows_native_ocr_split
 from core.stats_manager import load_stats, make_session_stats, parse_song_info, save_stats
-from core.window_capture import apply_transparency, capture_covered_window
+from core.window_capture import WindowStyleGuard, capture_covered_window, find_melon_window
 from gui.main_window import MainWindow
 from lyrics.matcher import LyricMatcher
 from core.app_config import AppConfig
@@ -40,6 +40,9 @@ _window: MainWindow | None = None
 persistent_stats: dict = {}
 session_stats: dict = {}
 _app_config: AppConfig | None = None
+
+# 전역 단축키(keyboard 스레드)에서 메인 스레드로 넘길 작업
+_pending_actions: "queue.SimpleQueue" = queue.SimpleQueue()
 
 
 # ------------------------------------------------------------------ #
@@ -135,7 +138,10 @@ async def main() -> None:
     matcher = LyricMatcher()
 
     # 단축키 매니저
-    hotkey_mgr = HotkeyManager(on_ghost_toggle=_on_toggle_mode, on_quit=_on_quit)
+    hotkey_mgr = HotkeyManager(
+        on_ghost_toggle=lambda: _pending_actions.put(_on_toggle_mode),
+        on_quit=lambda: _pending_actions.put(_on_quit),
+    )
 
     def refresh_hotkeys() -> None:
         hotkey_mgr.refresh(
@@ -159,17 +165,20 @@ async def main() -> None:
     print("=" * 50)
     add_log("프로그램 시작")
 
-    exclude = [
-        "Visual Studio Code", "Whale", "Gemini", "OBS", "Overlay",
-        "Discord", "파일 탐색기", "메모장", "PowerPoint", "한글",
-        "Hancom", "Hwp", "Edge", "Antigravity"
-    ]
+    # 멜론 창 스타일 관리 (지난번 강제 종료로 남은 상태가 있으면 먼저 복구)
+    style_guard = WindowStyleGuard(_app_config.data_dir)
+    recovered = style_guard.recover_from_file()
+    if recovered:
+        add_log(f"이전 실행에서 남은 창 상태 {recovered}개 복구")
 
-    last_hwnd = None
+    applied_hwnd = None       # 고스트 모드 상태를 마지막으로 맞춘 멜론 창
+    applied_mode = None
+    overlay_mode = None
     last_song_title = ""
     last_lyric_text = ""
-    last_applied_mode = None
-    save_timer = 0.0
+    last_save_time = time.monotonic()
+    roi_warned = False
+    style_retry_at = 0.0
     
     current_song_info = None
     current_song_start_time = 0.0
@@ -179,35 +188,45 @@ async def main() -> None:
         while is_running:
             app.processEvents()
 
-            target_win = None
-            all_windows = gw.getAllWindows()
+            # 단축키 콜백은 keyboard 스레드에서 들어오므로, 실제 처리는 여기(메인 스레드)에서 합니다.
+            while True:
+                try:
+                    action = _pending_actions.get_nowait()
+                except queue.Empty:
+                    break
+                action()
+            if not is_running:
+                break
 
-            # 1순위: 'Melon' 포함 창
-            for w in all_windows:
-                if "Melon" in w.title and not any(ex in w.title for ex in exclude):
-                    if w.width > 200 and not w.isMinimized:
-                        target_win = w
-                        break
+            is_ghost_mode = config_manager.ghost_mode
+            if is_ghost_mode != overlay_mode:
+                overlay.set_ghost_mode(is_ghost_mode)
+                overlay_mode = is_ghost_mode
 
-            # 2순위: ' - ' 형식
-            if not target_win:
-                for w in all_windows:
-                    if " - " in w.title and not any(ex in w.title for ex in exclude):
-                        if w.width > 200 and not w.isMinimized:
-                            target_win = w
-                            break
+            # 멜론 프로세스의 창만 대상으로 삼습니다 (다른 프로그램 창을 건드리지 않도록).
+            target_win = find_melon_window()
+            now = time.monotonic()
+
+            if target_win is None and applied_hwnd is not None and not is_ghost_mode:
+                # 멜론이 최소화되거나 숨겨진 상태에서 일반 모드로 바꾼 경우
+                if style_guard.restore(applied_hwnd):
+                    applied_hwnd, applied_mode = None, None
 
             if target_win:
-                hwnd = target_win._hWnd
-                last_hwnd = hwnd
-                is_ghost_mode = config_manager.ghost_mode
+                hwnd = target_win.hwnd
 
-                # 모드 변경 시 창 스타일 적용
-                if is_ghost_mode != last_applied_mode:
-                    apply_transparency(hwnd, is_ghost_mode)
-                    overlay.set_ghost_mode(is_ghost_mode)
-                    last_applied_mode = is_ghost_mode
-                    add_log(f"창 스타일 변경 완료: {'고스트' if is_ghost_mode else '일반'}")
+                # 대상 창이나 모드가 바뀌었으면 창 스타일 적용 (실패하면 5초 뒤 재시도)
+                if (hwnd != applied_hwnd or is_ghost_mode != applied_mode) and now >= style_retry_at:
+                    ok = True
+                    if applied_hwnd is not None and hwnd != applied_hwnd:
+                        ok = style_guard.restore(applied_hwnd)
+                    ok = style_guard.set_ghost(hwnd, is_ghost_mode) and ok
+                    if ok:
+                        applied_hwnd, applied_mode = hwnd, is_ghost_mode
+                        add_log(f"창 스타일 변경 완료: {'고스트' if is_ghost_mode else '일반'}")
+                    else:
+                        style_retry_at = now + 5.0
+                        add_log("창 스타일 변경 실패 (5초 뒤 재시도)")
 
                 # 곡 변경 감지
                 current_song_title = target_win.title.replace(" - Melon", "").strip()
@@ -243,8 +262,14 @@ async def main() -> None:
 
                 # 캡처 및 OCR
                 full_img = capture_covered_window(hwnd)
-                if full_img is not None:
-                    roi = full_img[216:216 + 46, 28:28 + 251]
+                roi = full_img[216:216 + 46, 28:28 + 251] if full_img is not None else None
+                if roi is not None and roi.size == 0:
+                    # 창이 너무 작아서 가사 영역을 잘라낼 수 없음
+                    if not roi_warned:
+                        add_log("멜론 창이 가사 영역보다 작아 인식을 건너뜁니다")
+                        roi_warned = True
+                    roi = None
+                if roi is not None:
                     scaled = cv2.resize(roi, None, fx=5, fy=5, interpolation=cv2.INTER_LANCZOS4)
 
                     lines = await windows_native_ocr_split(scaled)
@@ -296,23 +321,22 @@ async def main() -> None:
 
                     window.dashboard_page.update_stats(session_stats, persistent_stats.get("play_history", []))
 
-                    # 1분마다 자동 저장
-                    save_timer += 0.05
-                    if save_timer >= 60:
-                        save_stats(persistent_stats, _app_config.data_dir)
-                        save_timer = 0.0
-
                     QApplication.processEvents()
+
+            # 1분마다 자동 저장 (멜론 창이 없어도)
+            if now - last_save_time >= 60:
+                save_stats(persistent_stats, _app_config.data_dir)
+                last_save_time = now
 
             await asyncio.sleep(0.05)
 
     finally:
+        hotkey_mgr.unhook_all()
+        print("\n[🧹] 멜론 창 상태 원복 중...")
+        style_guard.restore_all()
         if _app_config:
             save_stats(persistent_stats, _app_config.data_dir)
-        if last_hwnd:
-            print("\n[🧹] 멜론 창 상태 원복 중...")
-            apply_transparency(last_hwnd, False)
-        hotkey_mgr.unhook_all()
+        matcher.searcher.shutdown()
         cv2.destroyAllWindows()
 
 
