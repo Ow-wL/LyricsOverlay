@@ -62,7 +62,9 @@ class MediaControls(QWidget):
                 btn.setFixedSize(*((48, 48) if is_main else (40, 40)))
             btn.setToolTip(tooltip)
             btn.setCursor(Qt.PointingHandCursor)
-            btn.setFocusPolicy(Qt.NoFocus)
+            # 오버레이 버튼은 포커스를 가져가면 안 되지만, 앱 안의 버튼은 키보드로 쓸 수 있어야 합니다.
+            btn.setFocusPolicy(Qt.NoFocus if overlay else Qt.TabFocus)
+            btn.setAccessibleName(tooltip)
             btn.clicked.connect(lambda _=False, k=key, fn=send: self._trigger(k, fn))
             layout.addWidget(btn)
 
