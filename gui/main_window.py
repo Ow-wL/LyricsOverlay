@@ -323,6 +323,8 @@ class MainWindow(QMainWindow):
             return
         if not apply:
             self.overlay.cancel_edit_geometry()
+        else:
+            self.dashboard_page.mark_step(2)
         self.overlay.set_edit_mode(False)
         self.config_manager.save_now()
         self.sync_controls()

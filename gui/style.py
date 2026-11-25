@@ -76,6 +76,13 @@ def build_stylesheet(t: dict) -> str:
     QLabel#Secondary {{ color: {t['text_secondary']}; }}
     QLabel#Tertiary, QLabel#StatSub {{ color: {t['text_tertiary']}; }}
     QLabel#StatValue {{ font-size: 34px; font-weight: 800; letter-spacing: -0.8px; }}
+    QLabel#StepMark {{
+        background-color: {t['accent_soft']};
+        color: {t['accent']};
+        border-radius: 11px;
+        font-size: 12px; font-weight: 800;
+    }}
+    QLabel#StepMark[done="true"] {{ background-color: {t['status_ok']}; color: #FFFFFF; }}
     QLabel#StatusTitle {{ font-size: 13px; font-weight: 700; color: {t['text_secondary']}; }}
     QLabel#StatusTitle[level="ok"] {{ color: {t['status_ok']}; }}
     QLabel#StatusTitle[level="warn"] {{ color: {t['status_warn']}; }}
