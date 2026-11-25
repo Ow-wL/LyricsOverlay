@@ -83,7 +83,7 @@ class LyricsOverlay(QWidget):
         self._place_media_controls()
 
         # 편집 모드 안내와 '완료' 버튼 (평소엔 숨김)
-        self.edit_hint = QLabel("드래그해서 옮기고, 오른쪽 아래 모서리를 끌어 크기를 바꾸세요", self)
+        self.edit_hint = QLabel("드래그로 이동 · 오른쪽 아래 모서리로 크기 조절 · Enter 완료 · Esc 취소", self)
         self.edit_hint.setStyleSheet(
             "color: white; background: rgba(20, 20, 40, 200); border-radius: 8px;"
             "padding: 4px 10px; font-size: 12px; font-weight: 600;"
@@ -235,7 +235,12 @@ class LyricsOverlay(QWidget):
             self.media_controls.hide()
             self.show()
             self.raise_()
+            # 평소엔 포커스를 뺏지 않지만, 조정 중에는 Enter/Esc를 받을 수 있게 활성화합니다.
+            self.setFocusPolicy(Qt.StrongFocus)
+            self.activateWindow()
+            self.setFocus()
         else:
+            self.setFocusPolicy(Qt.NoFocus)
             self.setCursor(Qt.ArrowCursor)
             if not self.config.visible:
                 self.hide()
@@ -244,6 +249,16 @@ class LyricsOverlay(QWidget):
         self.edit_cancel_btn.setVisible(on)
         self._place_edit_widgets()
         self._update_bg_style()
+
+    def keyPressEvent(self, event) -> None:
+        if self.editing:
+            if event.key() == Qt.Key_Escape:
+                self.edit_finished.emit(False)
+                return
+            if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+                self.edit_finished.emit(True)
+                return
+        super().keyPressEvent(event)
 
     def cancel_edit_geometry(self) -> None:
         """편집을 취소하면 편집 전 위치·크기로 되돌립니다."""
