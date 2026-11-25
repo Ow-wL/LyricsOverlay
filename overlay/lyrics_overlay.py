@@ -4,11 +4,14 @@ import win32con
 import win32gui
 from PySide6.QtCore import Qt, QPoint, QRect, Signal  # type: ignore
 from PySide6.QtGui import QColor, QFont  # type: ignore
-from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QVBoxLayout, QWidget  # type: ignore
+from PySide6.QtWidgets import QApplication, QFrame, QPushButton, QVBoxLayout, QWidget  # type: ignore
 
 from overlay.config_manager import OverlayConfigManager
 from overlay.outlined_label import OutlinedLabel
 from gui.widgets.media_controls import MediaControls
+
+
+_EDIT_HINT = "드래그로 이동 · 오른쪽 아래 모서리로 크기 조절 · Enter 완료 · Esc 취소"
 
 
 class LyricsOverlay(QWidget):
@@ -82,14 +85,7 @@ class LyricsOverlay(QWidget):
         self.media_controls.hide()
         self._place_media_controls()
 
-        # 편집 모드 안내와 '완료' 버튼 (평소엔 숨김)
-        self.edit_hint = QLabel("드래그로 이동 · 오른쪽 아래 모서리로 크기 조절 · Enter 완료 · Esc 취소", self)
-        self.edit_hint.setStyleSheet(
-            "color: white; background: rgba(20, 20, 40, 200); border-radius: 8px;"
-            "padding: 4px 10px; font-size: 12px; font-weight: 600;"
-        )
-        self.edit_hint.setAttribute(Qt.WA_TransparentForMouseEvents)
-        self.edit_hint.hide()
+        # 편집 모드 '완료'·'취소' 버튼 (평소엔 숨김). 안내 문구는 곡 정보 줄에 잠시 표시합니다.
         self.edit_done_btn = QPushButton("완료", self)
         self.edit_done_btn.setCursor(Qt.PointingHandCursor)
         self.edit_done_btn.setStyleSheet(
@@ -227,6 +223,14 @@ class LyricsOverlay(QWidget):
         """
         if on and not self.editing:
             self._geometry_before_edit = self.geometry()
+            # 곡 정보 줄을 잠시 안내 문구로 씁니다 (별도 라벨을 올리면 곡 정보와 겹침)
+            self._info_saved = (self.song_info_label.text(), self.song_info_label.isVisible())
+            self.song_info_label.setText(_EDIT_HINT)
+            self.song_info_label.show()
+        elif not on and self.editing:
+            text, visible = getattr(self, "_info_saved", ("", False))
+            self.song_info_label.setText(text)
+            self.song_info_label.setVisible(visible)
         self.editing = on
         self.move_enabled = on
         self.resize_enabled = on
@@ -244,7 +248,6 @@ class LyricsOverlay(QWidget):
             self.setCursor(Qt.ArrowCursor)
             if not self.config.visible:
                 self.hide()
-        self.edit_hint.setVisible(on)
         self.edit_done_btn.setVisible(on)
         self.edit_cancel_btn.setVisible(on)
         self._place_edit_widgets()
@@ -269,10 +272,8 @@ class LyricsOverlay(QWidget):
             self.config.update_size(geo.width(), geo.height())
 
     def _place_edit_widgets(self) -> None:
-        if not hasattr(self, "edit_done_btn"):
+        if not hasattr(self, "edit_cancel_btn"):
             return
-        self.edit_hint.adjustSize()
-        self.edit_hint.move(12, 10)
         self.edit_done_btn.adjustSize()
         self.edit_done_btn.move(
             self.width() - self.edit_done_btn.width() - self.resize_margin - 8,
@@ -282,7 +283,6 @@ class LyricsOverlay(QWidget):
         self.edit_cancel_btn.move(
             self.edit_done_btn.x() - self.edit_cancel_btn.width() - 6, self.edit_done_btn.y()
         )
-        self.edit_hint.raise_()
         self.edit_done_btn.raise_()
         self.edit_cancel_btn.raise_()
 
@@ -337,6 +337,10 @@ class LyricsOverlay(QWidget):
             text = f"🎵  {title}  \u2014  {artist} 🎵" if title and artist else (title or artist)
         else:
             text = ""
+        if self.editing:
+            # 조정이 끝나면 보여 줄 곡 정보로만 기억해 둡니다.
+            self._info_saved = (text, getattr(self, "_info_saved", ("", True))[1])
+            return
         if self.song_info_label.text() != text:
             self.song_info_label.setText(text)
         self.update()
