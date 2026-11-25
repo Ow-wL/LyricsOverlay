@@ -30,8 +30,8 @@ from PySide6.QtWidgets import (  # type: ignore
 
 from gui import icons
 from gui.theme import UIConfig
-from gui.widgets.card import Card, PresetItem, StylePreview
-from gui.widgets.glass import NavButton, ToggleSwitch, divider, label, page_header
+from gui.widgets.card import Card, PresetFlow, PresetItem, StylePreview
+from gui.widgets.glass import SegmentedControl, ToggleSwitch, divider, label, page_header
 from gui.widgets.hotkey_edit import HotkeyEdit
 from overlay.config_manager import OverlayConfigManager
 
@@ -66,16 +66,18 @@ class SettingPage(QWidget):
         root.setContentsMargins(28, 14, 12, 0)
         root.setSpacing(20)
 
-        # ── 헤더
-        header = page_header("설정", "오버레이의 모양과 동작, 단축키를 조정하세요")
-        root.addWidget(header)
+        # ── 헤더 + 카테고리 탭 (예전의 두 번째 사이드바 대신 가로 탭으로 공간 확보)
+        header_row = QHBoxLayout()
+        header_row.addWidget(page_header("설정", "오버레이의 모양과 동작, 단축키를 조정하세요"))
+        header_row.addStretch()
+        self.tabs = SegmentedControl([(str(i), text) for i, (_, text) in enumerate(_CATEGORIES)], "0")
+        self.tabs.changed.connect(lambda key: self._switch_page(int(key)))
+        header_row.addWidget(self.tabs, 0, Qt.AlignBottom)
+        root.addLayout(header_row)
 
-        # ── 본문 = 카테고리 | 콘텐츠 스택
         body = QHBoxLayout()
-        body.setSpacing(6)
+        body.setSpacing(0)
         body.setContentsMargins(0, 0, 0, 0)
-
-        body.addWidget(self._build_sidebar(), 0, Qt.AlignTop)
 
         self.stack = QStackedWidget()
         self.stack.addWidget(self._build_appearance_page())   # 0
@@ -93,24 +95,8 @@ class SettingPage(QWidget):
     # 사이드바
     # ------------------------------------------------------------------ #
 
-    def _build_sidebar(self) -> QWidget:
-        w = Card()
-        w.setFixedWidth(176)
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(10, 12, 10, 12)
-        lay.setSpacing(4)
-
-        self._nav_btns: list[NavButton] = []
-        for i, (glyph, text) in enumerate(_CATEGORIES):
-            btn = NavButton(glyph, text, height=40)
-            btn.clicked.connect(lambda _=False, idx=i: self._switch_page(idx))
-            self._nav_btns.append(btn)
-            lay.addWidget(btn)
-        return w
-
     def _switch_page(self, idx: int) -> None:
-        for i, btn in enumerate(self._nav_btns):
-            btn.setChecked(i == idx)
+        self.tabs.set_current(str(idx))
         self.stack.setCurrentIndex(idx)
 
     # ------------------------------------------------------------------ #
@@ -130,35 +116,28 @@ class SettingPage(QWidget):
     # 페이지 0 — 🎨 외관
     # ================================================================== #
 
-    def _build_appearance_page(self) -> QScrollArea:
+    def _build_appearance_page(self) -> QWidget:
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(10)
+
+        # ── 미리보기: 스크롤 밖에 두어, 아래 값을 바꾸는 동안 계속 보이게 합니다.
+        preview_wrap = QVBoxLayout()
+        preview_wrap.setContentsMargins(16, 4, 20, 0)
+        preview_wrap.setSpacing(6)
+        preview_wrap.addWidget(self._section_lbl("미리보기"))
+        self.preview_area = StylePreview()
+        preview_wrap.addWidget(self.preview_area)
+        outer.addLayout(preview_wrap)
+
         inner = QWidget()
         lay = QVBoxLayout(inner)
         lay.setContentsMargins(16, 4, 20, 28)
         lay.setSpacing(14)
 
-        # ── 미리보기
-        lay.addWidget(self._section_lbl("오버레이 미리보기"))
-        self.preview_area = StylePreview()
-        lay.addWidget(self.preview_area)
-
-        # ── 오버레이 활성화
-        enable_card = Card()
-        el = QHBoxLayout(enable_card)
-        el.setContentsMargins(22, 16, 22, 16)
-        ev = QVBoxLayout()
-        ev.setSpacing(2)
-        ev.addWidget(self._lbl("오버레이 표시", UIConfig.FS_TITLE_S, bold=700))
-        ev.addWidget(self._lbl("가사 오버레이를 화면에 표시하거나 숨깁니다.", UIConfig.FS_DESC, secondary=True))
-        self.overlay_switch = ToggleSwitch()
-        self.overlay_switch.setChecked(self.config.visible)
-        self.overlay_switch.toggled.connect(self._on_visible_toggled)
-        el.addLayout(ev)
-        el.addStretch()
-        el.addWidget(self.overlay_switch)
-        lay.addWidget(enable_card)
-
         # ── 스타일 프리셋
-        lay.addWidget(self._section_lbl("스타일 프리셋"))
+        lay.addWidget(self._section_lbl("스타일 프리셋 · 클릭하면 바로 적용돼요"))
         preset_card = Card()
         pl = QVBoxLayout(preset_card)
         pl.setContentsMargins(22, 16, 22, 16)
@@ -166,7 +145,6 @@ class SettingPage(QWidget):
 
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
-        btn_row.addWidget(self._lbl("클릭해서 적용 · 직접 만든 프리셋은 우클릭으로 삭제", UIConfig.FS_DESC, secondary=True))
         btn_row.addStretch()
         self.btn_import_styles = QPushButton("가져오기")
         self.btn_import_styles.setFixedHeight(36)
@@ -183,109 +161,105 @@ class SettingPage(QWidget):
         btn_row.addWidget(self.btn_save_preset)
         pl.addLayout(btn_row)
 
-        self.preset_container = QWidget()
-        self.preset_grid = QGridLayout(self.preset_container)
-        self.preset_grid.setContentsMargins(0, 0, 0, 0)
-        self.preset_grid.setSpacing(12)
-        self.preset_grid.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.preset_container = PresetFlow()
         self._update_preset_list()
         pl.addWidget(self.preset_container)
         lay.addWidget(preset_card)
 
         # ── 스타일 세부 설정
-        lay.addWidget(self._section_lbl("스타일 세부 설정"))
+        lay.addWidget(self._section_lbl("직접 조정"))
         style_card = Card()
         sl = QVBoxLayout(style_card)
         sl.setContentsMargins(22, 16, 22, 16)
         sl.setSpacing(18)
 
-        # 글꼴
+        # 글꼴 (현재 글꼴 이름과 크기를 보여 줌)
         font_row = QHBoxLayout()
-        font_row.addWidget(self._lbl("오버레이 글꼴", UIConfig.FS_TITLE_S, bold=600))
+        font_text = QVBoxLayout()
+        font_text.setSpacing(2)
+        font_text.addWidget(self._lbl("글꼴", UIConfig.FS_TITLE_S, bold=600))
+        self.font_val_label = self._lbl("", UIConfig.FS_DESC, secondary=True)
+        font_text.addWidget(self.font_val_label)
+        font_row.addLayout(font_text)
+        font_row.addStretch()
         self.btn_font = QPushButton("글꼴 변경")
         self.btn_font.setFixedHeight(36)
         self.btn_font.clicked.connect(self._pick_font)
-        font_row.addStretch()
         font_row.addWidget(self.btn_font)
         sl.addLayout(font_row)
-        sl.addWidget(self._hline())
-
-        # 불투명도
-        alpha_vbox = QVBoxLayout()
-        alpha_vbox.setSpacing(8)
-        alpha_hdr = QHBoxLayout()
-        alpha_hdr.addWidget(self._lbl("배경 불투명도", UIConfig.FS_TITLE_S, bold=600))
-        alpha_hdr.addStretch()
-        self.alpha_val_label = QLabel(str(self.config.bg_color.alpha()))
-        self.alpha_val_label.setObjectName("AccentValue")
-        alpha_hdr.addWidget(self.alpha_val_label)
-        self.alpha_slider = QSlider(Qt.Horizontal)
-        self.alpha_slider.setRange(0, 255)
-        self.alpha_slider.setValue(self.config.bg_color.alpha())
-        self.alpha_slider.valueChanged.connect(self._on_alpha_changed)
-        alpha_vbox.addLayout(alpha_hdr)
-        alpha_vbox.addWidget(self.alpha_slider)
-        sl.addLayout(alpha_vbox)
         sl.addWidget(self._hline())
 
         # 색상 버튼 3개
         color_row = QHBoxLayout()
         color_row.setSpacing(24)
-        tv, self.btn_text_color = self._color_ctrl("글씨 색상", self.config.text_color, "text")
-        bv, self.btn_bg_color   = self._color_ctrl("배경 색상", self.config.bg_color, "bg")
-        ov, self.btn_out_color  = self._color_ctrl("아웃라인 색상", self.config.outline_color, "outline")
+        tv, self.btn_text_color = self._color_ctrl("글씨", self.config.text_color, "text")
+        ov, self.btn_out_color = self._color_ctrl("외곽선", self.config.outline_color, "outline")
+        bv, self.btn_bg_color = self._color_ctrl("배경", self.config.bg_color, "bg")
         color_row.addLayout(tv)
-        color_row.addLayout(bv)
         color_row.addLayout(ov)
+        color_row.addLayout(bv)
         color_row.addStretch()
         sl.addLayout(color_row)
         sl.addWidget(self._hline())
 
-        # 아웃라인 두께
-        out_vbox = QVBoxLayout()
-        out_vbox.setSpacing(8)
-        out_hdr = QHBoxLayout()
-        out_hdr.addWidget(self._lbl("아웃라인 두께", UIConfig.FS_TITLE_S, bold=600))
-        out_hdr.addStretch()
-        self.outline_val_label = QLabel(str(self.config.outline_width))
-        self.outline_val_label.setObjectName("AccentValue")
-        out_hdr.addWidget(self.outline_val_label)
-        self.outline_slider = QSlider(Qt.Horizontal)
-        self.outline_slider.setRange(0, 10)
-        self.outline_slider.setValue(self.config.outline_width)
-        self.outline_slider.valueChanged.connect(self._on_outline_changed)
-        out_vbox.addLayout(out_hdr)
-        out_vbox.addWidget(self.outline_slider)
-        sl.addLayout(out_vbox)
+        # 슬라이더들: (제목, 범위, 핸들러) — 값은 오른쪽에 읽기 쉬운 단위로 표시
+        self.alpha_slider, self.alpha_val_label = self._slider_row(
+            sl, "배경 불투명도", 0, 255, self._on_alpha_changed
+        )
+        self.outline_slider, self.outline_val_label = self._slider_row(
+            sl, "외곽선 두께", 0, 10, self._on_outline_changed
+        )
         sl.addWidget(self._hline())
-
-        # 크기 슬라이더
-        size_vbox = QVBoxLayout()
-        size_vbox.setSpacing(8)
-        size_hdr = QHBoxLayout()
-        size_hdr.addWidget(self._lbl("오버레이 크기 (너비 / 높이)", UIConfig.FS_TITLE_S, bold=600))
-        size_hdr.addStretch()
-        self.size_val_label = QLabel(f"{self.config.width} x {self.config.height}")
-        self.size_val_label.setObjectName("AccentValue")
-        size_hdr.addWidget(self.size_val_label)
-        size_sliders = QHBoxLayout()
-        self.width_slider = QSlider(Qt.Horizontal)
-        self.width_slider.setRange(200, 1500)
-        self.width_slider.setValue(self.config.width)
-        self.width_slider.valueChanged.connect(self._on_size_changed)
-        self.height_slider = QSlider(Qt.Horizontal)
-        self.height_slider.setRange(80, 500)
-        self.height_slider.setValue(self.config.height)
-        self.height_slider.valueChanged.connect(self._on_size_changed)
-        size_sliders.addWidget(self.width_slider)
-        size_sliders.addWidget(self.height_slider)
-        size_vbox.addLayout(size_hdr)
-        size_vbox.addLayout(size_sliders)
-        sl.addLayout(size_vbox)
+        self.width_slider, self.width_val_label = self._slider_row(
+            sl, "오버레이 너비", 200, 4000, self._on_width_changed
+        )
+        self.height_slider, self.height_val_label = self._slider_row(
+            sl, "오버레이 높이", 80, 1000, self._on_height_changed
+        )
+        # 예전 코드 호환용 (크기 요약)
+        self.size_val_label = QLabel()
 
         lay.addWidget(style_card)
         lay.addStretch()
-        return self._wrap_scroll(inner)
+        outer.addWidget(self._wrap_scroll(inner), 1)
+
+        # 어떤 경로로 값이 바뀌어도 미리보기와 값 표시를 함께 갱신
+        self.settings_changed.connect(self._refresh_style_widgets)
+        return page
+
+    def _slider_row(self, parent_layout, title: str, lo: int, hi: int, handler):
+        row = QVBoxLayout()
+        row.setSpacing(6)
+        hdr = QHBoxLayout()
+        hdr.addWidget(self._lbl(title, UIConfig.FS_TITLE_S, bold=600))
+        hdr.addStretch()
+        val = QLabel()
+        val.setObjectName("AccentValue")
+        hdr.addWidget(val)
+        slider = QSlider(Qt.Horizontal)
+        slider.setRange(lo, hi)
+        slider.setAccessibleName(title)
+        slider.valueChanged.connect(handler)
+        row.addLayout(hdr)
+        row.addWidget(slider)
+        parent_layout.addLayout(row)
+        return slider, val
+
+    def _refresh_style_widgets(self) -> None:
+        """미리보기·값 표시·색 견본을 현재 설정에 맞춥니다."""
+        c = self.config
+        self.preview_area.update_preview(c)
+        self.alpha_val_label.setText(f"{round(c.bg_color.alpha() / 255 * 100)}%")
+        self.outline_val_label.setText(f"{c.outline_width}px")
+        self.width_val_label.setText(f"{c.width}px")
+        self.height_val_label.setText(f"{c.height}px")
+        self.size_val_label.setText(f"{c.width} x {c.height}")
+        self.font_val_label.setText(f"{c.font_family} · {c.font_size}pt")
+        for btn, color in ((self.btn_text_color, c.text_color),
+                           (self.btn_bg_color, c.bg_color),
+                           (self.btn_out_color, c.outline_color)):
+            btn.setStyleSheet(f"background-color: {color.name()};")
+            btn.setToolTip(color.name().upper())
 
     # ================================================================== #
     # 페이지 1 — ⚙️ 동작
@@ -303,6 +277,11 @@ class SettingPage(QWidget):
         bl.setContentsMargins(22, 16, 22, 16)
         bl.setSpacing(14)
 
+        bl.addLayout(self._toggle_row(
+            "오버레이 표시",
+            "가사 오버레이를 화면에 띄웁니다.",
+            self.config.visible, self._on_visible_toggled, "overlay_switch",
+        ))
         bl.addLayout(self._toggle_row(
             "클릭 통과 (고스트 모드)",
             "켜면 오버레이 위를 클릭해도 뒤에 있는 창이 눌립니다. 게임·작업 중에 켜 두세요.",
@@ -606,30 +585,17 @@ class SettingPage(QWidget):
     # ------------------------------------------------------------------ #
 
     def _update_preset_list(self) -> None:
-        while self.preset_grid.count():
-            item = self.preset_grid.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-        row = col = 0
+        items = []
         for name, data in self.config.PRESET_STYLES.items():
             preset = PresetItem(name, data, is_custom=False)
             preset.clicked.connect(self._on_preset_selected)
-            self.preset_grid.addWidget(preset, row, col)
-            col += 1
-            if col > 3:
-                col = 0
-                row += 1
-
+            items.append(preset)
         for name, data in self.config.custom_presets.items():
             preset = PresetItem(name, data, is_custom=True)
             preset.clicked.connect(self._on_preset_selected)
             preset.delete_requested.connect(self._on_delete_preset)
-            self.preset_grid.addWidget(preset, row, col)
-            col += 1
-            if col > 3:
-                col = 0
-                row += 1
+            items.append(preset)
+        self.preset_container.set_items(items)
 
     def _on_delete_preset(self, name: str) -> None:
         reply = QMessageBox.question(
@@ -704,20 +670,7 @@ class SettingPage(QWidget):
             else:
                 widget.setValue(value)
             widget.blockSignals(False)
-        self.alpha_val_label.setText(str(self.config.bg_color.alpha()))
-        self.outline_val_label.setText(str(self.config.outline_width))
-        self.size_val_label.setText(f"{self.config.width} x {self.config.height}")
-
-        self.btn_text_color.setStyleSheet(
-            f"background-color: {self.config.text_color.name()};"
-        )
-        self.btn_bg_color.setStyleSheet(
-            f"background-color: {self.config.bg_color.name()};"
-        )
-        self.btn_out_color.setStyleSheet(
-            f"background-color: {self.config.outline_color.name()};"
-        )
-        self.preview_area.update_preview(self.config)
+        self._refresh_style_widgets()
 
     # ------------------------------------------------------------------ #
     # 이벤트 핸들러
@@ -788,29 +741,26 @@ class SettingPage(QWidget):
         self.hotkeys_changed.emit()
 
     def _on_alpha_changed(self, value: int) -> None:
-        self.alpha_val_label.setText(str(value))
         self.config.update_background(opacity=value)
         self.settings_changed.emit()
 
     def _on_outline_changed(self, value: int) -> None:
-        self.outline_val_label.setText(str(value))
         self.config.update_text_style(outline_width=value)
         self.settings_changed.emit()
 
-    def _on_size_changed(self) -> None:
-        w = self.width_slider.value()
-        h = self.height_slider.value()
-        self.size_val_label.setText(f"{w} x {h}")
-        self.config.update_size(w, h)
+    def _on_width_changed(self, value: int) -> None:
+        # 움직인 축만 바꿉니다 (다른 축이 슬라이더 범위로 잘리지 않게)
+        self.config.update_size(value, self.config.height)
+        self.settings_changed.emit()
+
+    def _on_height_changed(self, value: int) -> None:
+        self.config.update_size(self.config.width, value)
         self.settings_changed.emit()
 
     def _pick_color(self, target: str, btn: QPushButton) -> None:
         current_color = getattr(self.config, f"{target}_color")
         color = QColorDialog.getColor(current_color)
         if color.isValid():
-            btn.setStyleSheet(
-                f"background-color: {color.name()};"
-            )
             if target == "text":
                 self.config.update_text_style(color=color)
             elif target == "bg":
