@@ -163,9 +163,7 @@ class DashboardPage(QWidget):
             sw.blockSignals(True)
             sw.setChecked(value)
             sw.blockSignals(False)
-        self.ghost_switch.setEnabled(not editing)
-        self.edit_btn.setText("조정 중… 오버레이의 '완료'를 누르세요" if editing else "위치·크기 조정")
-        self.edit_btn.setEnabled(not editing)
+        self.edit_btn.setText("조정 완료" if editing else "위치·크기 조정")
 
     def _create_stat_card(self, glyph: str, title: str, value: str) -> Card:
         card = Card()

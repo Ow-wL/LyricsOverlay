@@ -14,7 +14,7 @@ from gui.widgets.media_controls import MediaControls
 class LyricsOverlay(QWidget):
     """화면 위에 항상 표시되는 가사 오버레이 창."""
 
-    edit_finished = Signal()  # 편집 모드에서 '완료'를 눌렀을 때
+    edit_finished = Signal(bool)  # 편집 모드 끝: True = 완료(적용), False = 취소
 
     def __init__(self, config: OverlayConfigManager | None = None):
         super().__init__()
@@ -97,8 +97,17 @@ class LyricsOverlay(QWidget):
             " padding: 5px 16px; font-weight: 700; }"
             "QPushButton:hover { background: #4A3BCC; }"
         )
-        self.edit_done_btn.clicked.connect(self.edit_finished.emit)
+        self.edit_done_btn.clicked.connect(lambda: self.edit_finished.emit(True))
         self.edit_done_btn.hide()
+        self.edit_cancel_btn = QPushButton("취소", self)
+        self.edit_cancel_btn.setCursor(Qt.PointingHandCursor)
+        self.edit_cancel_btn.setStyleSheet(
+            "QPushButton { color: white; background: rgba(20, 20, 40, 200); border: none;"
+            " border-radius: 12px; padding: 5px 14px; font-weight: 600; }"
+            "QPushButton:hover { background: rgba(50, 50, 80, 220); }"
+        )
+        self.edit_cancel_btn.clicked.connect(lambda: self.edit_finished.emit(False))
+        self.edit_cancel_btn.hide()
 
     # ------------------------------------------------------------------ #
     # 설정 동기화
@@ -129,7 +138,7 @@ class LyricsOverlay(QWidget):
 
     def apply_settings(self, settings: dict) -> None:
         """settings dict를 받아 오버레이 외관과 동작을 갱신합니다."""
-        if not settings.get("visible", True):
+        if not settings.get("visible", True) and not self.editing:
             self.hide()
             return
         self.show()
@@ -187,7 +196,12 @@ class LyricsOverlay(QWidget):
     # ------------------------------------------------------------------ #
 
     def set_ghost_mode(self, enable: bool) -> None:
-        """Win32 WS_EX_TRANSPARENT으로 클릭 통과 여부를 전환합니다."""
+        """Win32 WS_EX_TRANSPARENT으로 클릭 통과 여부를 전환합니다.
+
+        편집 모드 중에는 설정값(enable)만 기억하고 실제로는 클릭을 받습니다.
+        """
+        self._ghost_pref = enable
+        enable = enable and not self.editing
         self.ghost_enabled = enable
         if enable:
             self.media_controls.hide()
@@ -207,21 +221,37 @@ class LyricsOverlay(QWidget):
     # ------------------------------------------------------------------ #
 
     def set_edit_mode(self, on: bool) -> None:
-        """켜면 클릭 통과를 끄고, 드래그 이동·모서리 크기 조절과 '완료' 버튼을 보여 줍니다."""
+        """켜면 잠시 클릭을 받게 하고, 드래그 이동·모서리 크기 조절과 '완료/취소' 버튼을 보여 줍니다.
+
+        저장된 설정(클릭 통과·표시)은 바꾸지 않습니다. 편집 중 프로그램이 꺼져도 원래 설정이 남습니다.
+        """
+        if on and not self.editing:
+            self._geometry_before_edit = self.geometry()
         self.editing = on
         self.move_enabled = on
         self.resize_enabled = on
+        self.set_ghost_mode(getattr(self, "_ghost_pref", self.config.ghost_mode))
         if on:
-            self.set_ghost_mode(False)
             self.media_controls.hide()
             self.show()
             self.raise_()
         else:
             self.setCursor(Qt.ArrowCursor)
+            if not self.config.visible:
+                self.hide()
         self.edit_hint.setVisible(on)
         self.edit_done_btn.setVisible(on)
+        self.edit_cancel_btn.setVisible(on)
         self._place_edit_widgets()
         self._update_bg_style()
+
+    def cancel_edit_geometry(self) -> None:
+        """편집을 취소하면 편집 전 위치·크기로 되돌립니다."""
+        geo = getattr(self, "_geometry_before_edit", None)
+        if geo is not None:
+            self.setGeometry(geo)
+            self.config.update_position(geo.x(), geo.y())
+            self.config.update_size(geo.width(), geo.height())
 
     def _place_edit_widgets(self) -> None:
         if not hasattr(self, "edit_done_btn"):
@@ -233,8 +263,13 @@ class LyricsOverlay(QWidget):
             self.width() - self.edit_done_btn.width() - self.resize_margin - 8,
             self.height() - self.edit_done_btn.height() - 10,
         )
+        self.edit_cancel_btn.adjustSize()
+        self.edit_cancel_btn.move(
+            self.edit_done_btn.x() - self.edit_cancel_btn.width() - 6, self.edit_done_btn.y()
+        )
         self.edit_hint.raise_()
         self.edit_done_btn.raise_()
+        self.edit_cancel_btn.raise_()
 
     def ensure_on_screen(self) -> bool:
         """오버레이가 어떤 모니터에도 충분히 보이지 않으면 주 모니터 아래쪽 가운데로 옮깁니다.
