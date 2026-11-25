@@ -211,9 +211,26 @@ class DashboardPage(QWidget):
         if hasattr(self, "latest_session_stats") and hasattr(self, "latest_play_history"):
             self.update_stats(self.latest_session_stats, self.latest_play_history)
 
+    def _in_period(self, ts: str, today) -> bool:
+        """기록 시각이 지금 보기(오늘/이번 주/이번 달)에 들어가는지. 문자열 비교라 빠릅니다."""
+        from datetime import timedelta
+
+        day = ts[:10]
+        if self.current_view_mode == "daily":
+            return day == today.isoformat()
+        if self.current_view_mode == "weekly":
+            start = today - timedelta(days=today.weekday())
+            return start.isoformat() <= day <= (start + timedelta(days=6)).isoformat()
+        return day[:7] == today.isoformat()[:7]  # monthly
+
     def update_stats(self, session_stats: dict, play_history: list[dict]) -> None:
-        from datetime import datetime, timedelta
-        
+        """통계 카드를 갱신합니다.
+
+        기간 보기에서는 지금 듣는 곡(맨 앞 기록)을 뺀 나머지 합계를 캐시해 두고,
+        맨 앞 기록만 매번 더합니다. (기록이 수천 개여도 가사 갱신마다 전부 다시 세지 않게)
+        """
+        from datetime import date
+
         self.latest_session_stats = session_stats
         self.latest_play_history = play_history
 
@@ -222,49 +239,30 @@ class DashboardPage(QWidget):
             songs = session_stats.get("play_count", 0)
             lines = session_stats.get("session_lines", 0)
             total_sec = session_stats.get("session_duration", 0)
-            minutes = int(total_sec // 60)
         else:
-            today = datetime.now().date()
-            if self.current_view_mode == "daily":
-                sub_text = "오늘 기준"
-                target_dates = [today]
-            elif self.current_view_mode == "weekly":
-                sub_text = "이번 주 기준"
-                start_of_week = today - timedelta(days=today.weekday())
-                target_dates = [start_of_week + timedelta(days=i) for i in range(7)]
-            else: # monthly
-                sub_text = "이번 달 기준"
-                target_dates = []
-
-            songs = 0
-            total_sec = 0
-            lines = 0
-            for entry in play_history:
-                try:
-                    dt = datetime.strptime(entry["timestamp"], "%Y-%m-%d %H:%M:%S").date()
-                    is_in_range = False
-                    if self.current_view_mode == "monthly":
-                        if dt.year == today.year and dt.month == today.month:
-                            is_in_range = True
-                    else:
-                        if dt in target_dates:
-                            is_in_range = True
-                            
-                    if is_in_range:
-                        songs += 1
-                        total_sec += entry.get("play_time_sec", 0)
-                        lines += entry.get("lines", 0)
-                except Exception:
-                    pass
-            
-            minutes = int(total_sec // 60)
+            today = date.today()
+            sub_text = {"daily": "오늘 기준", "weekly": "이번 주 기준"}.get(self.current_view_mode, "이번 달 기준")
+            key = (self.current_view_mode, today, id(play_history), len(play_history))
+            if getattr(self, "_period_cache_key", None) != key:
+                acc = [0, 0, 0]
+                for entry in play_history[1:]:
+                    if self._in_period(entry.get("timestamp", ""), today):
+                        acc[0] += 1
+                        acc[1] += entry.get("play_time_sec", 0)
+                        acc[2] += entry.get("lines", 0)
+                self._period_cache_key, self._period_cache = key, acc
+            songs, total_sec, lines = self._period_cache
+            if play_history and self._in_period(play_history[0].get("timestamp", ""), today):
+                head = play_history[0]
+                songs += 1
+                total_sec += head.get("play_time_sec", 0)
+                lines += head.get("lines", 0)
 
         labels = [
             (self.stat1, f"{songs}곡", sub_text),
-            (self.stat2, f"{minutes}분", sub_text),
+            (self.stat2, f"{int(total_sec // 60)}분", sub_text),
             (self.stat3, f"{lines}줄", sub_text),
         ]
-        
         for card, val, sub in labels:
             card.findChild(QLabel, "StatValue").setText(val)
             card.findChild(QLabel, "StatSub").setText(sub)
