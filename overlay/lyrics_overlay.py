@@ -53,7 +53,8 @@ class LyricsOverlay(QWidget):
         main_layout.addWidget(self.bg_frame)
 
         self.frame_layout = QVBoxLayout(self.bg_frame)
-        self.frame_layout.setSpacing(5)
+        self.frame_layout.setContentsMargins(26, 10, 26, 12)
+        self.frame_layout.setSpacing(2)
 
         self.song_info_label = OutlinedLabel("")
         self.song_info_label.setAlignment(Qt.AlignCenter)
@@ -68,9 +69,14 @@ class LyricsOverlay(QWidget):
         self.next_label.setAlignment(Qt.AlignCenter)
         self.next_label.setStyleSheet("background: transparent;")
 
+        for lbl in (self.song_info_label, self.curr_label, self.next_label):
+            lbl.shadow = True
+        self.song_info_label.letter_spacing = 104.0
+        self.frame_layout.addStretch(1)
         self.frame_layout.addWidget(self.song_info_label)
         self.frame_layout.addWidget(self.curr_label)
         self.frame_layout.addWidget(self.next_label)
+        self.frame_layout.addStretch(1)
 
         self.setGeometry(
             self.config.x, self.config.y, self.config.width, self.config.height
@@ -115,18 +121,20 @@ class LyricsOverlay(QWidget):
 
     def _update_bg_style(self) -> None:
         c = self.bg_color
+        a = max(c.alpha(), 90) if self.editing else c.alpha()
+        # 위쪽이 조금 더 밝고 아래로 갈수록 진해지는 은은한 그라데이션 + 얇은 테두리로 유리판처럼.
+        lighter = c.lighter(135)
+        top = f"rgba({lighter.red()}, {lighter.green()}, {lighter.blue()}, {min(255, int(a * 0.92))})"
+        bottom = f"rgba({c.red()}, {c.green()}, {c.blue()}, {a})"
         if self.editing:
-            # 편집 중엔 배경이 투명해도 영역이 보이도록 점선 테두리와 최소 배경을 깝니다.
             border = "2px dashed #8B7BFF"
-            alpha = max(c.alpha(), 90)
         else:
-            border = f"1px solid rgba(255, 255, 255, {min(70, c.alpha() // 3 + 10)})"
-            alpha = c.alpha()
+            border = f"1px solid rgba(255, 255, 255, {min(60, a // 4 + 8)})"
         self.bg_frame.setStyleSheet(
             f"""
             QFrame#LyricsBgFrame {{
-                background-color: rgba({c.red()}, {c.green()}, {c.blue()}, {alpha});
-                border-radius: 18px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {top}, stop:1 {bottom});
+                border-radius: 20px;
                 border: {border};
             }}
             """
@@ -154,13 +162,17 @@ class LyricsOverlay(QWidget):
         out_color: QColor = settings.get("out_color", self.curr_label.outline_color)
         out_width: int = settings.get("out_width", self.curr_label.outline_width)
 
-        self.curr_label.set_style(font, text_color, out_color, out_width)
+
+        curr_font = QFont(font)
+        curr_font.setWeight(QFont.Bold)
+        self.curr_label.set_style(curr_font, text_color, out_color, out_width)
 
         next_font = QFont(font)
-        next_font.setPointSize(max(8, font.pointSize() - 6))
+        next_font.setPointSize(max(8, round(font.pointSize() * 0.68)))
+        next_font.setWeight(QFont.Medium)
         self.next_label.set_style(
             next_font,
-            QColor(text_color.red(), text_color.green(), text_color.blue(), 180),
+            QColor(text_color.red(), text_color.green(), text_color.blue(), 165),
             out_color,
             max(0, out_width - 1),
         )
@@ -179,7 +191,8 @@ class LyricsOverlay(QWidget):
 
         # 곡 정보 레이블 폰트 (curr 보다 작게)
         info_font = QFont(font)
-        info_font.setPointSize(max(7, font.pointSize() - 8))
+        info_font.setPointSize(max(7, round(font.pointSize() * 0.52)))
+        info_font.setWeight(QFont.DemiBold)
         self.song_info_label.set_style(
             info_font,
             QColor(text_color.red(), text_color.green(), text_color.blue(), 160),
@@ -334,7 +347,7 @@ class LyricsOverlay(QWidget):
     def update_song_info(self, title: str, artist: str) -> None:
         """오버레이에 제목/가수 정보를 설정합니다."""
         if title or artist:
-            text = f"🎵  {title}  \u2014  {artist} 🎵" if title and artist else (title or artist)
+            text = f"{title}  ·  {artist}" if title and artist else (title or artist)
         else:
             text = ""
         if self.editing:
