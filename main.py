@@ -411,12 +411,10 @@ async def main() -> None:
                             "roi",
                         )
 
-                    fixed_lines: list[str] = []
-                    for line in lines:
-                        fixed_text, status = matcher.get_best_match(line, target_win.title)
-                        if status:
-                            add_log(status)
-                        fixed_lines.append(fixed_text)
+                    # 현재 줄·다음 줄을 함께 보정 (곡 안의 위치를 고려)
+                    fixed_lines, statuses = matcher.match_lines(lines, target_win.title)
+                    for status in statuses:
+                        add_log(status)
 
                     curr = fixed_lines[0] if len(fixed_lines) > 0 else "..."
                     nxt = fixed_lines[1] if len(fixed_lines) > 1 else ""
