@@ -156,6 +156,13 @@ async def main() -> None:
     window.setting_page.settings_changed.connect(window.update_overlay)
     window.setting_page.hotkeys_changed.connect(refresh_hotkeys)
     refresh_hotkeys()
+
+    # 재생 버튼 (대시보드 / 오버레이)
+    media_labels = {"prev": "이전 곡", "play_pause": "재생/일시정지", "next": "다음 곡"}
+    def on_media_action(key: str) -> None:
+        add_log(f"미디어 제어: {media_labels.get(key, key)}")
+    window.dashboard_page.media_controls.action_triggered.connect(on_media_action)
+    overlay.media_controls.action_triggered.connect(on_media_action)
     
     # 대시보드 통계 초기 업데이트
     window.dashboard_page.update_stats(session_stats, persistent_stats.get("play_history", []))
@@ -202,12 +209,14 @@ async def main() -> None:
             if is_ghost_mode != overlay_mode:
                 overlay.set_ghost_mode(is_ghost_mode)
                 overlay_mode = is_ghost_mode
+            # 멜론 창은 '고스트 모드 + 멜론 창 숨기기'일 때만 투명하게 만듭니다.
+            hide_melon = is_ghost_mode and config_manager.hide_melon_window
 
             # 멜론 프로세스의 창만 대상으로 삼습니다 (다른 프로그램 창을 건드리지 않도록).
             target_win = find_melon_window()
             now = time.monotonic()
 
-            if target_win is None and applied_hwnd is not None and not is_ghost_mode:
+            if target_win is None and applied_hwnd is not None and not hide_melon:
                 # 멜론이 최소화되거나 숨겨진 상태에서 일반 모드로 바꾼 경우
                 if style_guard.restore(applied_hwnd):
                     applied_hwnd, applied_mode = None, None
@@ -216,14 +225,14 @@ async def main() -> None:
                 hwnd = target_win.hwnd
 
                 # 대상 창이나 모드가 바뀌었으면 창 스타일 적용 (실패하면 5초 뒤 재시도)
-                if (hwnd != applied_hwnd or is_ghost_mode != applied_mode) and now >= style_retry_at:
+                if (hwnd != applied_hwnd or hide_melon != applied_mode) and now >= style_retry_at:
                     ok = True
                     if applied_hwnd is not None and hwnd != applied_hwnd:
                         ok = style_guard.restore(applied_hwnd)
-                    ok = style_guard.set_ghost(hwnd, is_ghost_mode) and ok
+                    ok = style_guard.set_ghost(hwnd, hide_melon) and ok
                     if ok:
-                        applied_hwnd, applied_mode = hwnd, is_ghost_mode
-                        add_log(f"창 스타일 변경 완료: {'고스트' if is_ghost_mode else '일반'}")
+                        applied_hwnd, applied_mode = hwnd, hide_melon
+                        add_log(f"멜론 창: {'숨김' if hide_melon else '표시'}")
                     else:
                         style_retry_at = now + 5.0
                         add_log("창 스타일 변경 실패 (5초 뒤 재시도)")
