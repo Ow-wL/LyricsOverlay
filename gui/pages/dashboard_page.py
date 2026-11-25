@@ -59,10 +59,14 @@ class DashboardPage(QWidget):
         lyrics_vbox.addWidget(label("지금 재생 중", "SectionLabel"))
         self.song_title = label("재생 중인 곡이 없어요", "CardTitle", "font-size: 19px; font-weight: 800;")
         self.song_artist = label("멜론에서 음악을 재생하면 여기에 표시됩니다", "Secondary")
+        # 곡 정보와 가사는 외부(창 제목·웹)에서 온 문자열이므로 HTML로 해석하지 않습니다.
+        for lbl in (self.song_title, self.song_artist):
+            lbl.setTextFormat(Qt.PlainText)
         lyrics_vbox.addWidget(self.song_title)
         lyrics_vbox.addWidget(self.song_artist)
 
         self.curr_lyric = QLabel("가사를 기다리는 중…")
+        self.curr_lyric.setTextFormat(Qt.PlainText)
         self.curr_lyric.setAlignment(Qt.AlignCenter)
         self.curr_lyric.setWordWrap(True)
         self.curr_lyric.setStyleSheet("font-size: 24px; font-weight: 700; padding: 8px 0;")

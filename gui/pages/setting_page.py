@@ -606,13 +606,14 @@ class SettingPage(QWidget):
             self, "스타일 가져오기", "", "JSON Files (*.json)"
         )
         if file_path:
-            if self.config.import_styles(file_path):
-                QMessageBox.information(self, "성공", "스타일을 성공적으로 가져왔습니다.")
+            count = self.config.import_styles(file_path)
+            if count:
+                QMessageBox.information(self, "가져오기 완료", f"프리셋 {count}개를 '내 프리셋'으로 가져왔습니다.")
                 self._update_preset_list()
                 self.refresh_ui_from_config()
                 self.settings_changed.emit()
             else:
-                QMessageBox.critical(self, "오류", "스타일 가져오기에 실패했습니다.")
+                QMessageBox.critical(self, "가져오기 실패", "올바른 프리셋 파일이 아니거나, 쓸 수 있는 프리셋이 없습니다.")
 
     def _export_styles_dialog(self) -> None:
         file_path, _ = QFileDialog.getSaveFileName(

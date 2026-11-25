@@ -228,7 +228,14 @@ class WindowStyleGuard:
             return 0
         try:
             with open(self._state_path, "r", encoding="utf-8") as f:
-                saved = {int(k): v for k, v in json.load(f).items()}
+                saved = {
+                    int(k): v for k, v in json.load(f).items()
+                    if isinstance(v, dict) and isinstance(v.get("exstyle"), int)
+                    and (v.get("layered") is None or (
+                        isinstance(v.get("layered"), list) and len(v["layered"]) == 3
+                        and all(isinstance(x, int) for x in v["layered"])
+                    ))
+                }
         except Exception as e:
             print(f"[⚠️] 창 상태 기록을 읽지 못했습니다: {e}")
             return 0
@@ -251,6 +258,7 @@ class WindowStyleGuard:
         ident = get_window_identity(hwnd)
         return (
             ident is not None
+            and ident.is_melon  # 기록 파일이 바뀌어도 멜론이 아닌 창은 절대 건드리지 않습니다
             and ident.pid == original.get("pid")
             and ident.created == original.get("created")
             and ident.exe == original.get("exe")
