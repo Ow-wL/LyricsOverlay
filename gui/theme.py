@@ -1,123 +1,122 @@
-"""테마 설정: UIConfig, Theme, ThemeManager."""
+"""테마 설정: UIConfig(글꼴 크기 등 공통 값), Theme(라이트/다크 색상 토큰), ThemeManager.
+
+디자인 방향: 오로라 그라데이션 배경 위에 반투명 '유리' 패널을 올리는 글래스모피즘.
+색상은 모두 이 파일의 토큰에서 가져오고, 위젯에는 색을 직접 적지 않습니다.
+"""
 
 
 class UIConfig:
-    # ----- Sidebar Icons -----
-    ICON_COLOR_DASHBOARD = "#F17979"
-    ICON_COLOR_MUSIC = "#7EEFA4"
-    ICON_COLOR_STATS = "#FFB74D"
-    ICON_COLOR_SETTINGS = "#75EDF1"
-
-    # ----- Common Styles -----
-    COLOR_SECONDARY_TEXT = "#828282"
-    COLOR_SHADOW = (0, 0, 0, 20)  # RGBA tuple
-
-    # ----- Light Theme (Apple Minimalist) -----
-    LIGHT_BG_MAIN = "#F5F5F7"
-    LIGHT_BG_SIDEBAR = "#FFFFFF"
-    LIGHT_BG_CARD = "#FFFFFF"
-    LIGHT_BORDER = "#E5E5EA"
-    LIGHT_TEXT_PRIMARY = "#1D1D1F"
-    LIGHT_TEXT_SECONDARY = "#86868B"
-    LIGHT_ACCENT = "#0066CC"
-    LIGHT_ACCENT_HOVER = "#0050A1"
-
-    LIGHT_SB_NORMAL_TEXT = "#86868B"
-    LIGHT_SB_ACTIVE_BG = "#F5F5F7"
-    LIGHT_SB_ACTIVE_TEXT = "#1D1D1F"
-    LIGHT_SB_HOVER_BG = "#F2F2F7"
-    LIGHT_BTN_BG = "#FFFFFF"
-    LIGHT_BTN_TEXT = "#1D1D1F"
-    LIGHT_BTN_BORDER = "#E5E5EA"
-
-    LIGHT_LIST_SEL_BG = "#E5F1FF"
-    LIGHT_LIST_SEL_TEXT = "#0066CC"
-
-    LIGHT_FONT_BTN_BG = "#0066CC"
-    LIGHT_FONT_BTN_TEXT = "#FFFFFF"
-
-    # ----- Dark Theme (VS Code / Discord Style) -----
-    DARK_BG_MAIN = "#1E1E1E"
-    DARK_BG_SIDEBAR = "#252526"
-    DARK_BG_CARD = "#252526"
-    DARK_BORDER = "#333333"
-    DARK_TEXT_PRIMARY = "#E1E1E1"
-    DARK_TEXT_SECONDARY = "#969696"
-    DARK_ACCENT = "#007ACC"
-    DARK_ACCENT_HOVER = "#005A9E"
-
-    DARK_SB_NORMAL_TEXT = "#969696"
-    DARK_SB_ACTIVE_BG = "#37373D"
-    DARK_SB_ACTIVE_TEXT = "#FFFFFF"
-    DARK_SB_HOVER_BG = "#2D2D30"
-    DARK_BTN_BG = "#252526"
-    DARK_BTN_TEXT = "#E1E1E1"
-    DARK_BTN_BORDER = "#333333"
-
-    DARK_LIST_SEL_BG = "#04395E"
-    DARK_LIST_SEL_TEXT = "#FFFFFF"
-
-    DARK_FONT_BTN_BG = "#007ACC"
-    DARK_FONT_BTN_TEXT = "#FFFFFF"
-
     # ----- Font Sizes -----
-    FS_HEADER_MAIN = "36px"
-    FS_SIDEBAR_TITLE = "26px"
-    FS_TITLE_L = "22px"
-    FS_TITLE_M = "20px"
-    FS_TITLE_S = "18px"
-    FS_DESC = "15px"
-    FS_BODY = "16px"
-    FS_LIST = "15px"
-    FS_BUTTON = "14px"
-    FS_THEME_BUTTON = "15px"
-    FS_SIDEBAR_BTN = "17px"
-    FS_CHECKBOX = "15px"
+    FS_HEADER_MAIN = "30px"
+    FS_SIDEBAR_TITLE = "18px"
+    FS_TITLE_L = "20px"
+    FS_TITLE_M = "18px"
+    FS_TITLE_S = "15px"
+    FS_DESC = "13px"
+    FS_BODY = "14px"
+    FS_LIST = "14px"
+    FS_BUTTON = "13px"
+    FS_THEME_BUTTON = "13px"
+    FS_SIDEBAR_BTN = "14px"
+    FS_CHECKBOX = "14px"
+
+    # ----- 이전 코드 호환용 -----
+    COLOR_SECONDARY_TEXT = "#6B7090"
+    LIGHT_BORDER = "#E3E5F0"
+
+    # ----- 레이아웃 -----
+    RADIUS_CARD = 18
+    RADIUS_CONTROL = 10
+
+
+def _rgba(r: int, g: int, b: int, a: float) -> str:
+    """QSS용 rgba 문자열 (알파는 0~1 → 0~255 정수)."""
+    return f"rgba({r}, {g}, {b}, {round(a * 255)})"
 
 
 class Theme:
     LIGHT = {
-        "bg_main": UIConfig.LIGHT_BG_MAIN,
-        "bg_sidebar": UIConfig.LIGHT_BG_SIDEBAR,
-        "bg_card": UIConfig.LIGHT_BG_CARD,
-        "border": UIConfig.LIGHT_BORDER,
-        "text_primary": UIConfig.LIGHT_TEXT_PRIMARY,
-        "text_secondary": UIConfig.LIGHT_TEXT_SECONDARY,
-        "accent": UIConfig.LIGHT_ACCENT,
-        "accent_hover": UIConfig.LIGHT_ACCENT_HOVER,
-        "sb_normal_text": UIConfig.LIGHT_SB_NORMAL_TEXT,
-        "sb_active_bg": UIConfig.LIGHT_SB_ACTIVE_BG,
-        "sb_active_text": UIConfig.LIGHT_SB_ACTIVE_TEXT,
-        "sb_hover_bg": UIConfig.LIGHT_SB_HOVER_BG,
-        "btn_bg": UIConfig.LIGHT_BTN_BG,
-        "btn_text": UIConfig.LIGHT_BTN_TEXT,
-        "btn_border": UIConfig.LIGHT_BTN_BORDER,
-        "btn_font_bg": UIConfig.LIGHT_FONT_BTN_BG,
-        "btn_font_text": UIConfig.LIGHT_FONT_BTN_TEXT,
-        "list_sel_bg": UIConfig.LIGHT_LIST_SEL_BG,
-        "list_sel_text": UIConfig.LIGHT_LIST_SEL_TEXT,
+        "name": "light",
+        # 배경: 기본 그라데이션 + 은은한 색 번짐(blob)
+        "bg_top": "#F1F2FA",
+        "bg_bottom": "#E9ECF7",
+        "blobs": [  # (x 비율, y 비율, 반지름 비율, 색, 알파)
+            (0.12, 0.10, 0.55, "#B9A8FF", 0.55),
+            (0.88, 0.18, 0.50, "#9CC7FF", 0.50),
+            (0.70, 0.95, 0.60, "#FFC4E1", 0.45),
+        ],
+        # 유리 패널
+        "glass": _rgba(255, 255, 255, 0.50),
+        "glass_strong": _rgba(255, 255, 255, 0.74),
+        "glass_border": _rgba(255, 255, 255, 0.90),
+        "glass_hover": _rgba(255, 255, 255, 0.80),
+        "glass_pressed": _rgba(255, 255, 255, 0.95),
+        "hairline": _rgba(30, 34, 80, 0.08),
+        "track": _rgba(30, 34, 80, 0.12),
+        "shadow": (60, 60, 120, 30),
+        # 글자
+        "text_primary": "#16182C",
+        "text_secondary": "#5C6180",
+        "text_tertiary": "#8C90AA",
+        "text_on_accent": "#FFFFFF",
+        # 강조색 (보라 → 파랑 그라데이션)
+        "accent": "#6C5CF6",
+        "accent_2": "#3E8BFF",
+        "accent_hover": "#5A4AE8",
+        "accent_soft": _rgba(108, 92, 246, 0.13),
+        "accent_soft_strong": _rgba(108, 92, 246, 0.22),
+        # 입력칸·대화상자처럼 불투명해야 하는 곳
+        "input_bg": _rgba(255, 255, 255, 0.78),
+        "solid_bg": "#F5F6FC",
+        "solid_card": "#FFFFFF",
+        "selection": _rgba(108, 92, 246, 0.16),
+        "danger": "#E5484D",
     }
     DARK = {
-        "bg_main": UIConfig.DARK_BG_MAIN,
-        "bg_sidebar": UIConfig.DARK_BG_SIDEBAR,
-        "bg_card": UIConfig.DARK_BG_CARD,
-        "border": UIConfig.DARK_BORDER,
-        "text_primary": UIConfig.DARK_TEXT_PRIMARY,
-        "text_secondary": UIConfig.DARK_TEXT_SECONDARY,
-        "accent": UIConfig.DARK_ACCENT,
-        "accent_hover": UIConfig.DARK_ACCENT_HOVER,
-        "sb_normal_text": UIConfig.DARK_SB_NORMAL_TEXT,
-        "sb_active_bg": UIConfig.DARK_SB_ACTIVE_BG,
-        "sb_active_text": UIConfig.DARK_SB_ACTIVE_TEXT,
-        "sb_hover_bg": UIConfig.DARK_SB_HOVER_BG,
-        "btn_bg": UIConfig.DARK_BTN_BG,
-        "btn_text": UIConfig.DARK_BTN_TEXT,
-        "btn_border": UIConfig.DARK_BTN_BORDER,
-        "btn_font_bg": UIConfig.DARK_FONT_BTN_BG,
-        "btn_font_text": UIConfig.DARK_FONT_BTN_TEXT,
-        "list_sel_bg": UIConfig.DARK_LIST_SEL_BG,
-        "list_sel_text": UIConfig.DARK_LIST_SEL_TEXT,
+        "name": "dark",
+        "bg_top": "#0D0E1A",
+        "bg_bottom": "#0A0B14",
+        "blobs": [
+            (0.10, 0.08, 0.55, "#6D3BFF", 0.42),
+            (0.92, 0.22, 0.50, "#1F6FFF", 0.34),
+            (0.65, 1.00, 0.60, "#C2307E", 0.26),
+        ],
+        "glass": _rgba(255, 255, 255, 0.055),
+        "glass_strong": _rgba(255, 255, 255, 0.095),
+        "glass_border": _rgba(255, 255, 255, 0.13),
+        "glass_hover": _rgba(255, 255, 255, 0.11),
+        "glass_pressed": _rgba(255, 255, 255, 0.16),
+        "hairline": _rgba(255, 255, 255, 0.08),
+        "track": _rgba(255, 255, 255, 0.14),
+        "shadow": (0, 0, 0, 110),
+        "text_primary": "#ECEDF8",
+        "text_secondary": "#A4A8C4",
+        "text_tertiary": "#6F7391",
+        "text_on_accent": "#FFFFFF",
+        "accent": "#8B7BFF",
+        "accent_2": "#4D93FF",
+        "accent_hover": "#9D8FFF",
+        "accent_soft": _rgba(139, 123, 255, 0.16),
+        "accent_soft_strong": _rgba(139, 123, 255, 0.28),
+        "input_bg": _rgba(255, 255, 255, 0.07),
+        "solid_bg": "#14152A",
+        "solid_card": "#1C1D35",
+        "selection": _rgba(139, 123, 255, 0.24),
+        "danger": "#FF6B70",
     }
+
+
+# 직접 그리는 위젯(차트, 프리셋 타일 등)이 현재 테마 색을 읽을 수 있게 보관합니다.
+_active_theme: dict = Theme.LIGHT
+
+
+def active() -> dict:
+    return _active_theme
+
+
+def set_active(theme: dict) -> None:
+    global _active_theme
+    _active_theme = theme
 
 
 class ThemeManager:
@@ -126,6 +125,6 @@ class ThemeManager:
 
     def toggle_theme(self) -> dict:
         self.current_theme = (
-            Theme.DARK if self.current_theme == Theme.LIGHT else Theme.LIGHT
+            Theme.DARK if self.current_theme is Theme.LIGHT else Theme.LIGHT
         )
         return self.current_theme

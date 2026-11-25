@@ -17,8 +17,9 @@ from PySide6.QtWidgets import (  # type: ignore
     QWidget,
 )
 
-from gui.theme import UIConfig
+from gui import icons
 from gui.widgets.card import Card
+from gui.widgets.glass import SegmentedControl, label, page_header
 
 # matplotlib 폰트 설정 제거됨
 
@@ -35,7 +36,7 @@ class DetailListDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
 
         header = QLabel(title)
-        header.setStyleSheet("font-size: 20px; font-weight: 800; margin-bottom: 10px;")
+        header.setStyleSheet("font-size: 20px; font-weight: 800; margin-bottom: 6px;")
         layout.addWidget(header)
 
         self.list_widget = QListWidget()
@@ -70,90 +71,68 @@ class StatsPage(QWidget):
         self.view_mode = "daily"  # "daily" | "weekly" | "monthly"
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(60, 60, 60, 60)
-        layout.setSpacing(32)
+        layout.setContentsMargins(28, 14, 28, 6)
+        layout.setSpacing(20)
 
         # 헤더 + 뷰 모드 선택
         header_layout = QHBoxLayout()
-        header = QLabel("음악 감상 통계")
-        header.setObjectName("PageHeader")
-        header.setStyleSheet(
-            f"font-size: {UIConfig.FS_HEADER_MAIN}; font-weight: 900;"
-        )
-        header_layout.addWidget(header)
+        header_layout.addWidget(page_header("통계", "언제, 무엇을 많이 들었는지 살펴보세요"))
         header_layout.addStretch()
-
-        view_group = QHBoxLayout()
-        view_group.setSpacing(8)
-        self.btn_daily = QPushButton("일별")
-        self.btn_weekly = QPushButton("주별")
-        self.btn_monthly = QPushButton("월별")
-        for btn in [self.btn_daily, self.btn_weekly, self.btn_monthly]:
-            btn.setCheckable(True)
-            btn.setFixedSize(80, 36)
-            btn.setCursor(Qt.PointingHandCursor)
-            view_group.addWidget(btn)
-        self.btn_daily.setChecked(True)
-        self.btn_daily.clicked.connect(lambda: self.change_view("daily"))
-        self.btn_weekly.clicked.connect(lambda: self.change_view("weekly"))
-        self.btn_monthly.clicked.connect(lambda: self.change_view("monthly"))
-        header_layout.addLayout(view_group)
+        self.view_control = SegmentedControl(
+            [("daily", "일별"), ("weekly", "주별"), ("monthly", "월별")], self.view_mode
+        )
+        self.view_control.changed.connect(self.change_view)
+        header_layout.addWidget(self.view_control, 0, Qt.AlignBottom)
         layout.addLayout(header_layout)
 
         # 그래프 카드
         self.graph_card = Card()
         graph_vbox = QVBoxLayout(self.graph_card)
-        graph_vbox.setContentsMargins(24, 24, 24, 24)
-        self.graph_title = QLabel("일별 감상 기록 (최근 7일)")
-        self.graph_title.setStyleSheet(
-            f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 600;"
-        )
-        graph_vbox.addWidget(self.graph_title)
+        graph_vbox.setContentsMargins(24, 20, 24, 14)
+        graph_vbox.setSpacing(6)
+        graph_head = QHBoxLayout()
+        graph_head.addWidget(label(icons.CHART, "IconGlyph", "font-size: 15px;"))
+        graph_head.addSpacing(4)
+        self.graph_title = label("일별 감상 기록 (최근 7일)", "CardTitle")
+        graph_head.addWidget(self.graph_title)
+        graph_head.addStretch()
+        graph_vbox.addLayout(graph_head)
         self.bar_chart = BarChartWidget()
-        graph_vbox.addWidget(self.bar_chart)
-        layout.addWidget(self.graph_card)
+        graph_vbox.addWidget(self.bar_chart, 1)
+        layout.addWidget(self.graph_card, 5)
 
         # 하단: 자주 들은 노래 / 가수
         bottom_layout = QHBoxLayout()
-        bottom_layout.setSpacing(24)
-
-        self.songs_card = Card()
-        songs_vbox = QVBoxLayout(self.songs_card)
-        songs_vbox.setContentsMargins(20, 20, 20, 20)
-        songs_header = QHBoxLayout()
-        songs_title = QLabel("자주 들은 노래")
-        songs_title.setStyleSheet("font-size: 16px; font-weight: 700;")
-        songs_header.addWidget(songs_title)
-        songs_header.addStretch()
-        self.btn_more_songs = QPushButton("자세히 보기")
-        self.btn_more_songs.setFixedSize(90, 28)
-        self.btn_more_songs.setStyleSheet("font-size: 12px; padding: 2px;")
-        self.btn_more_songs.clicked.connect(self._show_more_songs)
-        songs_header.addWidget(self.btn_more_songs)
-        self.top_songs_list = QListWidget()
-        songs_vbox.addLayout(songs_header)
-        songs_vbox.addWidget(self.top_songs_list)
-
-        self.artists_card = Card()
-        artists_vbox = QVBoxLayout(self.artists_card)
-        artists_vbox.setContentsMargins(20, 20, 20, 20)
-        artists_header = QHBoxLayout()
-        artists_title = QLabel("자주 들은 가수")
-        artists_title.setStyleSheet("font-size: 16px; font-weight: 700;")
-        artists_header.addWidget(artists_title)
-        artists_header.addStretch()
-        self.btn_more_artists = QPushButton("자세히 보기")
-        self.btn_more_artists.setFixedSize(90, 28)
-        self.btn_more_artists.setStyleSheet("font-size: 12px; padding: 2px;")
-        self.btn_more_artists.clicked.connect(self._show_more_artists)
-        artists_header.addWidget(self.btn_more_artists)
-        self.top_artists_list = QListWidget()
-        artists_vbox.addLayout(artists_header)
-        artists_vbox.addWidget(self.top_artists_list)
-
+        bottom_layout.setSpacing(18)
+        self.songs_card, self.top_songs_list, self.btn_more_songs = self._ranking_card(
+            icons.MUSIC_NOTE, "자주 들은 노래", self._show_more_songs
+        )
+        self.artists_card, self.top_artists_list, self.btn_more_artists = self._ranking_card(
+            icons.MUSIC, "자주 들은 가수", self._show_more_artists
+        )
         bottom_layout.addWidget(self.songs_card)
         bottom_layout.addWidget(self.artists_card)
-        layout.addLayout(bottom_layout)
+        layout.addLayout(bottom_layout, 4)
+
+    def _ranking_card(self, glyph: str, title: str, on_more):
+        card = Card()
+        vbox = QVBoxLayout(card)
+        vbox.setContentsMargins(20, 18, 20, 12)
+        vbox.setSpacing(6)
+        head = QHBoxLayout()
+        head.addWidget(label(glyph, "IconGlyph", "font-size: 15px;"))
+        head.addSpacing(4)
+        head.addWidget(label(title, "CardTitle"))
+        head.addStretch()
+        more = QPushButton("전체 보기")
+        more.setObjectName("LinkButton")
+        more.setCursor(Qt.PointingHandCursor)
+        more.clicked.connect(on_more)
+        head.addWidget(more)
+        vbox.addLayout(head)
+        lst = QListWidget()
+        vbox.addWidget(lst)
+        return card, lst, more
 
     # ------------------------------------------------------------------ #
     # 뷰 전환
@@ -161,9 +140,7 @@ class StatsPage(QWidget):
 
     def change_view(self, mode: str) -> None:
         self.view_mode = mode
-        self.btn_daily.setChecked(mode == "daily")
-        self.btn_weekly.setChecked(mode == "weekly")
-        self.btn_monthly.setChecked(mode == "monthly")
+        self.view_control.set_current(mode)
         self.update_stats(self.play_history, self.theme_mode)
 
     # ------------------------------------------------------------------ #
@@ -199,6 +176,7 @@ class StatsPage(QWidget):
         self.play_history = play_history
         self.theme_mode = theme_mode
         if not play_history:
+            self.bar_chart.set_data([], [], theme_mode)
             return
 
         today = datetime.now().date()
@@ -264,9 +242,9 @@ class StatsPage(QWidget):
             [f"{e['title']} - {e['artist']}" for e in play_history]
         )
         self.top_songs_list.clear()
-        for song, count in song_counts.most_common(5):
-            item = QListWidgetItem(f"{song} ({count}회)")
-            item.setSizeHint(QSize(0, 40))
+        for rank, (song, count) in enumerate(song_counts.most_common(5), 1):
+            item = QListWidgetItem(f"{rank}   {song}  ·  {count}회")
+            item.setSizeHint(QSize(0, 36))
             self.top_songs_list.addItem(item)
 
         # TOP 5 가수
@@ -274,7 +252,7 @@ class StatsPage(QWidget):
             [e["artist"] for e in play_history if e["artist"] != "Unknown"]
         )
         self.top_artists_list.clear()
-        for artist, count in artist_counts.most_common(5):
-            item = QListWidgetItem(f"{artist} ({count}회)")
-            item.setSizeHint(QSize(0, 40))
+        for rank, (artist, count) in enumerate(artist_counts.most_common(5), 1):
+            item = QListWidgetItem(f"{rank}   {artist}  ·  {count}회")
+            item.setSizeHint(QSize(0, 36))
             self.top_artists_list.addItem(item)

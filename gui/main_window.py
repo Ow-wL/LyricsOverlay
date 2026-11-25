@@ -1,23 +1,26 @@
-"""메인 윈도우 — 사이드바 + 페이지 스택."""
+"""메인 윈도우 — 떠 있는 유리 사이드바 + 페이지 스택."""
 
+import ctypes
 import os
 import sys
 
-from PySide6.QtCore import Qt, Signal  # type: ignore
-from PySide6.QtGui import QFont, QFontDatabase, QIcon  # type: ignore
+from PySide6.QtCore import QRectF, Qt, Signal  # type: ignore
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QLinearGradient, QPainter  # type: ignore
 from PySide6.QtWidgets import (  # type: ignore
     QApplication,
-    QFrame,
     QHBoxLayout,
-    QLabel,
     QMainWindow,
-    QPushButton,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from gui.theme import Theme, ThemeManager, UIConfig
+from gui import icons
+from gui import theme as theme_mod
+from gui.style import build_stylesheet
+from gui.theme import Theme, ThemeManager
+from gui.widgets.card import Card
+from gui.widgets.glass import GlassBackground, NavButton, ToggleSwitch, label
 from gui.pages.dashboard_page import DashboardPage
 from gui.pages.music_list_page import MusicListPage
 from gui.pages.stats_page import StatsPage
@@ -28,23 +31,27 @@ from overlay.lyrics_overlay import LyricsOverlay
 from core.utils import resource_path
 
 
-class SidebarButton(QPushButton):
-    """사이드바 내비게이션 버튼."""
+class BrandMark(QWidget):
+    """사이드바 상단의 작은 로고 (그라데이션 사각형 + 음표)."""
 
-    def __init__(self, text: str, icon_color: str = "#000000", parent=None):
-        super().__init__(text, parent)
-        self.setCheckable(True)
-        self.setMinimumHeight(55)
-        self.setCursor(Qt.PointingHandCursor)
+    def __init__(self, size: int = 38, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(size, size)
 
-        self.icon_circle = QFrame(self)
-        self.icon_circle.setFixedSize(16, 16)
-        self.icon_circle.setStyleSheet(
-            f"background-color: {icon_color}; border-radius: 8px; border: none;"
-        )
-        self.icon_circle.move(20, 19)
-        self.icon_circle.setAttribute(Qt.WA_TransparentForMouseEvents)
-        self.setContentsMargins(50, 0, 0, 0)
+    def paintEvent(self, event) -> None:
+        t = theme_mod.active()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        r = QRectF(self.rect())
+        grad = QLinearGradient(r.topLeft(), r.bottomRight())
+        grad.setColorAt(0, QColor(t["accent"]))
+        grad.setColorAt(1, QColor(t["accent_2"]))
+        p.setPen(Qt.NoPen)
+        p.setBrush(grad)
+        p.drawRoundedRect(r, 11, 11)
+        p.setPen(QColor("#FFFFFF"))
+        p.setFont(icons.icon_font(18))
+        p.drawText(r, Qt.AlignCenter, icons.MUSIC)
 
 
 class MainWindow(QMainWindow):
@@ -68,6 +75,7 @@ class MainWindow(QMainWindow):
         self.theme_manager = ThemeManager()
         if initial_theme == "dark":
             self.theme_manager.current_theme = Theme.DARK
+        theme_mod.set_active(self.theme_manager.current_theme)
 
         self.app_config = app_config
         self.config_manager = OverlayConfigManager(app_config.data_dir)
@@ -88,49 +96,71 @@ class MainWindow(QMainWindow):
             for font_file in os.listdir(font_dir):
                 if font_file.endswith(".ttf"):
                     QFontDatabase.addApplicationFont(os.path.join(font_dir, font_file))
-        font = QFont("Pretendard", 10)
-        font.setStyleStrategy(QFont.PreferAntialias | QFont.PreferQuality)
+        font = QFont("Pretendard")
+        font.setPixelSize(14)
+        font.setStyleStrategy(
+            QFont.PreferAntialias | QFont.PreferQuality | QFont.NoSubpixelAntialias
+        )
         font.setHintingPreference(QFont.PreferNoHinting)
         QApplication.setFont(font)
 
     def _setup_ui(self) -> None:
-        self.central_widget = QWidget()
+        self.central_widget = GlassBackground()
+        self.central_widget.setObjectName("CentralWidget")
         self.setCentralWidget(self.central_widget)
         main_layout = QHBoxLayout(self.central_widget)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        main_layout.setContentsMargins(18, 18, 0, 18)
+        main_layout.setSpacing(8)
 
-        # 사이드바
-        self.sidebar = QFrame()
+        # ── 사이드바 (떠 있는 유리 패널)
+        self.sidebar = Card()
         self.sidebar.setObjectName("Sidebar")
-        self.sidebar.setFixedWidth(280)
+        self.sidebar.setFixedWidth(232)
         sidebar_layout = QVBoxLayout(self.sidebar)
-        # 사이드바 여백 확대 (숨통 트이게)
-        sidebar_layout.setContentsMargins(24, 40, 24, 40)
-        sidebar_layout.setSpacing(12)
+        sidebar_layout.setContentsMargins(16, 22, 16, 16)
+        sidebar_layout.setSpacing(4)
 
-        menu_label = QLabel("메뉴")
-        menu_label.setObjectName("SidebarMenuLabel")
+        brand = QHBoxLayout()
+        brand.setSpacing(12)
+        brand.setContentsMargins(6, 0, 0, 0)
+        brand.addWidget(BrandMark())
+        brand_text = QVBoxLayout()
+        brand_text.setSpacing(0)
+        brand_text.addWidget(label("Lyrics Overlay", "BrandName"))
+        brand_text.addWidget(label("실시간 가사 오버레이", "Tertiary", "font-size: 12px;"))
+        brand.addLayout(brand_text)
+        brand.addStretch()
+        sidebar_layout.addLayout(brand)
+        sidebar_layout.addSpacing(28)
+
+        menu_label = label("메뉴", "SectionLabel")
+        menu_label.setContentsMargins(10, 0, 0, 6)
         sidebar_layout.addWidget(menu_label)
 
-        self.btn_dashboard = SidebarButton("대시보드  🏠", UIConfig.ICON_COLOR_DASHBOARD)
-        self.btn_music = SidebarButton("감상 기록  🎵", UIConfig.ICON_COLOR_MUSIC)
-        self.btn_stats = SidebarButton("통계  📊", UIConfig.ICON_COLOR_STATS)
-        self.btn_settings = SidebarButton("설정  ⚙️", UIConfig.ICON_COLOR_SETTINGS)
-        self.btn_info = SidebarButton("정보  ℹ️", "#777777")
-
+        self.btn_dashboard = NavButton(icons.HOME, "대시보드")
+        self.btn_music = NavButton(icons.PLAYLIST, "감상 기록")
+        self.btn_stats = NavButton(icons.CHART, "통계")
+        self.btn_settings = NavButton(icons.SETTINGS, "설정")
+        self.btn_info = NavButton(icons.INFO, "정보")
         for btn in [self.btn_dashboard, self.btn_music, self.btn_stats, self.btn_settings, self.btn_info]:
             sidebar_layout.addWidget(btn)
         sidebar_layout.addStretch()
 
-        self.btn_theme = QPushButton("🌓  테마 전환")
-        self.btn_theme.setObjectName("ThemeButton")
-        self.btn_theme.setMinimumHeight(50)
-        self.btn_theme.setCursor(Qt.PointingHandCursor)
-        self.btn_theme.clicked.connect(self.toggle_theme)
-        sidebar_layout.addWidget(self.btn_theme)
+        # 테마 전환 스위치
+        theme_row = QHBoxLayout()
+        theme_row.setContentsMargins(12, 10, 6, 4)
+        self.theme_glyph = label(icons.MOON, "IconGlyph", "font-size: 15px;")
+        theme_row.addWidget(self.theme_glyph)
+        theme_row.addSpacing(6)
+        theme_row.addWidget(label("다크 모드", "Secondary", "font-weight: 600;"))
+        theme_row.addStretch()
+        self.theme_switch = ToggleSwitch()
+        self.theme_switch.setChecked(self.theme_manager.current_theme is Theme.DARK)
+        self.theme_switch.toggled.connect(self._on_theme_switch)
+        theme_row.addWidget(self.theme_switch)
+        sidebar_layout.addLayout(theme_row)
 
-        # 콘텐츠 스택
+        # ── 콘텐츠 스택
         self.content_stack = QStackedWidget()
         self.dashboard_page = DashboardPage(self.config_manager)
         self.music_page = MusicListPage()
@@ -147,7 +177,7 @@ class MainWindow(QMainWindow):
         self.content_stack.addWidget(self.info_page)        # index 4
 
         main_layout.addWidget(self.sidebar)
-        main_layout.addWidget(self.content_stack)
+        main_layout.addWidget(self.content_stack, 1)
 
         self.nav_buttons = [
             self.btn_dashboard, self.btn_music, self.btn_stats, self.btn_settings, self.btn_info
@@ -166,7 +196,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         """메인 윈도우 닫기 이벤트 시 프로그램 전체를 명시적으로 종료합니다."""
         self.window_closed.emit()
-        if hasattr(self, 'overlay') and self.overlay:
+        if hasattr(self, "overlay") and self.overlay:
             self.overlay.close()
         super().closeEvent(event)
 
@@ -180,17 +210,19 @@ class MainWindow(QMainWindow):
         self.content_stack.setCurrentIndex(index)
         # 통계 페이지 전환 시 데이터 업데이트
         if index == 2:
-            theme_mode = (
-                "dark" if self.theme_manager.current_theme == Theme.DARK else "light"
-            )
             self.stats_page.update_stats(
-                self.persistent_stats.get("play_history", []), theme_mode
+                self.persistent_stats.get("play_history", []),
+                self.theme_manager.current_theme["name"],
             )
+
+    def _on_theme_switch(self, checked: bool) -> None:
+        if (self.theme_manager.current_theme is Theme.DARK) != checked:
+            self.toggle_theme()
 
     def toggle_theme(self) -> None:
         new_theme = self.theme_manager.toggle_theme()
         self.apply_theme(new_theme)
-        theme_name = "light" if new_theme == Theme.LIGHT else "dark"
+        theme_name = new_theme["name"]
         self.theme_changed.emit(theme_name)
         if self.content_stack.currentIndex() == 2:
             self.stats_page.update_stats(
@@ -198,210 +230,40 @@ class MainWindow(QMainWindow):
             )
 
     def apply_theme(self, theme: dict) -> None:
-        """전체 위젯에 테마 스타일시트를 적용합니다."""
-        self.central_widget.setObjectName("CentralWidget")
-        style = f"""
-            QWidget {{
-                color: {theme["text_primary"]};
-                font-family: 'Pretendard';
-            }}
-            QMainWindow, QWidget#CentralWidget, QDialog {{
-                background-color: {theme["bg_main"]};
-            }}
-            QFrame#Sidebar {{
-                background-color: {theme["bg_sidebar"]};
-                border-right: 1px solid {theme["border"]};
-            }}
-            QLabel#SidebarMenuLabel {{
-                font-size: {UIConfig.FS_SIDEBAR_TITLE};
-                font-family: 'Pretendard';
-                font-weight: 800;
-                margin-bottom: 24px;
-                padding-left: 16px;
-                color: {theme["text_primary"]};
-                letter-spacing: -0.5px;
-                background-color: transparent;
-            }}
-            QFrame#Card {{
-                background-color: {theme["bg_card"]};
-                border-radius: 12px;
-                border: 1px solid {theme["border"]};
-            }}
-            QPushButton {{
-                background-color: {theme["btn_bg"]};
-                color: {theme["btn_text"]};
-                border: 1px solid {theme["btn_border"]};
-                border-radius: 8px;
-                padding: 10px 20px;
-                font-weight: 600;
-                font-size: {UIConfig.FS_BUTTON};
-                transition: background-color 0.2s, border 0.2s;
-            }}
-            QPushButton:hover {{
-                background-color: {theme["sb_hover_bg"]};
-                border: 1px solid {theme["accent"]};
-            }}
-            QPushButton:pressed {{
-                background-color: {theme["sb_active_bg"]};
-                border: 1px solid {theme["accent_hover"]};
-            }}
-            QPushButton#ThemeButton {{
-                background-color: {theme["accent"]};
-                color: white;
-                border: none;
-                border-radius: 12px;
-                font-size: {UIConfig.FS_THEME_BUTTON};
-                margin-top: 10px;
-            }}
-            QPushButton#ThemeButton:hover {{
-                background-color: {theme["accent_hover"]};
-            }}
-            QPushButton#ThemeButton:pressed {{
-                background-color: {theme["accent"]};
-            }}
-            SidebarButton {{
-                background-color: transparent;
-                border: none;
-                border-radius: 12px;
-                text-align: left;
-                padding-left: 55px;
-                font-family: 'Pretendard';
-                font-weight: 600;
-                font-size: {UIConfig.FS_SIDEBAR_BTN};
-                color: {theme["sb_normal_text"]};
-                margin: 4px 0px;
-            }}
-            SidebarButton:hover {{
-                background-color: {theme["sb_hover_bg"]};
-                color: {theme["text_primary"]};
-            }}
-            SidebarButton:checked {{
-                background-color: {theme["sb_active_bg"]};
-                color: {theme["sb_active_text"]};
-                font-family: 'Pretendard';
-                font-weight: 800;
-            }}
-            QListWidget {{
-                color: {theme["text_primary"]};
-                background-color: transparent;
-                border: none;
-                font-size: {UIConfig.FS_LIST};
-                outline: none;
-            }}
-            QListWidget::item {{
-                padding: 14px;
-                border-radius: 8px;
-                margin-bottom: 4px;
-            }}
-            QListWidget::item:hover {{
-                background-color: {theme["sb_hover_bg"]};
-            }}
-            QListWidget::item:selected {{
-                background-color: {theme["list_sel_bg"]};
-                color: {theme["list_sel_text"]};
-                font-weight: 700;
-            }}
-            QLabel#PageHeader {{
-                color: {theme["text_primary"]};
-                font-weight: 900;
-                letter-spacing: -1px;
-                margin-bottom: 12px;
-            }}
-            QCheckBox {{
-                spacing: 12px;
-                font-size: {UIConfig.FS_CHECKBOX};
-                font-weight: 500;
-            }}
-            QCheckBox::indicator {{
-                width: 22px;
-                height: 22px;
-                border-radius: 6px;
-                border: 2px solid {theme["btn_border"]};
-                background-color: {theme["bg_card"]};
-            }}
-            QCheckBox::indicator:checked {{
-                background-color: {theme["accent"]};
-                border: 2px solid {theme["accent"]};
-            }}
-            QCheckBox::indicator:hover {{
-                border: 2px solid {theme["accent"]};
-            }}
-            QSlider::horizontal {{
-                min-height: 24px;
-            }}
-            QSlider::groove:horizontal {{
-                border: none;
-                height: 6px;
-                background: {theme["btn_border"]};
-                margin: 0px 0px;
-                border-radius: 3px;
-            }}
-            QSlider::handle:horizontal {{
-                background: {theme["accent"]};
-                border: 2px solid {theme["bg_card"]};
-                width: 16px;
-                height: 16px;
-                margin: -7px 0;
-                border-radius: 10px;
-            }}
-            QSlider::handle:horizontal:hover {{
-                background: {theme["accent_hover"]};
-            }}
-            QScrollArea {{
-                border: none;
-                background: transparent;
-            }}
-            QScrollBar:vertical {{
-                border: none;
-                background: transparent;
-                width: 10px;
-                margin: 0px;
-            }}
-            QScrollBar::handle:vertical {{
-                background: {theme["btn_border"]};
-                min-height: 40px;
-                border-radius: 5px;
-            }}
-            QScrollBar::handle:vertical:hover {{
-                background: {theme["text_secondary"]};
-            }}
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-                height: 0px;
-                border: none;
-                background: none;
-            }}
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
-                background: none;
-            }}
-            QScrollBar:horizontal {{
-                border: none;
-                background: transparent;
-                height: 10px;
-                margin: 0px;
-            }}
-            QScrollBar::handle:horizontal {{
-                background: {theme["btn_border"]};
-                min-width: 40px;
-                border-radius: 5px;
-            }}
-            QScrollBar::handle:horizontal:hover {{
-                background: {theme["text_secondary"]};
-            }}
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
-                width: 0px;
-                border: none;
-                background: none;
-            }}
-            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
-                background: none;
-            }}
-        """
-        self.central_widget.setStyleSheet(style)
+        """테마 토큰으로 스타일시트를 다시 만들고, 직접 그리는 위젯도 갱신합니다."""
+        theme_mod.set_active(theme)
+        self.central_widget.setStyleSheet(build_stylesheet(theme))
+        for card in self.findChildren(Card):
+            card.refresh_theme()
+        self.theme_switch.blockSignals(True)
+        self.theme_switch.setChecked(theme is Theme.DARK)
+        self.theme_switch.blockSignals(False)
+        self.theme_glyph.setText(icons.MOON if theme is Theme.DARK else icons.SUN)
+        self._apply_title_bar(theme)
+        for w in [self.central_widget, *self.central_widget.findChildren(QWidget)]:
+            w.update()
+
+    def _apply_title_bar(self, theme: dict) -> None:
+        """Windows 10/11 제목 표시줄 색을 테마에 맞춥니다 (지원하지 않으면 무시)."""
+        try:
+            hwnd = int(self.winId())
+            dwm = ctypes.windll.dwmapi
+            dark = ctypes.c_int(1 if theme is Theme.DARK else 0)
+            dwm.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(dark), ctypes.sizeof(dark))
+            c = QColor(theme["bg_top"])
+            colorref = ctypes.c_uint(c.red() | (c.green() << 8) | (c.blue() << 16))
+            dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(colorref), ctypes.sizeof(colorref))
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     app = QApplication(sys.argv)
-    win = MainWindow(stats={})
+
+    class _TmpConfig:
+        data_dir = os.getcwd()
+
+    win = MainWindow(stats={}, app_config=_TmpConfig())
     win.show()
     sys.exit(app.exec())
