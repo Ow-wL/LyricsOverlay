@@ -25,8 +25,7 @@ if os.name == 'nt':
         pass
 
 import cv2
-from PySide6.QtCore import QSize  # type: ignore
-from PySide6.QtWidgets import QApplication, QLabel, QListWidgetItem  # type: ignore
+from PySide6.QtWidgets import QApplication  # type: ignore
 
 from core.hotkey_manager import HotkeyManager
 from core.ocr_engine import OCR_HELP, OCR_KOREAN, OCR_STATUS, ocr_available, windows_native_ocr_split
@@ -148,15 +147,7 @@ async def main() -> None:
     instance.activate_requested.connect(window.show_from_tray)
 
     # 히스토리 목록 초기화
-    for entry in persistent_stats.get("play_history", []):
-        full_title = f"{entry['title']} - {entry['artist']}"
-        try:
-            date_part = entry["timestamp"].split(" ")[0][2:].replace("-", ".")
-        except Exception:
-            date_part = entry.get("timestamp", "")
-        item = QListWidgetItem(f"{full_title} ({date_part})")
-        item.setSizeHint(QSize(0, 60))
-        window.music_page.music_list.addItem(item)
+    window.music_page.set_history(persistent_stats.get("play_history", []))
 
     window.show()
 
@@ -307,7 +298,6 @@ async def main() -> None:
                         session_stats["play_count"] += 1
                         title, artist = parse_song_info(current_song_title)
                         timestamp_full = time.strftime("%Y-%m-%d %H:%M:%S")
-                        timestamp_short = time.strftime("%y.%m.%d")
                         
                         current_song_start_time = time.time()
                         current_song_lines = 0
@@ -324,9 +314,7 @@ async def main() -> None:
                         overlay.update_song_info(title, artist)
                         window.dashboard_page.set_now_playing(title, artist)
 
-                        item = QListWidgetItem(f"{current_song_title} ({timestamp_short})")
-                        item.setSizeHint(QSize(0, 60))
-                        window.music_page.music_list.insertItem(0, item)
+                        window.music_page.add_entry(current_song_info)
 
                         persistent_stats["play_history"].insert(0, current_song_info)
                         add_log(f"새로운 곡 감지: {current_song_title}")
