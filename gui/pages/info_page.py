@@ -3,6 +3,7 @@
 from PySide6.QtCore import Qt  # type: ignore
 from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QVBoxLayout, QWidget  # type: ignore
 
+from core.version import APP_VERSION
 from gui import icons
 from gui.widgets.card import Card
 from gui.widgets.glass import divider, icon_chip, label, page_header
@@ -31,7 +32,7 @@ class InfoPage(QWidget):
         name_col = QVBoxLayout()
         name_col.setSpacing(2)
         name_col.addWidget(label("Lyrics Overlay", "", "font-size: 24px; font-weight: 800; letter-spacing: -0.5px;"))
-        name_col.addWidget(label("Version 1.0.1", "Secondary", "font-weight: 600;"))
+        name_col.addWidget(label(f"Version {APP_VERSION}", "Secondary", "font-weight: 600;"))
         app_row.addLayout(name_col)
         app_row.addStretch()
         info_vbox.addLayout(app_row)
