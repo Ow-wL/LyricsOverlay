@@ -53,6 +53,8 @@ class SettingPage(QWidget):
 
     settings_changed = Signal()
     hotkeys_changed = Signal()
+    overlay_edit_requested = Signal()
+    overlay_reset_requested = Signal()
 
     def __init__(self, config_manager: OverlayConfigManager, app_config=None):
         super().__init__()
@@ -302,21 +304,32 @@ class SettingPage(QWidget):
         bl.setSpacing(14)
 
         bl.addLayout(self._toggle_row(
-            "고스트 모드",
-            "오버레이가 마우스 클릭을 통과하도록 설정합니다.",
+            "클릭 통과 (고스트 모드)",
+            "켜면 오버레이 위를 클릭해도 뒤에 있는 창이 눌립니다. 게임·작업 중에 켜 두세요.",
             self.config.ghost_mode, self._on_ghost_toggled, "ghost_check",
         ))
         bl.addWidget(self._hline())
-        bl.addLayout(self._toggle_row(
-            "오버레이 위치 이동",
-            "오버레이를 드래그하여 위치를 변경할 수 있도록 합니다.",
-            self.config.move_enabled, self._on_move_toggled, "move_check",
-        ))
-        bl.addLayout(self._toggle_row(
-            "오버레이 크기 조절",
-            "오버레이 우측 하단을 드래그하여 크기를 조절할 수 있도록 합니다.",
-            self.config.resize_enabled, self._on_resize_toggled, "resize_check",
-        ))
+        pos_row = QHBoxLayout()
+        pos_text = QVBoxLayout()
+        pos_text.setSpacing(2)
+        pos_text.addWidget(self._lbl("위치·크기", UIConfig.FS_TITLE_S, bold=600))
+        pos_desc = self._lbl(
+            "누르면 오버레이를 드래그해서 옮기고 오른쪽 아래 모서리로 크기를 바꿀 수 있어요. "
+            "끝나면 오버레이의 '완료'를 누르세요.",
+            UIConfig.FS_DESC, secondary=True,
+        )
+        pos_desc.setWordWrap(True)
+        pos_text.addWidget(pos_desc)
+        pos_row.addLayout(pos_text, 1)
+        pos_row.addSpacing(12)
+        reset_pos = QPushButton("위치 초기화")
+        reset_pos.clicked.connect(self.overlay_reset_requested.emit)
+        edit_pos = QPushButton("위치·크기 조정")
+        edit_pos.setObjectName("PrimaryButton")
+        edit_pos.clicked.connect(self.overlay_edit_requested.emit)
+        pos_row.addWidget(reset_pos, 0, Qt.AlignVCenter)
+        pos_row.addWidget(edit_pos, 0, Qt.AlignVCenter)
+        bl.addLayout(pos_row)
         bl.addWidget(self._hline())
         bl.addLayout(self._toggle_row(
             "곡 정보 표시",
@@ -676,8 +689,6 @@ class SettingPage(QWidget):
         widgets = [
             (self.overlay_switch, self.config.visible),
             (self.ghost_check, self.config.ghost_mode),
-            (self.move_check, self.config.move_enabled),
-            (self.resize_check, self.config.resize_enabled),
             (self.song_info_check, self.config.show_song_info),
             (self.media_controls_check, self.config.show_media_controls),
             (self.hide_melon_check, self.config.hide_melon_window),
@@ -718,14 +729,6 @@ class SettingPage(QWidget):
 
     def _on_ghost_toggled(self, checked: bool) -> None:
         self.config.set_ghost_mode(checked)
-        self.settings_changed.emit()
-
-    def _on_move_toggled(self, checked: bool) -> None:
-        self.config.set_move_enabled(checked)
-        self.settings_changed.emit()
-
-    def _on_resize_toggled(self, checked: bool) -> None:
-        self.config.set_resize_enabled(checked)
         self.settings_changed.emit()
 
     def _on_show_song_info_toggled(self, checked: bool) -> None:

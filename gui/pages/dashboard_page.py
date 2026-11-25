@@ -1,17 +1,18 @@
 """대시보드 페이지."""
 
-from PySide6.QtCore import Qt  # type: ignore
+from PySide6.QtCore import Qt, Signal  # type: ignore
 from PySide6.QtWidgets import (  # type: ignore
     QHBoxLayout,
     QLabel,
     QListWidget,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
 from gui import icons
 from gui.widgets.card import Card
-from gui.widgets.glass import SegmentedControl, icon_chip, label, page_header
+from gui.widgets.glass import SegmentedControl, ToggleSwitch, icon_chip, label, page_header
 from gui.widgets.media_controls import MediaControls
 from overlay.config_manager import OverlayConfigManager
 
@@ -19,7 +20,13 @@ _VIEW_OPTIONS = [("session", "세션"), ("daily", "오늘"), ("weekly", "이번 
 
 
 class DashboardPage(QWidget):
-    """지금 재생 중인 가사, 감상 요약, 시스템 로그를 보여주는 페이지."""
+    """지금 재생 중인 가사, 감상 요약, 오버레이 빠른 제어를 보여주는 페이지."""
+
+    overlay_visible_toggled = Signal(bool)
+    overlay_ghost_toggled = Signal(bool)
+    overlay_edit_requested = Signal()
+    overlay_reset_requested = Signal()
+    roi_requested = Signal()
 
     def __init__(self, config_manager: OverlayConfigManager):
         super().__init__()
@@ -70,9 +77,14 @@ class DashboardPage(QWidget):
         self.status_detail = label("", "Tertiary", "font-size: 12px;")
         self.status_detail.setWordWrap(True)
         self.status_detail.hide()
+        self.status_action = QPushButton("가사 인식 영역 다시 지정")
+        self.status_action.setCursor(Qt.PointingHandCursor)
+        self.status_action.clicked.connect(self.roi_requested.emit)
+        self.status_action.hide()
         lyrics_vbox.addSpacing(6)
         lyrics_vbox.addWidget(self.status_title)
         lyrics_vbox.addWidget(self.status_detail)
+        lyrics_vbox.addWidget(self.status_action, 0, Qt.AlignLeft)
 
         self.curr_lyric = QLabel("가사를 기다리는 중…")
         self.curr_lyric.setTextFormat(Qt.PlainText)
@@ -86,25 +98,78 @@ class DashboardPage(QWidget):
         self.media_controls = MediaControls("app")
         lyrics_vbox.addWidget(self.media_controls, 0, Qt.AlignHCenter)
 
+        # ── 오른쪽: 오버레이 빠른 제어 + 최근 활동
+        right_col = QVBoxLayout()
+        right_col.setSpacing(18)
+
+        self.overlay_card = Card()
+        oc = QVBoxLayout(self.overlay_card)
+        oc.setContentsMargins(20, 18, 20, 18)
+        oc.setSpacing(12)
+        oc_header = QHBoxLayout()
+        oc_header.addWidget(label("오버레이", "CardTitle"))
+        oc_header.addStretch()
+        oc_header.addWidget(label(icons.MUSIC, "IconGlyph", "font-size: 14px;"))
+        oc.addLayout(oc_header)
+
+        self.visible_switch = ToggleSwitch()
+        self.visible_switch.setChecked(self.config.visible)
+        self.visible_switch.toggled.connect(self.overlay_visible_toggled.emit)
+        oc.addLayout(self._switch_row("화면에 표시", self.visible_switch))
+        self.ghost_switch = ToggleSwitch()
+        self.ghost_switch.setChecked(self.config.ghost_mode)
+        self.ghost_switch.toggled.connect(self.overlay_ghost_toggled.emit)
+        oc.addLayout(self._switch_row("클릭 통과 (고스트 모드)", self.ghost_switch))
+
+        self.edit_btn = QPushButton("위치·크기 조정")
+        self.edit_btn.setObjectName("PrimaryButton")
+        self.edit_btn.setMinimumHeight(38)
+        self.edit_btn.setToolTip("오버레이를 드래그해서 옮기고 모서리로 크기를 바꿉니다. 끝나면 오버레이의 '완료'를 누르세요.")
+        self.edit_btn.clicked.connect(self.overlay_edit_requested.emit)
+        oc.addWidget(self.edit_btn)
+        self.reset_pos_btn = QPushButton("오버레이가 안 보여요 (위치 초기화)")
+        self.reset_pos_btn.setObjectName("LinkButton")
+        self.reset_pos_btn.setCursor(Qt.PointingHandCursor)
+        self.reset_pos_btn.clicked.connect(self.overlay_reset_requested.emit)
+        oc.addWidget(self.reset_pos_btn, 0, Qt.AlignHCenter)
+        right_col.addWidget(self.overlay_card)
+
         self.log_card = Card()
-        self.log_card.setFixedWidth(330)
         log_vbox = QVBoxLayout(self.log_card)
-        log_vbox.setContentsMargins(20, 22, 20, 16)
-        log_vbox.setSpacing(10)
-        log_header = QHBoxLayout()
-        log_header.addWidget(label("시스템 로그", "CardTitle"))
-        log_header.addStretch()
-        log_header.addWidget(label(icons.LIST, "IconGlyph", "font-size: 14px;"))
-        log_vbox.addLayout(log_header)
+        log_vbox.setContentsMargins(20, 16, 20, 12)
+        log_vbox.setSpacing(6)
+        log_vbox.addWidget(label("최근 활동", "SectionLabel"))
         self.log_list = QListWidget()
         self.log_list.setObjectName("LogList")
         self.log_list.setWordWrap(True)
         self.log_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         log_vbox.addWidget(self.log_list)
+        right_col.addWidget(self.log_card, 1)
+
+        right_wrap = QWidget()
+        right_wrap.setLayout(right_col)
+        right_col.setContentsMargins(0, 0, 0, 0)
+        right_wrap.setFixedWidth(300)
 
         bottom_layout.addWidget(self.lyrics_card, 1)
-        bottom_layout.addWidget(self.log_card)
+        bottom_layout.addWidget(right_wrap)
         layout.addLayout(bottom_layout, 1)
+
+    def _switch_row(self, text: str, switch) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.addWidget(label(text, "", "font-weight: 600;"))
+        row.addStretch()
+        row.addWidget(switch)
+        return row
+
+    def sync_overlay_controls(self, editing: bool = False) -> None:
+        """설정이 다른 곳(F9, 트레이, 설정 페이지)에서 바뀌어도 스위치를 맞춥니다."""
+        for sw, value in ((self.visible_switch, self.config.visible),
+                          (self.ghost_switch, self.config.ghost_mode)):
+            sw.blockSignals(True)
+            sw.setChecked(value)
+            sw.blockSignals(False)
+        self.edit_btn.setText("조정 완료" if editing else "위치·크기 조정")
 
     def _create_stat_card(self, glyph: str, title: str, value: str) -> Card:
         card = Card()
@@ -121,8 +186,12 @@ class DashboardPage(QWidget):
         card.findChildren(QLabel)[-1].setObjectName("StatSub")
         return card
 
-    def set_status(self, level: str, title: str, detail: str = "") -> None:
-        """level: ok / warn / error. 색 점과 함께 상태를 보여 줍니다."""
+    def set_status(self, level: str, title: str, detail: str = "", action: str = "") -> None:
+        """level: ok / warn / error. 색 점과 함께 상태를 보여 줍니다.
+
+        action="roi"이면 바로 해결할 수 있게 '가사 인식 영역 다시 지정' 버튼을 붙입니다.
+        """
+        self.status_action.setVisible(action == "roi")
         self.status_title.setProperty("level", level)
         self.status_title.setText(f"●  {title}")
         self.status_title.style().unpolish(self.status_title)
