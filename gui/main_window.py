@@ -10,7 +10,9 @@ from PySide6.QtWidgets import (  # type: ignore
     QApplication,
     QHBoxLayout,
     QMainWindow,
+    QFileDialog,
     QMenu,
+    QMessageBox,
     QSystemTrayIcon,
     QStackedWidget,
     QVBoxLayout,
@@ -175,6 +177,7 @@ class MainWindow(QMainWindow):
         theme_row.addWidget(label("다크 모드", "Secondary", "font-weight: 600;"))
         theme_row.addStretch()
         self.theme_switch = ToggleSwitch()
+        self.theme_switch.setAccessibleName("다크 모드")
         self.theme_switch.setChecked(self.theme_manager.current_theme is Theme.DARK)
         self.theme_switch.toggled.connect(self._on_theme_switch)
         theme_row.addWidget(self.theme_switch)
@@ -197,6 +200,9 @@ class MainWindow(QMainWindow):
         dp.roi_requested.connect(self.setting_page._on_pick_roi)
         self.setting_page.overlay_edit_requested.connect(self.start_overlay_edit)
         self.setting_page.overlay_reset_requested.connect(self.reset_overlay_position)
+        self.music_page.delete_requested.connect(self.delete_history)
+        self.music_page.clear_requested.connect(self.clear_history)
+        self.music_page.export_requested.connect(self.export_history)
 
         self.content_stack.addWidget(self.dashboard_page)  # index 0
         self.content_stack.addWidget(self.music_page)       # index 1
@@ -323,6 +329,8 @@ class MainWindow(QMainWindow):
             return
         if not apply:
             self.overlay.cancel_edit_geometry()
+        else:
+            self.dashboard_page.mark_step(2)
         self.overlay.set_edit_mode(False)
         self.config_manager.save_now()
         self.sync_controls()
@@ -338,6 +346,93 @@ class MainWindow(QMainWindow):
             self._set_overlay_visible(True)
         self.overlay.reset_position()
         self.sync_controls()
+
+    # ------------------------------------------------------------------ #
+    # 감상 기록 관리 (삭제·내보내기)
+    # ------------------------------------------------------------------ #
+
+    def _commit_history(self, new_history: list[dict]) -> bool:
+        """새 기록 목록을 먼저 파일에 저장하고, 성공했을 때만 메모리와 화면에 반영합니다.
+
+        누적 감상 시간·가사 줄 수(total_*)는 기록을 지워도 그대로 둡니다.
+        """
+        from core.stats_manager import save_stats
+
+        candidate = dict(self.persistent_stats)
+        candidate["play_history"] = new_history
+        if not save_stats(candidate, self.app_config.data_dir):
+            QMessageBox.critical(self, "삭제 실패", "감상 기록 파일을 저장하지 못해 아무것도 지우지 않았어요.")
+            return False
+        self.persistent_stats["play_history"] = new_history
+        self.music_page.set_history(new_history)
+        dp = self.dashboard_page
+        if hasattr(dp, "latest_session_stats"):
+            dp.update_stats(dp.latest_session_stats, new_history)
+        self.stats_page.update_stats(new_history, self.theme_manager.current_theme["name"])
+        return True
+
+    def delete_history(self, ids: list) -> None:
+        history = self.persistent_stats.get("play_history", [])
+        targets = set(ids)
+        count = sum(1 for e in history if id(e) in targets)
+        if not count:
+            return
+        reply = QMessageBox.question(
+            self, "감상 기록 삭제",
+            f"선택한 {count}곡의 감상 기록을 지울까요?\n지운 기록은 되돌릴 수 없어요. (누적 감상 시간은 그대로 유지)",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        # 확인 창이 떠 있는 동안 새 곡이 추가됐을 수 있으니 최신 목록으로 다시 거릅니다.
+        history = self.persistent_stats.get("play_history", [])
+        self._commit_history([e for e in history if id(e) not in targets])
+
+    def clear_history(self) -> None:
+        history = self.persistent_stats.get("play_history", [])
+        if not history:
+            return
+        reply = QMessageBox.question(
+            self, "감상 기록 전체 삭제",
+            f"지금 쓰고 있는 감상 기록 {len(history)}곡을 모두 지울까요?\n"
+            "지운 기록은 되돌릴 수 없어요. 먼저 'CSV로 내보내기'로 보관해 둘 수 있어요.\n"
+            "(누적 감상 시간과 가사 줄 수는 그대로 유지돼요)",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if reply == QMessageBox.Yes:
+            self._commit_history([])
+
+    def export_history(self) -> None:
+        import csv
+        import time as _time
+
+        history = list(self.persistent_stats.get("play_history", []))
+        if not history:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "감상 기록 내보내기", f"감상기록_{_time.strftime('%Y%m%d')}.csv", "CSV 파일 (*.csv)"
+        )
+        if not path:
+            return
+
+        def cell(value) -> str:
+            # 엑셀이 '=', '+', '-', '@'로 시작하는 값을 수식으로 실행하지 않도록 앞에 '를 붙입니다.
+            text = str(value)
+            return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+
+        try:
+            with open(path, "w", encoding="utf-8-sig", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["재생 시각", "제목", "가수", "재생 시간(초)", "가사 줄 수"])
+                for e in history:
+                    writer.writerow([
+                        e.get("timestamp", ""), cell(e.get("title", "")), cell(e.get("artist", "")),
+                        e.get("play_time_sec", 0), e.get("lines", 0),
+                    ])
+        except OSError as e:
+            QMessageBox.critical(self, "내보내기 실패", f"파일을 저장하지 못했어요.\n{e}")
+            return
+        QMessageBox.information(self, "내보내기 완료", f"감상 기록 {len(history)}곡을 저장했어요.\n{path}")
 
     def update_overlay(self) -> None:
         """설정 변경 시 오버레이에 동기화합니다."""

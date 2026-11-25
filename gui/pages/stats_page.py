@@ -29,8 +29,13 @@ class DetailListDialog(QDialog):
     def __init__(self, title: str, items: list[str], parent=None):
         super().__init__(parent)
         self.setWindowTitle(title)
-        self.setFixedSize(400, 600)
         self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint)
+        # 고정 400×600이면 작은 화면·고배율에서 아래가 잘려서, 크기 조절을 허용하고 화면 안에 맞춥니다.
+        self.setMinimumSize(320, 300)
+        from PySide6.QtWidgets import QApplication  # type: ignore
+        screen = (parent.screen() if parent is not None else None) or QApplication.primaryScreen()
+        avail = screen.availableGeometry() if screen is not None else None
+        self.resize(420, min(620, int(avail.height() * 0.85)) if avail else 620)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -40,13 +45,14 @@ class DetailListDialog(QDialog):
         layout.addWidget(header)
 
         self.list_widget = QListWidget()
-        for item_text in items:
-            it = QListWidgetItem(item_text)
+        for rank, item_text in enumerate(items, 1):
+            it = QListWidgetItem(f"{rank}.  {item_text}")
             it.setSizeHint(QSize(0, 40))
             self.list_widget.addItem(it)
         layout.addWidget(self.list_widget)
 
         close_btn = QPushButton("닫기")
+        close_btn.setDefault(True)  # Enter·Esc로 닫기
         close_btn.clicked.connect(self.close)
         layout.addWidget(close_btn)
 
@@ -176,8 +182,15 @@ class StatsPage(QWidget):
         self.play_history = play_history
         self.theme_mode = theme_mode
         if not play_history:
+            # 기록을 모두 지웠을 때 예전 순위가 화면에 남지 않도록 목록도 비웁니다.
             self.bar_chart.set_data([], [], theme_mode)
+            self.top_songs_list.clear()
+            self.top_artists_list.clear()
+            self.btn_more_songs.setEnabled(False)
+            self.btn_more_artists.setEnabled(False)
             return
+        self.btn_more_songs.setEnabled(True)
+        self.btn_more_artists.setEnabled(True)
 
         today = datetime.now().date()
         counts: Counter = Counter()
