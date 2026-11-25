@@ -1,9 +1,11 @@
-PySide6
-winsdk
-pywin32
-opencv-python
-numpy
-keyboard
-rapidfuzz
-requests
-beautifulsoup4
+# 검증된 버전으로 고정합니다 (Python 3.10 빌드 환경 기준). 올릴 때는 앱을 실행해 확인한 뒤 함께 바꾸세요.
+PySide6==6.11.1
+winsdk==1.0.0b10
+pywin32==311
+opencv-python==4.13.0.92
+numpy==2.2.6; python_version < "3.11"
+numpy==2.4.6; python_version >= "3.11"
+keyboard==0.13.5
+rapidfuzz==3.14.5
+requests==2.34.2
+beautifulsoup4==4.14.3
