@@ -1,5 +1,7 @@
 """감상 기록 페이지."""
 
+from datetime import date, timedelta
+
 from PySide6.QtCore import QRect, QSize, Qt, Signal  # type: ignore
 from PySide6.QtGui import QColor, QFont, QFontMetrics  # type: ignore
 from PySide6.QtWidgets import (  # type: ignore
@@ -35,20 +37,61 @@ def _format_time(ts: str) -> str:
     return f"{date}  {time_part}"
 
 
-class _HistoryDelegate(QStyledItemDelegate):
-    """한 줄에 제목(굵게) · 가수(흐리게) · 날짜(오른쪽)를 그립니다."""
+_HEADER_ROLE = Qt.UserRole + 3  # 날짜 머리 행: (제목, 곡 수 문자열)
 
-    _H = 44
+
+def _day_label(day: str) -> str:
+    """'2026-11-25' → '오늘' / '어제' / '11월 24일 (월)' / 올해가 아니면 '2025년 3월 2일 (일)'."""
+    try:
+        d = date.fromisoformat(day)
+    except ValueError:
+        return day
+    today = date.today()
+    weekday = "월화수목금토일"[d.weekday()]
+    if d == today:
+        return f"오늘 · {d.month}월 {d.day}일 ({weekday})"
+    if d == today - timedelta(days=1):
+        return f"어제 · {d.month}월 {d.day}일 ({weekday})"
+    if d.year == today.year:
+        return f"{d.month}월 {d.day}일 ({weekday})"
+    return f"{d.year}년 {d.month}월 {d.day}일 ({weekday})"
+
+
+def _font(px: int, weight=QFont.Normal) -> QFont:
+    f = QFont("Pretendard")
+    f.setPixelSize(px)
+    f.setWeight(weight)
+    return f
+
+
+class _HistoryDelegate(QStyledItemDelegate):
+    """날짜 머리 행과 곡 행을 그립니다. 곡 행: 아이콘 · 제목(굵게)/가수 두 줄 · 시각."""
+
+    _ROW_H = 58
+    _HEAD_H = 40
 
     def sizeHint(self, option, index) -> QSize:
-        return QSize(option.rect.width(), self._H)
+        return QSize(option.rect.width(), self._HEAD_H if index.data(_HEADER_ROLE) else self._ROW_H)
 
     def paint(self, painter, option, index) -> None:
-        entry = index.data(_ENTRY_ROLE) or {}
         t = theme.active()
         painter.save()
         painter.setRenderHint(painter.RenderHint.Antialiasing)
-        r = option.rect.adjusted(2, 1, -2, -1)
+        header = index.data(_HEADER_ROLE)
+        if header:
+            title, count = header
+            r = option.rect.adjusted(14, 8, -14, 0)
+            painter.setFont(_font(13, QFont.Bold))
+            painter.setPen(QColor(t["text_secondary"]))
+            painter.drawText(r, Qt.AlignLeft | Qt.AlignVCenter, title)
+            painter.setFont(_font(12))
+            painter.setPen(QColor(t["text_tertiary"]))
+            painter.drawText(r, Qt.AlignRight | Qt.AlignVCenter, count)
+            painter.restore()
+            return
+
+        entry = index.data(_ENTRY_ROLE) or {}
+        r = option.rect.adjusted(4, 2, -4, -2)
         if option.state & QStyle.State_Selected:
             painter.setBrush(_qcolor(t["selection"]))
         elif option.state & QStyle.State_MouseOver:
@@ -56,36 +99,38 @@ class _HistoryDelegate(QStyledItemDelegate):
         else:
             painter.setBrush(Qt.NoBrush)
         painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(r, 10, 10)
+        painter.drawRoundedRect(r, 12, 12)
 
-        pad = 14
-        when = _format_time(entry.get("timestamp", ""))
-        small = QFont("Pretendard")
-        small.setPixelSize(12)
-        fm_small = QFontMetrics(small)
-        when_w = fm_small.horizontalAdvance(when) + 4
-        painter.setFont(small)
-        painter.setPen(QColor(t["text_tertiary"]))
-        painter.drawText(QRect(r.right() - pad - when_w, r.top(), when_w, r.height()),
-                         Qt.AlignVCenter | Qt.AlignRight, when)
+        # 왼쪽 아이콘 칩
+        chip = QRect(r.left() + 10, r.center().y() - 18, 36, 36)
+        painter.setBrush(_qcolor(t["accent_soft"]))
+        painter.drawRoundedRect(chip, 10, 10)
+        painter.setFont(icons.icon_font(15))
+        painter.setPen(QColor(t["accent"]))
+        painter.drawText(chip, Qt.AlignCenter, icons.MUSIC_NOTE)
 
-        avail = r.width() - pad * 2 - when_w - 16
-        title_font = QFont("Pretendard")
-        title_font.setPixelSize(14)
-        title_font.setWeight(QFont.DemiBold)
-        fm_title = QFontMetrics(title_font)
-        title = fm_title.elidedText(entry.get("title", ""), Qt.ElideRight, int(avail * 0.65))
-        tw = fm_title.horizontalAdvance(title)
+        # 오른쪽 시각
+        ts = entry.get("timestamp", "")
+        time_text = "" if ts[11:19] == "00:00:00" else ts[11:16]
+        time_font = _font(13, QFont.Medium)
+        tw = QFontMetrics(time_font).horizontalAdvance(time_text) + 4
+        painter.setFont(time_font)
+        painter.setPen(QColor(t["text_secondary"]))
+        painter.drawText(QRect(r.right() - 16 - tw, r.top(), tw, r.height()), Qt.AlignVCenter | Qt.AlignRight, time_text)
+
+        # 제목 / 가수 두 줄
+        left = chip.right() + 14
+        avail = r.right() - 16 - tw - 16 - left
+        title_font = _font(15, QFont.DemiBold)
         painter.setFont(title_font)
         painter.setPen(QColor(t["text_primary"]))
-        painter.drawText(QRect(r.left() + pad, r.top(), tw + 2, r.height()), Qt.AlignVCenter, title)
-
-        artist_font = QFont("Pretendard")
-        artist_font.setPixelSize(13)
-        artist = QFontMetrics(artist_font).elidedText(entry.get("artist", ""), Qt.ElideRight, max(0, avail - tw - 12))
+        painter.drawText(QRect(left, r.top() + 7, avail, 24), Qt.AlignLeft | Qt.AlignVCenter,
+                         QFontMetrics(title_font).elidedText(entry.get("title", ""), Qt.ElideRight, avail))
+        artist_font = _font(13)
         painter.setFont(artist_font)
         painter.setPen(QColor(t["text_secondary"]))
-        painter.drawText(QRect(r.left() + pad + tw + 12, r.top(), avail - tw, r.height()), Qt.AlignVCenter, artist)
+        painter.drawText(QRect(left, r.top() + 30, avail, 20), Qt.AlignLeft | Qt.AlignVCenter,
+                         QFontMetrics(artist_font).elidedText(entry.get("artist", ""), Qt.ElideRight, avail))
         painter.restore()
 
 
@@ -123,14 +168,14 @@ class MusicListPage(QWidget):
         self.search.textChanged.connect(self._apply_filter)
         top.addWidget(self.search, 1)
         top.addSpacing(12)
-        self.count_label = label("", "Tertiary", "font-size: 12px;")
+        self.count_label = label("", "Secondary", "font-size: 13px; font-weight: 600;")
         top.addWidget(self.count_label)
         card_layout.addLayout(top)
 
         self.music_list = QListWidget()
         self.music_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.music_list.setItemDelegate(_HistoryDelegate(self.music_list))
-        self.music_list.setUniformItemSizes(True)
+        self.music_list.setSpacing(0)
         self.music_list.setMouseTracking(True)
         self.music_list.setSelectionMode(QListWidget.ExtendedSelection)  # Ctrl/Shift로 여러 개 선택
         self.music_list.itemSelectionChanged.connect(self._update_buttons)
@@ -138,7 +183,7 @@ class MusicListPage(QWidget):
 
         actions = QHBoxLayout()
         actions.setContentsMargins(6, 0, 6, 0)
-        hint = label("Ctrl·Shift로 여러 곡 선택 · Delete 키로 삭제", "Tertiary", "font-size: 12px;")
+        hint = label("Ctrl·Shift로 여러 곡 선택 · Delete 키로 삭제", "Secondary", "font-size: 12px;")
         actions.addWidget(hint)
         actions.addStretch()
         self.btn_export = QPushButton("CSV로 내보내기")
@@ -171,25 +216,43 @@ class MusicListPage(QWidget):
         item.setToolTip(f"{entry.get('title', '')} — {entry.get('artist', '')}\n{_format_time(entry.get('timestamp', ''))}")
         return item
 
+    def _make_header(self, day: str) -> QListWidgetItem:
+        item = QListWidgetItem(_day_label(day))
+        item.setData(_HEADER_ROLE, (_day_label(day), ""))
+        item.setData(Qt.UserRole + 4, day)
+        item.setFlags(Qt.ItemIsEnabled)  # 선택·삭제 대상이 아님
+        return item
+
     def set_history(self, history: list[dict]) -> None:
         self.music_list.clear()
         self._entries = {}
+        last_day = None
         for entry in history:
+            day = str(entry.get("timestamp", ""))[:10]
+            if day != last_day:
+                self.music_list.addItem(self._make_header(day))
+                last_day = day
             self.music_list.addItem(self._make_item(entry))
         self._apply_filter(self.search.text())
 
     def add_entry(self, entry: dict) -> None:
-        """새로 감지한 곡을 맨 위에 추가합니다."""
+        """새로 감지한 곡을 맨 위(같은 날짜 머리 아래)에 추가합니다."""
+        day = str(entry.get("timestamp", ""))[:10]
+        first = self.music_list.item(0)
+        if first is None or first.data(Qt.UserRole + 4) != day:
+            self.music_list.insertItem(0, self._make_header(day))
         item = self._make_item(entry)
-        self.music_list.insertItem(0, item)
+        self.music_list.insertItem(1, item)
         if not self._matches(entry, self.search.text()):
             item.setHidden(True)
+        self._refresh_headers()
         self._update_count()
 
     # -- 삭제 ----------------------------------------------------------- #
 
     def selected_ids(self) -> list[int]:
-        return [it.data(_ID_ROLE) for it in self.music_list.selectedItems() if not it.isHidden()]
+        return [it.data(_ID_ROLE) for it in self.music_list.selectedItems()
+                if not it.isHidden() and it.data(_ID_ROLE) is not None]
 
     def _delete_selected(self) -> None:
         ids = self.selected_ids()
@@ -203,7 +266,7 @@ class MusicListPage(QWidget):
         super().keyPressEvent(event)
 
     def _update_buttons(self) -> None:
-        total = self.music_list.count()
+        total = len(self._entry_items())
         n = len(self.selected_ids())
         self.btn_delete.setEnabled(n > 0)
         self.btn_delete.setText(f"선택 삭제 ({n})" if n else "선택 삭제")
@@ -219,15 +282,44 @@ class MusicListPage(QWidget):
             return True
         return q in str(entry.get("title", "")).lower() or q in str(entry.get("artist", "")).lower()
 
+    def _is_header(self, item) -> bool:
+        return bool(item.data(_HEADER_ROLE))
+
     def _apply_filter(self, query: str) -> None:
         for i in range(self.music_list.count()):
             item = self.music_list.item(i)
-            item.setHidden(not self._matches(item.data(_ENTRY_ROLE) or {}, query))
+            if not self._is_header(item):
+                item.setHidden(not self._matches(item.data(_ENTRY_ROLE) or {}, query))
+        self._refresh_headers()
         self._update_count()
 
+    def _refresh_headers(self) -> None:
+        """날짜 머리마다 보이는 곡 수를 적고, 보이는 곡이 없는 날짜 머리는 숨깁니다."""
+        header, shown = None, 0
+
+        def close():
+            if header is not None:
+                title = header.data(_HEADER_ROLE)[0]
+                header.setData(_HEADER_ROLE, (title, f"{shown}곡"))
+                header.setHidden(shown == 0)
+
+        for i in range(self.music_list.count()):
+            item = self.music_list.item(i)
+            if self._is_header(item):
+                close()
+                header, shown = item, 0
+            elif not item.isHidden():
+                shown += 1
+        close()
+
+    def _entry_items(self):
+        return [self.music_list.item(i) for i in range(self.music_list.count())
+                if not self._is_header(self.music_list.item(i))]
+
     def _update_count(self, *args) -> None:
-        total = self.music_list.count()
-        shown = sum(1 for i in range(total) if not self.music_list.item(i).isHidden())
+        entries = self._entry_items()
+        total = len(entries)
+        shown = sum(1 for it in entries if not it.isHidden())
         if self.search.text().strip():
             self.count_label.setText(f"검색 결과 {shown}곡 / 전체 {total}곡")
         else:

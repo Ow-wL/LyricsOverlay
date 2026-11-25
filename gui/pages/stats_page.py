@@ -5,13 +5,11 @@ from datetime import datetime, timedelta
 
 from gui.widgets.bar_chart import BarChartWidget
 
-from PySide6.QtCore import Qt, QSize  # type: ignore
+from PySide6.QtCore import Qt  # type: ignore
 from PySide6.QtWidgets import (  # type: ignore
     QDialog,
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -20,13 +18,25 @@ from PySide6.QtWidgets import (  # type: ignore
 from gui import icons
 from gui.widgets.card import Card
 from gui.widgets.glass import SegmentedControl, label, page_header
+from gui.widgets.rank_list import RankList
 
 # matplotlib 폰트 설정 제거됨
+
+def _song_rows(history: list[dict]) -> list[tuple[str, str, int]]:
+    """[(제목, 가수, 횟수)] 많이 들은 순."""
+    counts = Counter((e.get("title", ""), e.get("artist", "")) for e in history)
+    return [(title, artist, n) for (title, artist), n in counts.most_common()]
+
+
+def _artist_rows(history: list[dict]) -> list[tuple[str, str, int]]:
+    counts = Counter(e.get("artist", "") for e in history if e.get("artist") not in ("", "Unknown"))
+    return [(artist, "", n) for artist, n in counts.most_common()]
+
 
 class DetailListDialog(QDialog):
     """전체 목록을 별도 창으로 표시하는 다이얼로그."""
 
-    def __init__(self, title: str, items: list[str], parent=None):
+    def __init__(self, title: str, items: list[tuple[str, str, int]], parent=None):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint)
@@ -44,11 +54,8 @@ class DetailListDialog(QDialog):
         header.setStyleSheet("font-size: 20px; font-weight: 800; margin-bottom: 6px;")
         layout.addWidget(header)
 
-        self.list_widget = QListWidget()
-        for rank, item_text in enumerate(items, 1):
-            it = QListWidgetItem(f"{rank}.  {item_text}")
-            it.setSizeHint(QSize(0, 40))
-            self.list_widget.addItem(it)
+        self.list_widget = RankList()
+        self.list_widget.set_rows(items)
         layout.addWidget(self.list_widget)
 
         close_btn = QPushButton("닫기")
@@ -105,7 +112,7 @@ class StatsPage(QWidget):
         graph_vbox.addLayout(graph_head)
         self.bar_chart = BarChartWidget()
         graph_vbox.addWidget(self.bar_chart, 1)
-        layout.addWidget(self.graph_card, 5)
+        layout.addWidget(self.graph_card, 4)
 
         # 하단: 자주 들은 노래 / 가수
         bottom_layout = QHBoxLayout()
@@ -118,7 +125,7 @@ class StatsPage(QWidget):
         )
         bottom_layout.addWidget(self.songs_card)
         bottom_layout.addWidget(self.artists_card)
-        layout.addLayout(bottom_layout, 4)
+        layout.addLayout(bottom_layout, 5)  # 순위 5개가 스크롤 없이 보이도록
 
     def _ranking_card(self, glyph: str, title: str, on_more):
         card = Card()
@@ -136,7 +143,7 @@ class StatsPage(QWidget):
         more.clicked.connect(on_more)
         head.addWidget(more)
         vbox.addLayout(head)
-        lst = QListWidget()
+        lst = RankList()
         vbox.addWidget(lst)
         return card, lst, more
 
@@ -156,21 +163,13 @@ class StatsPage(QWidget):
     def _show_more_songs(self) -> None:
         if not self.play_history:
             return
-        song_counts = Counter(
-            [f"{e['title']} - {e['artist']}" for e in self.play_history]
-        )
-        items = [f"{song} ({count}회)" for song, count in song_counts.most_common()]
-        self.dialog = DetailListDialog("전체 노래 감상 순위", items, self.window())
+        self.dialog = DetailListDialog("전체 노래 감상 순위", _song_rows(self.play_history), self.window())
         self.dialog.show()
 
     def _show_more_artists(self) -> None:
         if not self.play_history:
             return
-        artist_counts = Counter(
-            [e["artist"] for e in self.play_history if e["artist"] != "Unknown"]
-        )
-        items = [f"{artist} ({count}회)" for artist, count in artist_counts.most_common()]
-        self.dialog = DetailListDialog("전체 가수 감상 순위", items, self.window())
+        self.dialog = DetailListDialog("전체 가수 감상 순위", _artist_rows(self.play_history), self.window())
         self.dialog.show()
 
     # ------------------------------------------------------------------ #
@@ -250,22 +249,6 @@ class StatsPage(QWidget):
         # 네이티브 바 차트 위젯 업데이트
         self.bar_chart.set_data(labels, data, theme_mode)
 
-        # TOP 5 노래
-        song_counts = Counter(
-            [f"{e['title']} - {e['artist']}" for e in play_history]
-        )
-        self.top_songs_list.clear()
-        for rank, (song, count) in enumerate(song_counts.most_common(5), 1):
-            item = QListWidgetItem(f"{rank}   {song}  ·  {count}회")
-            item.setSizeHint(QSize(0, 36))
-            self.top_songs_list.addItem(item)
-
-        # TOP 5 가수
-        artist_counts = Counter(
-            [e["artist"] for e in play_history if e["artist"] != "Unknown"]
-        )
-        self.top_artists_list.clear()
-        for rank, (artist, count) in enumerate(artist_counts.most_common(5), 1):
-            item = QListWidgetItem(f"{rank}   {artist}  ·  {count}회")
-            item.setSizeHint(QSize(0, 36))
-            self.top_artists_list.addItem(item)
+        # TOP 5 노래 · 가수
+        self.top_songs_list.set_rows(_song_rows(play_history)[:5])
+        self.top_artists_list.set_rows(_artist_rows(play_history)[:5])
