@@ -66,6 +66,21 @@ CAPTURE_TIMEOUT = 1.5
 _capture_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="capture")
 
 
+def recognition_idle_reason(
+    media_available: bool, media_playing: bool, overlay_visible: bool, window_visible: bool
+) -> str:
+    """가사 인식을 쉬어도 되면 그 이유(대시보드 표시용), 계속해야 하면 빈 문자열.
+
+    - 멜론이 일시정지 중이면 가사가 바뀌지 않으므로 쉽니다. (재생 상태를 모르면 계속)
+    - 오버레이를 숨겼고 메인 창도 보이지 않으면, 가사를 볼 곳이 없으므로 쉽니다.
+    """
+    if media_available and not media_playing:
+        return "일시정지 중이라 가사 인식을 쉬고 있어요"
+    if not overlay_visible and not window_visible:
+        return "오버레이가 꺼져 있어 가사 인식을 쉬고 있어요"
+    return ""
+
+
 def _drain_pending_actions() -> None:
     """단축키 콜백은 keyboard 스레드에서 들어오므로, 실제 처리는 메인 스레드에서 합니다."""
     while True:
@@ -441,6 +456,20 @@ async def main() -> None:
                         start_play(current_song_title)
                 elif current_song_title and restarted:
                     start_play(current_song_title, repeat=True)
+
+                # 가사를 볼 사람이 없거나 멜론이 멈춰 있으면 캡처·OCR·가사 검색을 쉽니다 (CPU·외부 요청 절약).
+                # 곡 변경 감지와 감상 통계는 위에서 계속합니다.
+                idle_reason = recognition_idle_reason(
+                    media_available=media_state.available,
+                    media_playing=media_state.playing,
+                    overlay_visible=config_manager.visible or overlay.editing,
+                    window_visible=window.isVisible() and not window.isMinimized(),
+                )
+                if idle_reason:
+                    set_status("ok", idle_reason, "")
+                    last_text_seen = now  # 다시 시작하자마자 '글자를 찾지 못했어요'가 뜨지 않게
+                    await asyncio.sleep(0.05)
+                    continue
 
                 # 캡처 및 OCR (OCR_INTERVAL마다)
                 if now < next_ocr_at:
