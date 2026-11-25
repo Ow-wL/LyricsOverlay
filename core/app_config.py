@@ -19,6 +19,13 @@ class AppConfig:
         self._data_dir = self.settings.value("data_dir", None)
         first_run = not self._data_dir
 
+        # 테스트·휴대용 실행: 환경 변수로 데이터 폴더를 지정하면 저장된 경로 대신 씁니다 (설정에는 기록 안 함).
+        override = os.environ.get("LYRICSOVERLAY_DATA_DIR")
+        if override:
+            os.makedirs(override, exist_ok=True)
+            self._data_dir = os.path.abspath(override)
+            return
+
         if not self._data_dir:
             # 기본 경로: 문서/LyricsOverlay
             docs_path = QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation)
@@ -113,6 +120,28 @@ class AppConfig:
             except Exception as e:
                 print(f"[⚠️] 데이터 경로 변경 반영 실패: {e}")
         return True
+
+    @property
+    def auto_update_check(self) -> bool:
+        """새 버전을 자동으로 확인할지 (기본 켬)."""
+        if not hasattr(self, "_auto_update_check"):
+            value = self.settings.value("auto_update_check", True)
+            self._auto_update_check = value not in (False, "false", "0", 0)
+        return self._auto_update_check
+
+    @auto_update_check.setter
+    def auto_update_check(self, on: bool) -> None:
+        self._auto_update_check = bool(on)
+        self.settings.setValue("auto_update_check", bool(on))
+
+    @property
+    def skipped_version(self) -> str:
+        """'이 버전 건너뛰기'를 누른 버전. 자동 확인에서는 이 버전을 다시 알리지 않습니다."""
+        return str(self.settings.value("skipped_version", "") or "")
+
+    @skipped_version.setter
+    def skipped_version(self, version: str) -> None:
+        self.settings.setValue("skipped_version", version or "")
 
     def set_data_dir_on_next_start(self, new_dir: str) -> None:
         """새 경로의 기존 데이터를 쓰도록, 다음 실행부터 경로를 바꿉니다.

@@ -39,6 +39,8 @@ from lyrics.matcher import LyricMatcher
 from core.app_config import AppConfig
 from core.media_session import MediaState, MelonMediaSession, is_restart
 from core.single_instance import SingleInstance
+from core.updater import UpdateChecker
+from core.version import APP_VERSION
 from overlay.config_manager import OverlayConfigManager
 
 # ------------------------------------------------------------------ #
@@ -257,6 +259,15 @@ async def main() -> None:
     last_tick = time.monotonic()
 
     media = MelonMediaSession()
+
+    # 새 버전 확인 (자동: 30초 뒤·하루마다, 수동: 정보 페이지 '지금 확인')
+    updater = UpdateChecker()
+
+    def on_check_now() -> None:
+        if updater.check_now():
+            window.info_page.set_update_status("최신 버전을 확인하고 있어요…", checking=True)
+
+    window.info_page.check_update_requested.connect(on_check_now)
     media_state = MediaState()
     next_media_poll = 0.0
 
@@ -308,6 +319,13 @@ async def main() -> None:
         return fut.result()
 
     try:
+        # 업데이트 직후라면, 메인 루프까지 정상으로 올라온 것을 확인한 뒤 임시 파일·이전 버전 백업을 지웁니다.
+        if "--updated-from" in sys.argv:
+            add_log(f"업데이트 완료: {sys.argv[sys.argv.index('--updated-from') + 1] if sys.argv.index('--updated-from') + 1 < len(sys.argv) else '?'} → {APP_VERSION}")
+        from core.update_install import cleanup_after_update
+        import threading
+        threading.Thread(target=cleanup_after_update, args=(list(sys.argv),), daemon=True).start()
+
         while is_running:
             app.processEvents()
 
@@ -329,6 +347,20 @@ async def main() -> None:
                 target_win = find_melon_window()
                 next_window_scan = now + WINDOW_RESCAN_INTERVAL
             last_target_ok = target_win is not None
+
+            result = updater.poll(_app_config.auto_update_check)
+            if result is not None:
+                kind, payload, manual = result
+                if kind == "available":
+                    if manual or payload.version != _app_config.skipped_version:
+                        window.show_update_available(payload, manual)
+                        add_log(f"새 버전 {payload.version} 있음")
+                elif kind == "latest":
+                    window.info_page.set_update_status(f"최신 버전을 쓰고 있어요 ({APP_VERSION})")
+                elif manual:
+                    window.info_page.set_update_status(f"확인하지 못했어요. 인터넷 연결을 확인해 주세요. ({payload[:80]})")
+                else:
+                    window.info_page.set_update_status(f"지금 버전: {APP_VERSION}")
 
             # 1분마다 자동 저장 (멜론 창이 없어도)
             if now - last_save_time >= 60:
@@ -507,8 +539,13 @@ async def main() -> None:
         if _app_config:
             save_stats(persistent_stats, _app_config.data_dir)
         matcher.searcher.shutdown()
+        updater.shutdown()
         cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
+    if "--apply-update" in sys.argv:
+        # 업데이트로 받은 새 exe가 '적용 모드'로 실행된 경우: 화면 없이 교체만 하고 끝냅니다.
+        from core.update_install import run_apply_mode
+        sys.exit(run_apply_mode(sys.argv))
     asyncio.run(main())
