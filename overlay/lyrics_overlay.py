@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication, QFrame, QVBoxLayout, QWidget  # type
 
 from overlay.config_manager import OverlayConfigManager
 from overlay.outlined_label import OutlinedLabel
+from gui.widgets.media_controls import MediaControls
 
 
 class LyricsOverlay(QWidget):
@@ -19,6 +20,8 @@ class LyricsOverlay(QWidget):
         self.bg_color: QColor = self.config.bg_color
         self.move_enabled: bool = self.config.move_enabled
         self.resize_enabled: bool = self.config.resize_enabled
+        self.ghost_enabled: bool = self.config.ghost_mode
+        self.media_controls_enabled: bool = self.config.show_media_controls
         self._init_ui()
         self.sync_with_config()
 
@@ -69,6 +72,11 @@ class LyricsOverlay(QWidget):
         self.resizing = False
         self.resize_margin = 15
         self.old_pos = QPoint()
+
+        # 재생 버튼: 레이아웃 밖에 겹쳐 놓아 오버레이 크기에 영향을 주지 않습니다.
+        self.media_controls = MediaControls("overlay", self)
+        self.media_controls.hide()
+        self._place_media_controls()
 
     # ------------------------------------------------------------------ #
     # 설정 동기화
@@ -129,6 +137,10 @@ class LyricsOverlay(QWidget):
             self.move_enabled = settings["move_enabled"]
         if "resize_enabled" in settings:
             self.resize_enabled = settings["resize_enabled"]
+        if "show_media_controls" in settings:
+            self.media_controls_enabled = settings["show_media_controls"]
+            if not self._media_controls_allowed():
+                self.media_controls.hide()
         if "show_song_info" in settings:
             if settings["show_song_info"]:
                 self.song_info_label.show()
@@ -151,6 +163,9 @@ class LyricsOverlay(QWidget):
 
     def set_ghost_mode(self, enable: bool) -> None:
         """Win32 WS_EX_TRANSPARENT으로 클릭 통과 여부를 전환합니다."""
+        self.ghost_enabled = enable
+        if enable:
+            self.media_controls.hide()
         hwnd = self.winId()
         ex_style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
         if enable:
@@ -189,6 +204,34 @@ class LyricsOverlay(QWidget):
         if self.song_info_label.text() != text:
             self.song_info_label.setText(text)
         self.update()
+
+    # ------------------------------------------------------------------ #
+    # 재생 버튼 (마우스를 올리면 표시)
+    # ------------------------------------------------------------------ #
+
+    def _media_controls_allowed(self) -> bool:
+        # 고스트 모드에서는 클릭이 통과하므로 버튼을 누를 수 없습니다.
+        return self.media_controls_enabled and not self.ghost_enabled
+
+    def _place_media_controls(self) -> None:
+        mc = self.media_controls
+        mc.adjustSize()
+        mc.move(self.width() - mc.width() - 12, 10)
+        mc.raise_()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._place_media_controls()
+
+    def enterEvent(self, event) -> None:
+        if self._media_controls_allowed():
+            self._place_media_controls()
+            self.media_controls.show()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self.media_controls.hide()
+        super().leaveEvent(event)
 
     # ------------------------------------------------------------------ #
     # 마우스 이벤트 (드래그 이동 / 리사이즈)
