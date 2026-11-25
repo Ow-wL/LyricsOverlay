@@ -52,3 +52,17 @@ python -m venv venv
 ```powershell
 Get-FileHash .\LyricsOverlay.exe -Algorithm SHA256
 ```
+
+## 5. 새 버전 배포하기 (업데이트 알림이 뜨게 하려면)
+
+앱은 GitHub의 **최신 릴리스**(Latest)를 보고 새 버전을 알려 주고, exe로 실행 중이면 그 자리에서 업데이트합니다.
+
+1. `core/version.py`의 `APP_VERSION`을 올립니다. (예: `1.2.0`)
+2. `.\build.ps1`로 빌드합니다.
+3. GitHub에서 새 릴리스를 만듭니다.
+   - 태그: 버전 숫자 그대로 (예: `1.2.0`, 앞에 `v`를 붙여도 됨). 지금 앱 버전보다 커야 알림이 뜹니다.
+   - 첨부 파일: `dist\LyricsOverlay.exe` (이름을 바꾸지 마세요), `dist\LyricsOverlay.exe.sha256.txt`
+   - '사전 릴리스(pre-release)'로 표시하면 알림이 뜨지 않습니다.
+4. 릴리스 설명에 적은 내용이 앱의 '변경 내용'에서 보입니다.
+
+앱은 GitHub가 계산한 파일의 SHA-256 값과 받은 파일을 비교한 뒤에만 교체합니다.
