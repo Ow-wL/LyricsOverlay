@@ -12,7 +12,7 @@ from gui.theme import UIConfig
 
 def build_stylesheet(t: dict) -> str:
     accent_grad = (
-        f"qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {t['accent']}, stop:1 {t['accent_2']})"
+        f"qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {t['fill_1']}, stop:1 {t['fill_2']})"
     )
     glass_grad = (
         f"qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {t['glass_strong']}, stop:1 {t['glass']})"
@@ -76,6 +76,10 @@ def build_stylesheet(t: dict) -> str:
     QLabel#Secondary {{ color: {t['text_secondary']}; }}
     QLabel#Tertiary, QLabel#StatSub {{ color: {t['text_tertiary']}; }}
     QLabel#StatValue {{ font-size: 34px; font-weight: 800; letter-spacing: -0.8px; }}
+    QLabel#StatusTitle {{ font-size: 13px; font-weight: 700; color: {t['text_secondary']}; }}
+    QLabel#StatusTitle[level="ok"] {{ color: {t['status_ok']}; }}
+    QLabel#StatusTitle[level="warn"] {{ color: {t['status_warn']}; }}
+    QLabel#StatusTitle[level="error"] {{ color: {t['status_error']}; }}
     QLabel#AccentValue {{ color: {t['accent']}; font-weight: 800; }}
     QLabel#BrandName {{ font-size: 17px; font-weight: 800; letter-spacing: -0.3px; }}
     QLabel#IconGlyph {{ font-family: {ICON_FONT_CSS}; color: {t['accent']}; }}
@@ -99,13 +103,14 @@ def build_stylesheet(t: dict) -> str:
     }}
     QPushButton:hover {{ background-color: {t['glass_hover']}; border-color: {t['accent_soft_strong']}; }}
     QPushButton:pressed {{ background-color: {t['glass_pressed']}; }}
+    QPushButton:focus {{ outline: none; border: 2px solid {t['accent']}; }}
     QPushButton:disabled {{ color: {t['text_tertiary']}; background-color: transparent; border: 1px dashed {t['track']}; }}
     QPushButton#PrimaryButton {{
         background: {accent_grad};
         color: {t['text_on_accent']};
         border: none;
     }}
-    QPushButton#PrimaryButton:hover {{ background: {t['accent_hover']}; }}
+    QPushButton#PrimaryButton:hover {{ background: {t['fill_hover']}; }}
     QPushButton#LinkButton {{
         background: transparent;
         border: none;
@@ -136,6 +141,7 @@ def build_stylesheet(t: dict) -> str:
         font-weight: 600;
     }}
     QPushButton#Segment:hover {{ color: {t['text_primary']}; }}
+    QPushButton#Segment:focus {{ border: 2px solid {t['accent']}; }}
     QPushButton#Segment:checked {{
         background-color: {t['solid_card']};
         color: {t['accent']};
@@ -157,7 +163,7 @@ def build_stylesheet(t: dict) -> str:
         background: {accent_grad};
         color: {t['text_on_accent']};
     }}
-    QPushButton#MediaButtonMain:hover {{ background: {t['accent_hover']}; }}
+    QPushButton#MediaButtonMain:hover {{ background: {t['fill_hover']}; }}
 
     /* ---------- 입력 ---------- */
     QLineEdit, QSpinBox, QComboBox {{

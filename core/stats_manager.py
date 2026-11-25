@@ -43,11 +43,7 @@ def load_stats(data_dir: str) -> dict:
                         })
                 del data["songs"]
 
-            # 누락된 필드 보정
-            for key, val in default_stats.items():
-                if key not in data:
-                    data[key] = val
-            return data
+            return _sanitize_stats(data, default_stats)
         except Exception as e:
             print(f"[⚠️] 통계 로드 실패: {e}")
             # 깨진 파일을 따로 보관해, 이후 저장이 기존 기록을 덮어쓰지 않게 합니다.
@@ -61,6 +57,41 @@ def load_stats(data_dir: str) -> dict:
                 print(f"[⚠️] 손상된 통계 파일 보관 실패, 이번 실행에서는 저장하지 않습니다: {backup_err}")
                 _save_blocked.add(os.path.abspath(stats_file_path))
     return default_stats
+
+
+def _sanitize_entry(entry) -> dict | None:
+    """감상 기록 한 건을 검사합니다. 제목이 없으면 버리고, 나머지는 기본값으로 채웁니다."""
+    if not isinstance(entry, dict) or not isinstance(entry.get("title"), str):
+        return None
+    clean = dict(entry)
+    if not isinstance(clean.get("artist"), str):
+        clean["artist"] = "Unknown"
+    ts = clean.get("timestamp")
+    try:
+        time.strptime(ts, "%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        clean["timestamp"] = "1970-01-01 00:00:00"
+    for key in ("play_time_sec", "lines"):
+        v = clean.get(key, 0)
+        clean[key] = int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0 else 0
+    return clean
+
+
+def _sanitize_stats(data, default_stats: dict) -> dict:
+    """형식이 틀린 필드는 기본값으로 바꿔, 손상된 값 하나로 앱이 시작하다 죽지 않게 합니다."""
+    if not isinstance(data, dict):
+        raise ValueError("통계 파일 형식이 올바르지 않습니다")
+    history = data.get("play_history")
+    if not isinstance(history, list):
+        history = []
+    data["play_history"] = [e for e in (_sanitize_entry(x) for x in history) if e is not None]
+    for key in ("total_lines", "total_play_time_sec"):
+        v = data.get(key)
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0:
+            data[key] = default_stats[key]
+    if data.get("theme") not in ("light", "dark"):
+        data["theme"] = default_stats["theme"]
+    return data
 
 
 def save_stats(stats: dict, data_dir: str) -> None:
