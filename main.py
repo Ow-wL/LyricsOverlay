@@ -29,12 +29,13 @@ from PySide6.QtCore import QSize  # type: ignore
 from PySide6.QtWidgets import QApplication, QLabel, QListWidgetItem  # type: ignore
 
 from core.hotkey_manager import HotkeyManager
-from core.ocr_engine import windows_native_ocr_split
+from core.ocr_engine import OCR_HELP, OCR_KOREAN, OCR_STATUS, ocr_available, windows_native_ocr_split
 from core.stats_manager import load_stats, make_session_stats, parse_song_info, save_stats
-from core.window_capture import WindowStyleGuard, capture_covered_window, find_melon_window
+from core.window_capture import WindowStyleGuard, capture_covered_window, find_melon_window, is_melon_minimized
 from gui.main_window import MainWindow
 from lyrics.matcher import LyricMatcher
 from core.app_config import AppConfig
+from core.single_instance import SingleInstance
 from overlay.config_manager import OverlayConfigManager
 
 # ------------------------------------------------------------------ #
@@ -102,6 +103,13 @@ async def main() -> None:
     global _window, is_running, persistent_stats, session_stats, _app_config
 
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)  # 창을 트레이로 숨겨도 계속 실행
+
+    # 이미 실행 중이면 그 창을 앞으로 불러오고 끝냅니다.
+    instance = SingleInstance()
+    if not instance.acquire():
+        print("[ℹ️] 이미 실행 중입니다. 기존 창을 엽니다.")
+        return
     
     _app_config = AppConfig()
 
@@ -132,6 +140,8 @@ async def main() -> None:
         print("\n[🔔] GUI 종료 감지. 백그라운드 루프 중지...")
 
     window.window_closed.connect(on_window_closed)
+    window.quit_requested.connect(_on_quit)
+    instance.activate_requested.connect(window.show_from_tray)
 
     # 히스토리 목록 초기화
     for entry in persistent_stats.get("play_history", []):
@@ -203,9 +213,22 @@ async def main() -> None:
     last_song_title = ""
     last_lyric_text = ""
     last_save_time = time.monotonic()
-    roi_warned = False
     style_retry_at = 0.0
-    
+    last_text_seen = time.monotonic()
+    melon_missing_since: float | None = None
+
+    # 지금 가사 인식이 왜 되거나 안 되는지 대시보드에 보여 줍니다 (바뀔 때만 갱신).
+    last_status: tuple = ()
+
+    def set_status(level: str, title: str, detail: str = "") -> None:
+        nonlocal last_status
+        if (level, title, detail) == last_status:
+            return
+        last_status = (level, title, detail)
+        window.dashboard_page.set_status(level, title, detail)
+        if level != "ok":
+            add_log(title)
+
     current_song_info = None
     current_song_start_time = 0.0
     current_song_lines = 0
@@ -239,6 +262,23 @@ async def main() -> None:
                 # 멜론이 최소화되거나 숨겨진 상태에서 일반 모드로 바꾼 경우
                 if style_guard.restore(applied_hwnd):
                     applied_hwnd, applied_mode = None, None
+
+            if target_win is None:
+                # 멜론이 사라지면 이전 가사가 계속 떠 있지 않도록 잠시 뒤 지웁니다.
+                if melon_missing_since is None:
+                    melon_missing_since = now
+                    if is_melon_minimized():
+                        set_status("warn", "멜론 창이 최소화돼 있어요",
+                                   "최소화하면 가사를 읽을 수 없어요. 다른 창 뒤에 두거나 고스트 모드로 숨겨 주세요.")
+                    else:
+                        set_status("warn", "멜론을 찾고 있어요",
+                                   "멜론 PC 플레이어를 실행하고 가사가 보이게 띄워 주세요.")
+                elif now - melon_missing_since > 3 and last_lyric_text != "":
+                    overlay.update_lyrics("", "")
+                    window.dashboard_page.curr_lyric.setText("")
+                    last_lyric_text = ""
+            else:
+                melon_missing_since = None
 
             if target_win:
                 hwnd = target_win.hwnd
@@ -291,17 +331,37 @@ async def main() -> None:
 
                 # 캡처 및 OCR
                 full_img = capture_covered_window(hwnd)
-                roi = full_img[216:216 + 46, 28:28 + 251] if full_img is not None else None
-                if roi is not None and roi.size == 0:
-                    # 창이 너무 작아서 가사 영역을 잘라낼 수 없음
-                    if not roi_warned:
-                        add_log("멜론 창이 가사 영역보다 작아 인식을 건너뜁니다")
-                        roi_warned = True
-                    roi = None
+                roi = None
+                if not ocr_available():
+                    set_status("error", "OCR을 사용할 수 없어요", f"{OCR_STATUS}. {OCR_HELP}")
+                elif full_img is None:
+                    set_status("warn", "멜론 창을 캡처하지 못했어요", "잠시 후 다시 시도합니다.")
+                else:
+                    rx, ry, rw, rh = config_manager.roi
+                    img_h, img_w = full_img.shape[:2]
+                    # 창 밖으로 나간 부분은 잘라내고, 절반 이상 벗어나면 영역이 어긋난 것으로 봅니다.
+                    x0, y0 = max(rx, 0), max(ry, 0)
+                    x1, y1 = min(rx + rw, img_w), min(ry + rh, img_h)
+                    if (x1 - x0) * (y1 - y0) < rw * rh * 0.5:
+                        set_status(
+                            "error", "가사 인식 영역이 멜론 창을 벗어났어요",
+                            "설정 → 동작 → 가사 인식 영역에서 영역을 다시 지정하세요.",
+                        )
+                    else:
+                        roi = full_img[y0:y1, x0:x1]
                 if roi is not None:
                     scaled = cv2.resize(roi, None, fx=5, fy=5, interpolation=cv2.INTER_LANCZOS4)
 
                     lines = await windows_native_ocr_split(scaled)
+                    if lines:
+                        last_text_seen = now
+                        set_status("ok", "가사를 인식하고 있어요", "" if OCR_KOREAN else OCR_STATUS)
+                    elif now - last_text_seen > 8:
+                        set_status(
+                            "warn", "가사 영역에서 글자를 찾지 못했어요",
+                            "간주 중이거나 가사가 없는 곡일 수 있어요. 계속 이러면 설정에서 "
+                            "가사 인식 영역을 다시 지정해 보세요.",
+                        )
 
                     fixed_lines: list[str] = []
                     for line in lines:
@@ -361,6 +421,8 @@ async def main() -> None:
 
     finally:
         hotkey_mgr.unhook_all()
+        if window.tray is not None:
+            window.tray.hide()
         print("\n[🧹] 멜론 창 상태 원복 중...")
         style_guard.restore_all()
         if _app_config:

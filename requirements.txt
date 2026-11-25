@@ -3,8 +3,6 @@ winsdk
 pywin32
 opencv-python
 numpy
-mss
-PyGetWindow
 keyboard
 rapidfuzz
 requests

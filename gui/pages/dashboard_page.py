@@ -65,6 +65,15 @@ class DashboardPage(QWidget):
         lyrics_vbox.addWidget(self.song_title)
         lyrics_vbox.addWidget(self.song_artist)
 
+        # 인식 상태 (왜 가사가 안 나오는지 바로 알 수 있게)
+        self.status_title = label("준비 중", "StatusTitle")
+        self.status_detail = label("", "Tertiary", "font-size: 12px;")
+        self.status_detail.setWordWrap(True)
+        self.status_detail.hide()
+        lyrics_vbox.addSpacing(6)
+        lyrics_vbox.addWidget(self.status_title)
+        lyrics_vbox.addWidget(self.status_detail)
+
         self.curr_lyric = QLabel("가사를 기다리는 중…")
         self.curr_lyric.setTextFormat(Qt.PlainText)
         self.curr_lyric.setAlignment(Qt.AlignCenter)
@@ -111,6 +120,15 @@ class DashboardPage(QWidget):
         vbox.addWidget(label("현재 세션 기준", "Tertiary", "font-size: 12px;"))
         card.findChildren(QLabel)[-1].setObjectName("StatSub")
         return card
+
+    def set_status(self, level: str, title: str, detail: str = "") -> None:
+        """level: ok / warn / error. 색 점과 함께 상태를 보여 줍니다."""
+        self.status_title.setProperty("level", level)
+        self.status_title.setText(f"●  {title}")
+        self.status_title.style().unpolish(self.status_title)
+        self.status_title.style().polish(self.status_title)
+        self.status_detail.setText(detail)
+        self.status_detail.setVisible(bool(detail))
 
     def set_now_playing(self, title: str, artist: str) -> None:
         self.song_title.setText(title or "알 수 없는 곡")
