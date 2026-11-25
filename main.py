@@ -20,8 +20,8 @@ for _stream in (sys.stdout, sys.stderr):
 
 if os.name == 'nt':
     try:
-        myappid = 'owwl.lyricsoverlay.app.1.0'
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        from core.version import APP_USER_MODEL_ID
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
     except Exception:
         pass
 
