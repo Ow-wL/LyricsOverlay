@@ -275,6 +275,9 @@ class MainWindow(QMainWindow):
             btn.setChecked(i == index)
         self.content_stack.setCurrentIndex(index)
         # 통계 페이지 전환 시 데이터 업데이트
+        if index == 3:
+            # 오버레이를 드래그로 옮기거나 F9로 바꾼 값이 화면에 반영되게
+            self.setting_page.refresh_ui_from_config()
         if index == 2:
             self.stats_page.update_stats(
                 self.persistent_stats.get("play_history", []),
