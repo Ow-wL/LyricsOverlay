@@ -62,22 +62,23 @@ class MainWindow(QMainWindow):
     theme_changed = Signal(str)
     window_closed = Signal()
     quit_requested = Signal()  # 트레이 메뉴의 '종료'
-    overlay_edit_changed = Signal(bool)  # 위치·크기 조정 모드 시작/끝
 
     def __init__(self, stats: dict, app_config, initial_theme: str = "light"):
         super().__init__()
         self.setWindowTitle("Lyrics Overlay")
         # 노트북·고배율 화면에서도 화면을 넘지 않도록, 크기를 조절할 수 있게 하고
         # 처음 크기는 사용 가능한 화면 안에 맞춥니다.
-        self.setMinimumSize(960, 620)
         screen = QApplication.primaryScreen()
         if screen is not None:
             avail = screen.availableGeometry()
+            # 최소 크기도 화면보다 크지 않게 (예: 1366×768 125% 배율이면 높이가 600 안팎)
+            self.setMinimumSize(min(940, avail.width()), min(580, avail.height() - 40))
             w = min(1280, int(avail.width() * 0.92))
             h = min(760, int(avail.height() * 0.9))
-            self.resize(max(w, 960), max(h, 620))
+            self.resize(max(w, self.minimumWidth()), max(h, self.minimumHeight()))
             self.move(avail.center() - self.rect().center())
         else:
+            self.setMinimumSize(940, 580)
             self.resize(1280, 760)
         self.persistent_stats = stats
 
@@ -97,7 +98,6 @@ class MainWindow(QMainWindow):
         self.overlay = LyricsOverlay(self.config_manager)
         self.overlay.ensure_on_screen()  # 모니터 구성이 바뀌어 화면 밖에 있으면 데려옴
         self.overlay.edit_finished.connect(self.finish_overlay_edit)
-        self._ghost_before_edit: bool | None = None
 
         self._load_fonts()
         self._setup_ui()
@@ -192,7 +192,7 @@ class MainWindow(QMainWindow):
         dp = self.dashboard_page
         dp.overlay_visible_toggled.connect(self._set_overlay_visible)
         dp.overlay_ghost_toggled.connect(self._set_overlay_ghost)
-        dp.overlay_edit_requested.connect(self.start_overlay_edit)
+        dp.overlay_edit_requested.connect(self._toggle_overlay_edit)
         dp.overlay_reset_requested.connect(self.reset_overlay_position)
         self.setting_page.overlay_edit_requested.connect(self.start_overlay_edit)
         self.setting_page.overlay_reset_requested.connect(self.reset_overlay_position)
@@ -306,27 +306,31 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ #
 
     def start_overlay_edit(self) -> None:
-        """한 번에 편집 모드로: 클릭 통과를 잠시 끄고 드래그로 옮기거나 크기를 바꿀 수 있게."""
+        """한 번에 편집 모드로: 잠시 클릭을 받게 하고 드래그로 옮기거나 크기를 바꿀 수 있게.
+
+        저장된 '클릭 통과'·'표시' 설정은 건드리지 않으므로 멜론 창 숨김 상태도 그대로입니다.
+        """
         if self.overlay.editing:
             return
-        self._ghost_before_edit = self.config_manager.ghost_mode
-        self.config_manager.set_ghost_mode(False)
-        if not self.config_manager.visible:
-            self.config_manager.set_visible(True)
+        self.overlay.ensure_on_screen()
         self.overlay.set_edit_mode(True)
         self.sync_controls()
-        self.overlay_edit_changed.emit(True)
 
-    def finish_overlay_edit(self) -> None:
+    def finish_overlay_edit(self, apply: bool = True) -> None:
+        """apply=False면 편집 전 위치·크기로 되돌립니다."""
         if not self.overlay.editing:
             return
+        if not apply:
+            self.overlay.cancel_edit_geometry()
         self.overlay.set_edit_mode(False)
-        if self._ghost_before_edit is not None:
-            self.config_manager.set_ghost_mode(self._ghost_before_edit)
-            self.overlay.set_ghost_mode(self._ghost_before_edit)
-        self._ghost_before_edit = None
+        self.config_manager.save_now()
         self.sync_controls()
-        self.overlay_edit_changed.emit(False)
+
+    def _toggle_overlay_edit(self) -> None:
+        if self.overlay.editing:
+            self.finish_overlay_edit(True)
+        else:
+            self.start_overlay_edit()
 
     def reset_overlay_position(self) -> None:
         if not self.config_manager.visible:

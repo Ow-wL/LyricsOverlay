@@ -180,7 +180,6 @@ async def main() -> None:
             log_fn=add_log,
         )
 
-    window.setting_page.settings_changed.connect(window.update_overlay)
     window.setting_page.hotkeys_changed.connect(refresh_hotkeys)
     refresh_hotkeys()
 
