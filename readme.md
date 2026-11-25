@@ -6,7 +6,7 @@
 
 게임이나 작업 중에도 멜론 창을 열지 않고 가사를 따라갈 수 있는 Windows용 가사 오버레이입니다.
 
-[![release](https://img.shields.io/github/v/release/Ow-wL/LyricsOverlay?label=%EB%A6%B4%EB%A6%AC%EC%8A%A4&color=5B4BE0)](https://github.com/Ow-wL/LyricsOverlay/releases/latest) ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white) ![Python](https://img.shields.io/badge/Python_3.10-3776AB?logo=python&logoColor=white) ![PySide6](https://img.shields.io/badge/PySide6-Qt_6-41CD52?logo=qt&logoColor=white) ![OCR](https://img.shields.io/badge/Windows_OCR-%ED%95%9C%EA%B5%AD%EC%96%B4-5B4BE0)
+[![tests](https://github.com/Ow-wL/LyricsOverlay/actions/workflows/tests.yml/badge.svg)](https://github.com/Ow-wL/LyricsOverlay/actions/workflows/tests.yml) [![release](https://img.shields.io/github/v/release/Ow-wL/LyricsOverlay?label=%EB%A6%B4%EB%A6%AC%EC%8A%A4&color=5B4BE0)](https://github.com/Ow-wL/LyricsOverlay/releases/latest) ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white) ![Python](https://img.shields.io/badge/Python_3.10-3776AB?logo=python&logoColor=white) ![PySide6](https://img.shields.io/badge/PySide6-Qt_6-41CD52?logo=qt&logoColor=white) ![OCR](https://img.shields.io/badge/Windows_OCR-%ED%95%9C%EA%B5%AD%EC%96%B4-5B4BE0)
 
 <img src="asset/screenshots/overlay.png" alt="바탕화면 위에 떠 있는 가사 오버레이. 곡 정보, 현재 가사, 다음 가사와 재생 버튼" width="760">
 
@@ -193,7 +193,19 @@ asset/               아이콘, Pretendard 글꼴, README 스크린샷
 
 ## ✅ 확인한 환경
 
-자동 테스트는 아직 없고, 기능을 바꿀 때마다 아래처럼 실제 실행으로 확인했습니다.
+화면·네트워크 없이 확인할 수 있는 핵심 로직은 단위 테스트(`tests/`, 40개)로 고정해 두었고, push와 PR마다 GitHub Actions(Windows, Python 3.10)에서 실행합니다.
+
+```powershell
+.\venv\Scripts\python.exe -m unittest discover -s tests -t .
+```
+
+| 테스트 | 지키는 것 |
+|---|---|
+| `test_lyrics.py` | 검색 결과에서 제목·가수가 맞는 곡만 고르기, OCR 오타 보정, 비슷한 줄은 지금 위치에 가까운 줄 선택 |
+| `test_updater.py` | 버전 비교, 사전 릴리스·검증값 없음·중복 자산·다른 저장소 주소 거부, 허용 밖 호스트 차단, 다른 파일 교체 거부 |
+| `test_data.py` | 손상된 설정·통계 파일 처리, 데이터 경로 변경 확인·백업, 반복 재생·일시정지 판정, 단축키 규칙 |
+
+화면과 멜론이 필요한 동작은 기능을 바꿀 때마다 실제 실행으로 확인했습니다.
 
 | 확인한 것 | 방법 |
 |---|---|
