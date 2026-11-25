@@ -111,6 +111,10 @@ asset/               아이콘, 글꼴, 스크린샷
 
 설치에 관련된 상세한 안내(의존성 패키지 설치 및 실행 환경 구성)는 [INSTALL.md](./INSTALL.md) 파일을 확인해 주세요.
 
+## 📖 사용 가이드
+
+자세한 사용법은 [릴리즈 페이지](https://github.com/Ow-wL/LyricsOverlay/releases/latest)에 첨부된 사용 가이드(PDF · HTML)를 참고해 주세요. 가이드 원본과 빌드 방법은 [`docs/guide`](./docs/guide)에 있습니다.
+
 ---
 
 ## 📝 라이선스
