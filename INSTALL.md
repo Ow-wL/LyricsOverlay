@@ -33,3 +33,22 @@ pip install -r requirements.txt
 python main.py
 ```
 > **참고**: `main.py`는 애플리케이션의 메인 진입점 파일입니다. 실행 시 대시보드 화면이 열리며, 백그라운드에서 오버레이 엔진이 작동을 시작합니다.
+
+## 4. exe 파일로 만들기
+
+```powershell
+python -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements-build.txt
+.\build.ps1
+```
+
+- 결과물: `dist\LyricsOverlay.exe`와 체크섬 파일 `dist\LyricsOverlay.exe.sha256.txt`
+- 빌드 설정은 `main.spec`에 있습니다. 아이콘(`asset/icon.ico`)과 글꼴(`asset/Font`)이 exe에 함께 들어갑니다.
+- 코드 서명 인증서가 있으면 `$env:LYRICSOVERLAY_SIGN_THUMBPRINT`에 인증서 지문을 넣고 빌드하면 서명까지 합니다.
+- 아이콘을 바꿨다면 `venv\Scripts\python.exe tools\make_icon.py`로 여러 크기가 든 아이콘을 다시 만드세요.
+
+받은 exe가 바뀌지 않았는지 확인하려면, 체크섬 파일의 값과 아래 결과를 비교하세요.
+
+```powershell
+Get-FileHash .\LyricsOverlay.exe -Algorithm SHA256
+```
