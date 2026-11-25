@@ -82,6 +82,7 @@ def _on_toggle_mode() -> None:
         return
     cfg: OverlayConfigManager = _window.config_manager
     cfg.set_ghost_mode(not cfg.ghost_mode)
+    _window.setting_page.refresh_ui_from_config()  # 설정 화면 스위치도 함께 맞춤
     mode_name = "반투명 + 클릭통과" if cfg.ghost_mode else "불투명 + 클릭가능"
     print(f"\n[🔔] 모드 전환: {mode_name}")
     add_log(f"모드 전환: {mode_name}")
@@ -423,6 +424,7 @@ async def main() -> None:
         hotkey_mgr.unhook_all()
         if window.tray is not None:
             window.tray.hide()
+        config_manager.save_now()
         print("\n[🧹] 멜론 창 상태 원복 중...")
         style_guard.restore_all()
         if _app_config:

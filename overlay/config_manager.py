@@ -1,6 +1,7 @@
 import json
 import os
 
+from PySide6.QtCore import QTimer  # type: ignore
 from PySide6.QtGui import QColor, QFont  # type: ignore
 
 from core.utils import atomic_write_json
@@ -8,6 +9,13 @@ from core.utils import atomic_write_json
 # 예전 기본값. 전역 단축키라 다른 프로그램에서 대문자 Q만 쳐도 종료돼서 바꿨습니다.
 _LEGACY_QUIT_HOTKEY = "shift+q"
 DEFAULT_QUIT_HOTKEY = "ctrl+alt+q"
+DEFAULT_HOTKEYS = {
+    "hotkey_ghost": "F9",
+    "hotkey_quit": DEFAULT_QUIT_HOTKEY,
+    "hotkey_next": "ctrl+shift+right",
+    "hotkey_prev": "ctrl+shift+left",
+    "hotkey_pause": "F8",
+}
 # 멜론 창 캡처 이미지에서 가사(현재·다음 줄)가 있는 영역 [x, y, w, h] (100% 배율 기본 레이아웃 기준)
 DEFAULT_ROI = [28, 216, 251, 46]
 
@@ -122,7 +130,7 @@ class OverlayConfigManager:
         self.config_path = os.path.join(data_dir, "overlay_settings.json")
         self.styles_path = os.path.join(data_dir, "overlay_styles.json")
         self.save_styles()
-        self.save_to_file()
+        self.save_now()
 
     # ------------------------------------------------------------------ #
     # 스타일 프리셋 관련
@@ -394,7 +402,22 @@ class OverlayConfigManager:
     # ------------------------------------------------------------------ #
 
     def save_to_file(self) -> None:
-        """설정을 JSON 파일로 저장합니다."""
+        """설정 저장을 예약합니다.
+
+        드래그나 슬라이더처럼 값이 연달아 바뀔 때 매번 디스크에 쓰지 않도록,
+        마지막 변경 후 0.4초 뒤에 한 번만 저장합니다. 종료할 때는 save_now()로 마무리합니다.
+        """
+        if not hasattr(self, "_save_timer"):
+            self._save_timer = QTimer()
+            self._save_timer.setSingleShot(True)
+            self._save_timer.setInterval(400)
+            self._save_timer.timeout.connect(self.save_now)
+        self._save_timer.start()
+
+    def save_now(self) -> None:
+        """설정을 JSON 파일로 바로 저장합니다."""
+        if hasattr(self, "_save_timer"):
+            self._save_timer.stop()
         try:
             data = {
                 "bg_color": self.bg_color.name(),
