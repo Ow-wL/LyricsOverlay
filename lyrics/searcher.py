@@ -9,6 +9,10 @@ from urllib.parse import quote
 # 네트워크 오류 등 일시적인 실패 후 다시 시도하기까지 기다리는 시간
 _RETRY_AFTER_SEC = 30.0
 
+# 멜론 페이지는 보통 수백 KB입니다. 이보다 크거나 오래 걸리면 비정상 응답으로 보고 끊습니다.
+_MAX_RESPONSE_BYTES = 3 * 1024 * 1024
+_MAX_RESPONSE_SEC = 15.0
+
 # 검색 결과 중 이 점수(0~100) 이상으로 제목·가수가 맞는 곡만 씁니다. 엉뚱한 곡의 가사로 보정하지 않도록.
 _MIN_ROW_SCORE = 70
 
@@ -119,6 +123,26 @@ class LyricsSearcher:
     def shutdown(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)
 
+    def _get_text(self, url: str) -> str:
+        """페이지를 받아 문자열로. 너무 크거나 오래 걸리는 응답은 중간에 끊습니다.
+
+        requests의 timeout은 '응답 전체' 상한이 아니라 연결·읽기 대기 시간이라,
+        조금씩 계속 오는 응답이나 비정상적으로 큰 응답이 검색 스레드를 오래 붙잡을 수 있습니다.
+        """
+        start = time.monotonic()
+        with self.session.get(url, headers=self.headers, timeout=(5, 5), stream=True) as res:
+            res.raise_for_status()  # 차단·서버 오류는 재시도 대상으로
+            chunks, size = [], 0
+            for chunk in res.iter_content(64 * 1024):
+                size += len(chunk)
+                if size > _MAX_RESPONSE_BYTES:
+                    raise ValueError(f"응답이 너무 큽니다 ({_MAX_RESPONSE_BYTES // 1024 // 1024}MB 초과)")
+                if time.monotonic() - start > _MAX_RESPONSE_SEC:
+                    raise TimeoutError(f"응답이 {_MAX_RESPONSE_SEC:.0f}초 안에 끝나지 않았습니다")
+                chunks.append(chunk)
+            encoding = res.encoding or res.apparent_encoding or "utf-8"
+        return b"".join(chunks).decode(encoding, errors="replace")
+
     def _fetch(self, query: str, display_name: str) -> tuple[list[str], str, bool]:
         """(백그라운드 스레드) 멜론에서 가사를 가져옵니다.
 
@@ -138,9 +162,7 @@ class LyricsSearcher:
             search_url = (
                 f"https://www.melon.com/search/song/index.htm?q={encoded_query}"
             )
-            res = self.session.get(search_url, headers=self.headers, timeout=5)
-            res.raise_for_status()  # 차단·서버 오류는 재시도 대상으로
-            soup = BeautifulSoup(res.text, "html.parser")
+            soup = BeautifulSoup(self._get_text(search_url), "html.parser")
 
             rows = []
             for tr in soup.select("div.tb_list table tbody tr")[:10]:
@@ -169,9 +191,7 @@ class LyricsSearcher:
             lyrics_url = (
                 f"https://www.melon.com/song/detail.htm?songId={song_id}"
             )
-            res = self.session.get(lyrics_url, headers=self.headers, timeout=5)
-            res.raise_for_status()
-            l_soup = BeautifulSoup(res.text, "html.parser")
+            l_soup = BeautifulSoup(self._get_text(lyrics_url), "html.parser")
 
             lyric_div = l_soup.select_one("#d_video_summary") or l_soup.select_one(
                 ".lyric_area"
