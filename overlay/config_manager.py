@@ -54,6 +54,14 @@ class OverlayConfigManager:
 
         self.load_from_file()
 
+    def set_data_dir(self, data_dir: str) -> None:
+        """데이터 경로가 바뀌면 파일 경로를 바꾸고 현재 설정과 프리셋을 새 경로에 저장합니다."""
+        self.data_dir = data_dir
+        self.config_path = os.path.join(data_dir, "overlay_settings.json")
+        self.styles_path = os.path.join(data_dir, "overlay_styles.json")
+        self.save_styles()
+        self.save_to_file()
+
     # ------------------------------------------------------------------ #
     # 스타일 프리셋 관련
     # ------------------------------------------------------------------ #

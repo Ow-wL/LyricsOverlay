@@ -175,6 +175,15 @@ async def main() -> None:
     # 멜론 창 스타일 관리 (지난번 강제 종료로 남은 상태가 있으면 먼저 복구)
     style_guard = WindowStyleGuard(_app_config.data_dir)
     recovered = style_guard.recover_from_file()
+
+    # 데이터 경로가 바뀌면 통계·설정·창 복구 기록을 모두 새 경로로 옮깁니다.
+    def on_data_dir_changed(new_dir: str) -> None:
+        save_stats(persistent_stats, new_dir)
+        add_log(f"데이터 경로 변경: {new_dir}")
+
+    _app_config.add_listener(config_manager.set_data_dir)
+    _app_config.add_listener(style_guard.set_data_dir)
+    _app_config.add_listener(on_data_dir_changed)
     if recovered:
         add_log(f"이전 실행에서 남은 창 상태 {recovered}개 복구")
 
