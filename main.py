@@ -5,6 +5,7 @@ LyricsOverlay — 엔트리 포인트
 
 import asyncio
 import queue
+from concurrent.futures import ThreadPoolExecutor
 import sys
 import time
 import os
@@ -30,10 +31,13 @@ from PySide6.QtWidgets import QApplication  # type: ignore
 from core.hotkey_manager import HotkeyManager
 from core.ocr_engine import OCR_HELP, OCR_KOREAN, OCR_STATUS, ocr_available, windows_native_ocr_split
 from core.stats_manager import load_stats, make_session_stats, parse_song_info, save_stats
-from core.window_capture import WindowStyleGuard, capture_covered_window, find_melon_window, is_melon_minimized
+from core.window_capture import (
+    WindowStyleGuard, capture_covered_window, find_melon_window, is_melon_minimized, recheck_window,
+)
 from gui.main_window import MainWindow
 from lyrics.matcher import LyricMatcher
 from core.app_config import AppConfig
+from core.media_session import MediaState, MelonMediaSession, is_restart
 from core.single_instance import SingleInstance
 from overlay.config_manager import OverlayConfigManager
 
@@ -50,6 +54,24 @@ _app_config: AppConfig | None = None
 
 # 전역 단축키(keyboard 스레드)에서 메인 스레드로 넘길 작업
 _pending_actions: "queue.SimpleQueue" = queue.SimpleQueue()
+
+# 가사 인식 주기 (초). 가사는 몇 초에 한 번 바뀌므로 화면 갱신(0.05초)보다 느리게 읽어 CPU를 아낍니다.
+OCR_INTERVAL = 0.2
+# 멜론 창 전체 재탐색 주기 (초). 그 사이에는 찾아 둔 창이 유효한지만 확인합니다.
+WINDOW_RESCAN_INTERVAL = 1.0
+# 멜론 창 캡처는 멜론이 응답해야 끝나므로 별도 스레드에서 하고, 이 시간이 넘으면 이번 회차는 건너뜁니다.
+CAPTURE_TIMEOUT = 1.5
+_capture_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="capture")
+
+
+def _drain_pending_actions() -> None:
+    """단축키 콜백은 keyboard 스레드에서 들어오므로, 실제 처리는 메인 스레드에서 합니다."""
+    while True:
+        try:
+            action = _pending_actions.get_nowait()
+        except queue.Empty:
+            return
+        action()
 
 
 # ------------------------------------------------------------------ #
@@ -224,20 +246,66 @@ async def main() -> None:
             add_log(title)
 
     current_song_info = None
-    current_song_start_time = 0.0
     current_song_lines = 0
+    current_song_played = 0.0   # 지금 곡을 실제로 재생한 시간 (초)
+    session_played = 0.0        # 이번 실행에서 실제로 재생한 시간 (초)
+    last_tick = time.monotonic()
+
+    media = MelonMediaSession()
+    media_state = MediaState()
+    next_media_poll = 0.0
+
+    def start_play(song_title_str: str, repeat: bool = False) -> None:
+        """새 재생 한 건을 기록합니다 (곡이 바뀌었거나 같은 곡을 처음부터 다시 틀었을 때)."""
+        nonlocal current_song_info, current_song_lines, current_song_played
+        session_stats["play_count"] += 1
+        title, artist = parse_song_info(song_title_str)
+        current_song_lines = 0
+        current_song_played = 0.0
+        matcher.reset_recent()  # 새 재생 시작 시 가사 위치 기억 초기화
+        current_song_info = {
+            "title": title,
+            "artist": artist,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "play_time_sec": 0,
+            "lines": 0,
+        }
+        overlay.update_song_info(title, artist)
+        window.dashboard_page.set_now_playing(title, artist)
+        window.music_page.add_entry(current_song_info)
+        persistent_stats["play_history"].insert(0, current_song_info)
+        add_log(f"{'반복 재생' if repeat else '새로운 곡 감지'}: {song_title_str}")
+        save_stats(persistent_stats, _app_config.data_dir)
+
+    target_win = None
+    next_window_scan = 0.0
+    last_target_ok = False
+    next_ocr_at = 0.0
+    last_shown: tuple = ()
+    last_stats_ui = 0.0
+    capture_future = None  # 아직 끝나지 않은 캡처 (멜론이 응답하지 않을 때)
+
+    async def capture_pumped(hwnd_):
+        """캡처를 작업 스레드에서 돌리는 동안 화면과 단축키 처리를 계속합니다."""
+        nonlocal capture_future
+        if capture_future is not None and not capture_future.done():
+            return None  # 지난 캡처가 아직 멈춰 있음 → 이번 회차는 건너뜀
+        fut = asyncio.get_running_loop().run_in_executor(_capture_pool, capture_covered_window, hwnd_)
+        capture_future = fut
+        deadline = time.monotonic() + CAPTURE_TIMEOUT
+        while not fut.done():
+            app.processEvents()
+            _drain_pending_actions()
+            if not is_running or time.monotonic() > deadline:
+                return None
+            await asyncio.sleep(0.01)
+        return fut.result()
 
     try:
         while is_running:
             app.processEvents()
 
-            # 단축키 콜백은 keyboard 스레드에서 들어오므로, 실제 처리는 여기(메인 스레드)에서 합니다.
-            while True:
-                try:
-                    action = _pending_actions.get_nowait()
-                except queue.Empty:
-                    break
-                action()
+            _drain_pending_actions()
             if not is_running:
                 break
 
@@ -249,8 +317,35 @@ async def main() -> None:
             hide_melon = is_ghost_mode and config_manager.hide_melon_window
 
             # 멜론 프로세스의 창만 대상으로 삼습니다 (다른 프로그램 창을 건드리지 않도록).
-            target_win = find_melon_window()
             now = time.monotonic()
+            target_win = recheck_window(target_win) if now < next_window_scan else None
+            if target_win is None and now >= next_window_scan or target_win is None and last_target_ok:
+                target_win = find_melon_window()
+                next_window_scan = now + WINDOW_RESCAN_INTERVAL
+            last_target_ok = target_win is not None
+
+            # 1분마다 자동 저장 (멜론 창이 없어도)
+            if now - last_save_time >= 60:
+                save_stats(persistent_stats, _app_config.data_dir)
+                last_save_time = now
+
+            # 재생 상태 (1초마다): 실제로 재생 중일 때만 감상 시간을 셉니다.
+            restarted = False
+            if now >= next_media_poll:
+                next_media_poll = now + 1.0
+                prev_state = media_state
+                media_state = await media.poll()
+                restarted = is_restart(prev_state, media_state, current_song_played)
+            dt = min(now - last_tick, 1.0)
+            last_tick = now
+            # 미디어 세션을 못 찾으면 예전처럼 '멜론 창이 보이면 재생 중'으로 봅니다.
+            playing = media_state.playing if media_state.available else target_win is not None
+            if playing and current_song_info is not None:
+                current_song_played += dt
+                session_played += dt
+                current_song_info["play_time_sec"] = int(current_song_played)
+            session_stats["session_duration"] = session_played
+            persistent_stats["total_play_time_sec"] = int(session_stats["base_play_time"] + session_played)
 
             if target_win is None and applied_hwnd is not None and not hide_melon:
                 # 멜론이 최소화되거나 숨겨진 상태에서 일반 모드로 바꾼 경우
@@ -271,6 +366,7 @@ async def main() -> None:
                     overlay.update_lyrics("", "")
                     window.dashboard_page.curr_lyric.setText("")
                     last_lyric_text = ""
+                    last_shown = ()
             else:
                 melon_missing_since = None
 
@@ -295,33 +391,18 @@ async def main() -> None:
                 if current_song_title != last_song_title:
                     last_song_title = current_song_title
                     if current_song_title:
-                        session_stats["play_count"] += 1
-                        title, artist = parse_song_info(current_song_title)
-                        timestamp_full = time.strftime("%Y-%m-%d %H:%M:%S")
-                        
-                        current_song_start_time = time.time()
-                        current_song_lines = 0
-                        matcher.reset_recent()  # 새 곡 시작 시 매핑 이력 초기화
-                        current_song_info = {
-                            "title": title,
-                            "artist": artist,
-                            "timestamp": timestamp_full,
-                            "play_time_sec": 0,
-                            "lines": 0
-                        }
+                        start_play(current_song_title)
+                elif current_song_title and restarted:
+                    start_play(current_song_title, repeat=True)
 
-                        # 오버레이에 곡 정보 업데이트
-                        overlay.update_song_info(title, artist)
-                        window.dashboard_page.set_now_playing(title, artist)
-
-                        window.music_page.add_entry(current_song_info)
-
-                        persistent_stats["play_history"].insert(0, current_song_info)
-                        add_log(f"새로운 곡 감지: {current_song_title}")
-                        save_stats(persistent_stats, _app_config.data_dir)
-
-                # 캡처 및 OCR
-                full_img = capture_covered_window(hwnd)
+                # 캡처 및 OCR (OCR_INTERVAL마다)
+                if now < next_ocr_at:
+                    await asyncio.sleep(0.05)
+                    continue
+                next_ocr_at = now + OCR_INTERVAL
+                full_img = await capture_pumped(hwnd)
+                if not is_running:
+                    break
                 roi = None
                 if not ocr_available():
                     set_status("error", "OCR을 사용할 수 없어요", f"{OCR_STATUS}. {OCR_HELP}")
@@ -356,18 +437,10 @@ async def main() -> None:
                             "roi",
                         )
 
-                    fixed_lines: list[str] = []
-                    for line in lines:
-                        fixed_text, status = matcher.get_best_match(line, target_win.title)
-                        if status:
-                            add_log(status)
-                        fixed_lines.append(fixed_text)
-
-                    # 터미널 출력
-                    print("\033[H\033[J")
-                    mode_status = "👻 게임 모드" if is_ghost_mode else "🖱️  조작 모드"
-                    print(f"상태: {mode_status} | 대상: {target_win.title}")
-                    print("-" * 40)
+                    # 현재 줄·다음 줄을 함께 보정 (곡 안의 위치를 고려)
+                    fixed_lines, statuses = matcher.match_lines(lines, target_win.title)
+                    for status in statuses:
+                        add_log(status)
 
                     curr = fixed_lines[0] if len(fixed_lines) > 0 else "..."
                     nxt = fixed_lines[1] if len(fixed_lines) > 1 else ""
@@ -382,33 +455,29 @@ async def main() -> None:
                             current_song_lines += 1
                             current_song_info["lines"] = current_song_lines
 
-                    if current_song_info is not None:
-                        current_song_info["play_time_sec"] = int(time.time() - current_song_start_time)
 
-                    print(f"🔥 현재: {curr}")
-                    print(f"💤 다음: {nxt}")
-                    print("-" * 40)
-                    print("[ 시스템 로그 ]")
-                    for log in log_history:
-                        print(f" > {log}")
+                    # 화면과 터미널은 가사가 바뀔 때만 갱신합니다.
+                    if (curr, nxt) != last_shown:
+                        last_shown = (curr, nxt)
+                        overlay.update_lyrics(curr, nxt)
+                        window.dashboard_page.curr_lyric.setText(curr)
+                        print("\033[H\033[J")
+                        mode_status = "👻 게임 모드" if is_ghost_mode else "🖱️  조작 모드"
+                        print(f"상태: {mode_status} | 대상: {target_win.title}")
+                        print("-" * 40)
+                        print(f"🔥 현재: {curr}")
+                        print(f"💤 다음: {nxt}")
+                        print("-" * 40)
+                        print("[ 시스템 로그 ]")
+                        for log in log_history:
+                            print(f" > {log}")
 
-                    # 오버레이 + 대시보드 업데이트
-                    overlay.update_lyrics(curr, nxt)
-                    window.dashboard_page.curr_lyric.setText(curr)
-
-                    session_duration = time.time() - session_stats["start_time"]
-                    session_stats["session_duration"] = session_duration
-                    total_play_time_sec = session_stats["base_play_time"] + session_duration
-                    persistent_stats["total_play_time_sec"] = int(total_play_time_sec)
-
-                    window.dashboard_page.update_stats(session_stats, persistent_stats.get("play_history", []))
+                    # 통계 카드는 1초에 한 번이면 충분합니다.
+                    if now - last_stats_ui >= 1.0:
+                        last_stats_ui = now
+                        window.dashboard_page.update_stats(session_stats, persistent_stats.get("play_history", []))
 
                     QApplication.processEvents()
-
-            # 1분마다 자동 저장 (멜론 창이 없어도)
-            if now - last_save_time >= 60:
-                save_stats(persistent_stats, _app_config.data_dir)
-                last_save_time = now
 
             await asyncio.sleep(0.05)
 
