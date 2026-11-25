@@ -2,9 +2,9 @@ import sys
 
 import win32con
 import win32gui
-from PySide6.QtCore import Qt, QPoint  # type: ignore
+from PySide6.QtCore import Qt, QPoint, QRect, Signal  # type: ignore
 from PySide6.QtGui import QColor, QFont  # type: ignore
-from PySide6.QtWidgets import QApplication, QFrame, QVBoxLayout, QWidget  # type: ignore
+from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QVBoxLayout, QWidget  # type: ignore
 
 from overlay.config_manager import OverlayConfigManager
 from overlay.outlined_label import OutlinedLabel
@@ -14,12 +14,16 @@ from gui.widgets.media_controls import MediaControls
 class LyricsOverlay(QWidget):
     """화면 위에 항상 표시되는 가사 오버레이 창."""
 
+    edit_finished = Signal(bool)  # 편집 모드 끝: True = 완료(적용), False = 취소
+
     def __init__(self, config: OverlayConfigManager | None = None):
         super().__init__()
+        self.editing = False
         self.config = config if config else OverlayConfigManager()
         self.bg_color: QColor = self.config.bg_color
-        self.move_enabled: bool = self.config.move_enabled
-        self.resize_enabled: bool = self.config.resize_enabled
+        # 이동·크기 조절은 '위치·크기 조정' 편집 모드에서만 켭니다.
+        self.move_enabled: bool = False
+        self.resize_enabled: bool = False
         self.ghost_enabled: bool = self.config.ghost_mode
         self.media_controls_enabled: bool = self.config.show_media_controls
         self._init_ui()
@@ -78,6 +82,33 @@ class LyricsOverlay(QWidget):
         self.media_controls.hide()
         self._place_media_controls()
 
+        # 편집 모드 안내와 '완료' 버튼 (평소엔 숨김)
+        self.edit_hint = QLabel("드래그해서 옮기고, 오른쪽 아래 모서리를 끌어 크기를 바꾸세요", self)
+        self.edit_hint.setStyleSheet(
+            "color: white; background: rgba(20, 20, 40, 200); border-radius: 8px;"
+            "padding: 4px 10px; font-size: 12px; font-weight: 600;"
+        )
+        self.edit_hint.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.edit_hint.hide()
+        self.edit_done_btn = QPushButton("완료", self)
+        self.edit_done_btn.setCursor(Qt.PointingHandCursor)
+        self.edit_done_btn.setStyleSheet(
+            "QPushButton { color: white; background: #5B4BE0; border: none; border-radius: 12px;"
+            " padding: 5px 16px; font-weight: 700; }"
+            "QPushButton:hover { background: #4A3BCC; }"
+        )
+        self.edit_done_btn.clicked.connect(lambda: self.edit_finished.emit(True))
+        self.edit_done_btn.hide()
+        self.edit_cancel_btn = QPushButton("취소", self)
+        self.edit_cancel_btn.setCursor(Qt.PointingHandCursor)
+        self.edit_cancel_btn.setStyleSheet(
+            "QPushButton { color: white; background: rgba(20, 20, 40, 200); border: none;"
+            " border-radius: 12px; padding: 5px 14px; font-weight: 600; }"
+            "QPushButton:hover { background: rgba(50, 50, 80, 220); }"
+        )
+        self.edit_cancel_btn.clicked.connect(lambda: self.edit_finished.emit(False))
+        self.edit_cancel_btn.hide()
+
     # ------------------------------------------------------------------ #
     # 설정 동기화
     # ------------------------------------------------------------------ #
@@ -88,19 +119,26 @@ class LyricsOverlay(QWidget):
 
     def _update_bg_style(self) -> None:
         c = self.bg_color
+        if self.editing:
+            # 편집 중엔 배경이 투명해도 영역이 보이도록 점선 테두리와 최소 배경을 깝니다.
+            border = "2px dashed #8B7BFF"
+            alpha = max(c.alpha(), 90)
+        else:
+            border = f"1px solid rgba(255, 255, 255, {min(70, c.alpha() // 3 + 10)})"
+            alpha = c.alpha()
         self.bg_frame.setStyleSheet(
             f"""
             QFrame#LyricsBgFrame {{
-                background-color: rgba({c.red()}, {c.green()}, {c.blue()}, {c.alpha()});
+                background-color: rgba({c.red()}, {c.green()}, {c.blue()}, {alpha});
                 border-radius: 18px;
-                border: 1px solid rgba(255, 255, 255, {min(70, c.alpha() // 3 + 10)});
+                border: {border};
             }}
             """
         )
 
     def apply_settings(self, settings: dict) -> None:
         """settings dict를 받아 오버레이 외관과 동작을 갱신합니다."""
-        if not settings.get("visible", True):
+        if not settings.get("visible", True) and not self.editing:
             self.hide()
             return
         self.show()
@@ -133,10 +171,6 @@ class LyricsOverlay(QWidget):
 
         if "ghost" in settings:
             self.set_ghost_mode(settings["ghost"])
-        if "move_enabled" in settings:
-            self.move_enabled = settings["move_enabled"]
-        if "resize_enabled" in settings:
-            self.resize_enabled = settings["resize_enabled"]
         if "show_media_controls" in settings:
             self.media_controls_enabled = settings["show_media_controls"]
             if not self._media_controls_allowed():
@@ -162,7 +196,12 @@ class LyricsOverlay(QWidget):
     # ------------------------------------------------------------------ #
 
     def set_ghost_mode(self, enable: bool) -> None:
-        """Win32 WS_EX_TRANSPARENT으로 클릭 통과 여부를 전환합니다."""
+        """Win32 WS_EX_TRANSPARENT으로 클릭 통과 여부를 전환합니다.
+
+        편집 모드 중에는 설정값(enable)만 기억하고 실제로는 클릭을 받습니다.
+        """
+        self._ghost_pref = enable
+        enable = enable and not self.editing
         self.ghost_enabled = enable
         if enable:
             self.media_controls.hide()
@@ -176,6 +215,88 @@ class LyricsOverlay(QWidget):
             win32gui.SetWindowLong(
                 hwnd, win32con.GWL_EXSTYLE, ex_style & ~win32con.WS_EX_TRANSPARENT
             )
+
+    # ------------------------------------------------------------------ #
+    # 편집 모드 (위치·크기 조정)
+    # ------------------------------------------------------------------ #
+
+    def set_edit_mode(self, on: bool) -> None:
+        """켜면 잠시 클릭을 받게 하고, 드래그 이동·모서리 크기 조절과 '완료/취소' 버튼을 보여 줍니다.
+
+        저장된 설정(클릭 통과·표시)은 바꾸지 않습니다. 편집 중 프로그램이 꺼져도 원래 설정이 남습니다.
+        """
+        if on and not self.editing:
+            self._geometry_before_edit = self.geometry()
+        self.editing = on
+        self.move_enabled = on
+        self.resize_enabled = on
+        self.set_ghost_mode(getattr(self, "_ghost_pref", self.config.ghost_mode))
+        if on:
+            self.media_controls.hide()
+            self.show()
+            self.raise_()
+        else:
+            self.setCursor(Qt.ArrowCursor)
+            if not self.config.visible:
+                self.hide()
+        self.edit_hint.setVisible(on)
+        self.edit_done_btn.setVisible(on)
+        self.edit_cancel_btn.setVisible(on)
+        self._place_edit_widgets()
+        self._update_bg_style()
+
+    def cancel_edit_geometry(self) -> None:
+        """편집을 취소하면 편집 전 위치·크기로 되돌립니다."""
+        geo = getattr(self, "_geometry_before_edit", None)
+        if geo is not None:
+            self.setGeometry(geo)
+            self.config.update_position(geo.x(), geo.y())
+            self.config.update_size(geo.width(), geo.height())
+
+    def _place_edit_widgets(self) -> None:
+        if not hasattr(self, "edit_done_btn"):
+            return
+        self.edit_hint.adjustSize()
+        self.edit_hint.move(12, 10)
+        self.edit_done_btn.adjustSize()
+        self.edit_done_btn.move(
+            self.width() - self.edit_done_btn.width() - self.resize_margin - 8,
+            self.height() - self.edit_done_btn.height() - 10,
+        )
+        self.edit_cancel_btn.adjustSize()
+        self.edit_cancel_btn.move(
+            self.edit_done_btn.x() - self.edit_cancel_btn.width() - 6, self.edit_done_btn.y()
+        )
+        self.edit_hint.raise_()
+        self.edit_done_btn.raise_()
+        self.edit_cancel_btn.raise_()
+
+    def ensure_on_screen(self) -> bool:
+        """오버레이가 어떤 모니터에도 충분히 보이지 않으면 주 모니터 아래쪽 가운데로 옮깁니다.
+
+        옮겼으면 True.
+        """
+        geo = self.frameGeometry()
+        for screen in QApplication.screens():
+            visible = screen.availableGeometry().intersected(geo)
+            if visible.width() >= min(120, geo.width()) and visible.height() >= min(40, geo.height()):
+                return False
+        self.reset_position()
+        return True
+
+    def reset_position(self) -> None:
+        """주 모니터 아래쪽 가운데로 옮기고 저장합니다."""
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            return
+        area = screen.availableGeometry()
+        w = min(self.width(), area.width() - 40)
+        h = min(self.height(), area.height() - 40)
+        x = area.x() + (area.width() - w) // 2
+        y = area.y() + area.height() - h - int(area.height() * 0.08)
+        self.setGeometry(QRect(x, y, w, h))
+        self.config.update_position(x, y)
+        self.config.update_size(w, h)
 
     def set_move_enabled(self, enabled: bool) -> None:
         self.move_enabled = enabled
@@ -222,9 +343,10 @@ class LyricsOverlay(QWidget):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._place_media_controls()
+        self._place_edit_widgets()
 
     def enterEvent(self, event) -> None:
-        if self._media_controls_allowed():
+        if self._media_controls_allowed() and not self.editing:
             self._place_media_controls()
             self.media_controls.show()
         super().enterEvent(event)
