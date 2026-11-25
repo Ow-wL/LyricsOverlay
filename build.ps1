@@ -1,4 +1,4 @@
-# LyricsOverlay exe 빌드 스크립트
+﻿# LyricsOverlay exe 빌드 스크립트
 #
 #   .\build.ps1
 #
@@ -18,8 +18,13 @@ if (-not (Test-Path $python)) {
     throw "venv가 없습니다. INSTALL.md의 설치 방법대로 venv를 만들고 requirements-build.txt를 설치하세요."
 }
 
-& $python -m PyInstaller main.spec --noconfirm
-if ($LASTEXITCODE -ne 0) { throw "PyInstaller 빌드 실패" }
+# PyInstaller는 진행 로그를 stderr로 씁니다. Windows PowerShell 5.1은 출력을 리디렉션하면 이것을
+# 오류로 바꿔 'Stop'에서 멈추므로, 이 단계만 Continue로 두고 종료 코드로 성공 여부를 판단합니다.
+$ErrorActionPreference = "Continue"
+& $python -m PyInstaller main.spec --noconfirm 2>&1 | ForEach-Object { "$_" }
+$buildExit = $LASTEXITCODE
+$ErrorActionPreference = "Stop"
+if ($buildExit -ne 0) { throw "PyInstaller 빌드 실패 (종료 코드 $buildExit)" }
 
 $exe = Join-Path $PSScriptRoot "dist\LyricsOverlay.exe"
 
