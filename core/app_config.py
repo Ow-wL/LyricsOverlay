@@ -1,13 +1,23 @@
 import os
 import shutil
+import tempfile
+import time
+from typing import Callable
+
 from PySide6.QtCore import QSettings, QStandardPaths  # type: ignore
+
+# 데이터 폴더에 저장되는 파일들
+DATA_FILES = ["lyrics_stats.json", "overlay_settings.json", "overlay_styles.json"]
+
 
 class AppConfig:
     """앱 전체의 글로벌 설정 (예: 데이터 저장 경로)을 관리합니다."""
 
     def __init__(self):
         self.settings = QSettings("Ow-wL", "LyricsOverlay")
+        self._listeners: list[Callable[[str], None]] = []
         self._data_dir = self.settings.value("data_dir", None)
+        first_run = not self._data_dir
 
         if not self._data_dir:
             # 기본 경로: 문서/LyricsOverlay
@@ -23,46 +33,88 @@ class AppConfig:
                 # 실패 시 현재 폴더로 fallback
                 self._data_dir = os.getcwd()
                 self.settings.setValue("data_dir", self._data_dir)
-                
-        # 최초 실행 시 현재 폴더에 기존 파일이 있다면 복사 (마이그레이션 편의성)
-        self._migrate_existing_files()
+
+        # 예전 버전은 실행 폴더에 데이터를 저장했습니다. 처음 실행할 때 한 번만 옮겨 옵니다.
+        # (매번 하면 아무 폴더에서 실행해도 그 폴더의 JSON을 가져오게 됩니다.)
+        if first_run:
+            self._migrate_existing_files()
 
     @property
     def data_dir(self) -> str:
         return self._data_dir
 
-    def set_data_dir(self, new_dir: str) -> bool:
-        """데이터 경로를 변경하고 기존 파일들을 새 경로로 이동시킵니다."""
-        if not new_dir or not os.path.exists(new_dir):
+    def add_listener(self, fn: Callable[[str], None]) -> None:
+        """데이터 경로가 바뀌면 새 경로로 fn(new_dir)을 호출합니다.
+
+        각 관리자(오버레이 설정, 통계, 창 복구 기록)는 여기서 자기 파일 경로를 바꾸고
+        메모리의 최신 상태를 새 경로에 저장합니다.
+        """
+        self._listeners.append(fn)
+
+    @staticmethod
+    def existing_data_files(directory: str) -> list[str]:
+        """directory에 이미 있는 데이터 파일 이름 목록."""
+        return [f for f in DATA_FILES if os.path.exists(os.path.join(directory, f))]
+
+    @staticmethod
+    def is_writable(directory: str) -> bool:
+        try:
+            with tempfile.TemporaryFile(dir=directory):
+                pass
+            return True
+        except Exception:
             return False
 
-        old_dir = self._data_dir
-        if old_dir == new_dir:
-            return True
+    def set_data_dir(self, new_dir: str, overwrite_existing: bool = False) -> bool:
+        """데이터 경로를 바꾸고, 지금 쓰는 데이터를 새 경로에 저장합니다.
 
-        files_to_move = ["lyrics_stats.json", "overlay_settings.json", "overlay_styles.json"]
-        
-        for file_name in files_to_move:
-            old_path = os.path.join(old_dir, file_name)
-            new_path = os.path.join(new_dir, file_name)
-            if os.path.exists(old_path) and not os.path.exists(new_path):
-                try:
-                    shutil.copy2(old_path, new_path)
-                except Exception as e:
-                    print(f"[⚠️] 파일 복사 실패 ({file_name}): {e}")
-        
+        새 경로에 같은 이름의 파일이 있으면 overwrite_existing=True일 때만 진행하며,
+        그 파일은 덮어쓰기 전에 `.bak-<시각>`으로 백업합니다.
+        기존 경로의 파일은 지우지 않고 그대로 둡니다.
+        """
+        if not new_dir or not os.path.isdir(new_dir):
+            return False
+        new_dir = os.path.abspath(new_dir)
+        if os.path.normcase(new_dir) == os.path.normcase(os.path.abspath(self._data_dir)):
+            return True
+        if not self.is_writable(new_dir):
+            return False
+
+        existing = self.existing_data_files(new_dir)
+        if existing and not overwrite_existing:
+            return False
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        for name in existing:
+            path = os.path.join(new_dir, name)
+            try:
+                shutil.copy2(path, f"{path}.bak-{stamp}")
+            except Exception as e:
+                print(f"[⚠️] 기존 파일 백업 실패 ({name}): {e}")
+                return False
+
         self._data_dir = new_dir
         self.settings.setValue("data_dir", new_dir)
+        for fn in self._listeners:
+            try:
+                fn(new_dir)
+            except Exception as e:
+                print(f"[⚠️] 데이터 경로 변경 반영 실패: {e}")
         return True
-        
+
+    def set_data_dir_on_next_start(self, new_dir: str) -> None:
+        """새 경로의 기존 데이터를 쓰도록, 다음 실행부터 경로를 바꿉니다.
+
+        지금 실행 중에는 기존 경로에 계속 저장해 새 경로의 파일을 덮어쓰지 않습니다.
+        """
+        self.settings.setValue("data_dir", os.path.abspath(new_dir))
+
     def _migrate_existing_files(self):
         """현재 디렉토리에 레거시 파일이 있다면 새 경로로 복사합니다."""
         cwd = os.getcwd()
         if cwd == self._data_dir:
             return
-            
-        files_to_move = ["lyrics_stats.json", "overlay_settings.json", "overlay_styles.json"]
-        for file_name in files_to_move:
+
+        for file_name in DATA_FILES:
             old_path = os.path.join(cwd, file_name)
             new_path = os.path.join(self._data_dir, file_name)
             if os.path.exists(old_path) and not os.path.exists(new_path):

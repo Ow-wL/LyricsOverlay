@@ -1,6 +1,7 @@
 import json
 import os
 
+from PySide6.QtCore import QTimer  # type: ignore
 from PySide6.QtGui import QColor, QFont  # type: ignore
 
 from core.utils import atomic_write_json
@@ -8,6 +9,72 @@ from core.utils import atomic_write_json
 # 예전 기본값. 전역 단축키라 다른 프로그램에서 대문자 Q만 쳐도 종료돼서 바꿨습니다.
 _LEGACY_QUIT_HOTKEY = "shift+q"
 DEFAULT_QUIT_HOTKEY = "ctrl+alt+q"
+DEFAULT_HOTKEYS = {
+    "hotkey_ghost": "F9",
+    "hotkey_quit": DEFAULT_QUIT_HOTKEY,
+    "hotkey_next": "ctrl+shift+right",
+    "hotkey_prev": "ctrl+shift+left",
+    "hotkey_pause": "F8",
+}
+# 멜론 창 캡처 이미지에서 가사(현재·다음 줄)가 있는 영역 [x, y, w, h] (100% 배율 기본 레이아웃 기준)
+DEFAULT_ROI = [28, 216, 251, 46]
+
+
+# ------------------------------------------------------------------ #
+# 값 검증: 잘못된 JSON 하나 때문에 앱이 매번 시작하다 죽지 않도록,
+# 형식이 틀린 값은 버리고 기본값을 씁니다.
+# ------------------------------------------------------------------ #
+
+def _int_in(value, lo: int, hi: int):
+    """정수이고 범위 안이면 그 값, 아니면 None (bool은 정수로 치지 않음)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    value = int(value)
+    return value if lo <= value <= hi else None
+
+
+def _color(value):
+    if not isinstance(value, str):
+        return None
+    c = QColor(value)
+    return c if c.isValid() else None
+
+
+def _font_family(value):
+    if isinstance(value, str) and 0 < len(value) <= 100:
+        return value
+    return None
+
+
+def sanitize_preset(data) -> dict | None:
+    """프리셋 dict에서 올바른 값만 남깁니다. 쓸 값이 하나도 없으면 None."""
+    if not isinstance(data, dict):
+        return None
+    clean: dict = {}
+    for key in ("bg_color", "text_color", "outline_color"):
+        c = _color(data.get(key))
+        if c is not None:
+            clean[key] = c.name()
+    for key, lo, hi in (("bg_alpha", 0, 255), ("outline_width", 0, 10), ("font_size", 6, 120)):
+        v = _int_in(data.get(key), lo, hi)
+        if v is not None:
+            clean[key] = v
+    fam = _font_family(data.get("font_family"))
+    if fam:
+        clean["font_family"] = fam
+    return clean or None
+
+
+def _sanitize_presets(data) -> dict:
+    if not isinstance(data, dict):
+        return {}
+    out = {}
+    for name, preset in data.items():
+        if isinstance(name, str) and name.strip() and len(name) <= 60:
+            clean = sanitize_preset(preset)
+            if clean:
+                out[name.strip()] = clean
+    return out
 
 
 class OverlayConfigManager:
@@ -51,8 +118,19 @@ class OverlayConfigManager:
         self.hide_melon_window = True
         # 오버레이에 마우스를 올리면 재생 버튼 표시 (고스트 모드가 꺼져 있을 때만 동작)
         self.show_media_controls = True
+        # 창 닫기(X)를 누르면 종료하지 않고 트레이로 숨김
+        self.close_to_tray = True
+        self.roi = list(DEFAULT_ROI)
 
         self.load_from_file()
+
+    def set_data_dir(self, data_dir: str) -> None:
+        """데이터 경로가 바뀌면 파일 경로를 바꾸고 현재 설정과 프리셋을 새 경로에 저장합니다."""
+        self.data_dir = data_dir
+        self.config_path = os.path.join(data_dir, "overlay_settings.json")
+        self.styles_path = os.path.join(data_dir, "overlay_styles.json")
+        self.save_styles()
+        self.save_now()
 
     # ------------------------------------------------------------------ #
     # 스타일 프리셋 관련
@@ -67,10 +145,10 @@ class OverlayConfigManager:
                 if isinstance(data, dict) and (
                     "system_presets" in data or "custom_presets" in data
                 ):
-                    self.PRESET_STYLES = data.get("system_presets", {})
-                    self.custom_presets = data.get("custom_presets", {})
+                    self.PRESET_STYLES = _sanitize_presets(data.get("system_presets", {}))
+                    self.custom_presets = _sanitize_presets(data.get("custom_presets", {}))
                 else:
-                    self.PRESET_STYLES = data
+                    self.PRESET_STYLES = _sanitize_presets(data)
                     self.custom_presets = {}
             except Exception as e:
                 print(f"Failed to load styles from {self.styles_path}: {e}")
@@ -143,27 +221,37 @@ class OverlayConfigManager:
             print(f"Failed to export styles: {e}")
             return False
 
-    def import_styles(self, import_path: str) -> bool:
-        """외부 파일에서 프리셋 스타일을 가져옵니다."""
+    def import_styles(self, import_path: str) -> int:
+        """외부 파일의 프리셋을 '내 프리셋'으로 가져옵니다. 가져온 개수를 반환 (0 = 실패).
+
+        기본 프리셋은 덮어쓰지 않고, 형식이 틀린 값은 버립니다.
+        """
         try:
+            if os.path.getsize(import_path) > 1_000_000:
+                return 0
             with open(import_path, "r", encoding="utf-8") as f:
                 import_data = json.load(f)
+            if not isinstance(import_data, dict):
+                return 0
             if "system_presets" in import_data or "custom_presets" in import_data:
-                if "system_presets" in import_data:
-                    self.PRESET_STYLES.update(import_data["system_presets"])
-                if "custom_presets" in import_data:
-                    self.custom_presets.update(import_data["custom_presets"])
+                incoming = {
+                    **_sanitize_presets(import_data.get("system_presets", {})),
+                    **_sanitize_presets(import_data.get("custom_presets", {})),
+                }
             else:
-                self.PRESET_STYLES.update(import_data)
+                incoming = _sanitize_presets(import_data)
+            if not incoming:
+                return 0
+            self.custom_presets.update(incoming)
             self.save_styles()
-            self.save_to_file()
-            return True
+            return len(incoming)
         except Exception as e:
             print(f"Failed to import styles: {e}")
-            return False
+            return 0
 
     def apply_preset(self, preset_data: dict) -> None:
         """프리셋 데이터를 현재 설정에 적용합니다."""
+        preset_data = sanitize_preset(preset_data) or {}
         if "bg_color" in preset_data:
             self.bg_color = QColor(preset_data["bg_color"])
             if "bg_alpha" in preset_data:
@@ -272,6 +360,11 @@ class OverlayConfigManager:
         self.visible = visible
         self.save_to_file()
 
+    def set_roi(self, roi: list[int] | None) -> None:
+        """가사 인식 영역을 바꿉니다. None이면 기본값으로."""
+        self.roi = list(roi) if roi else list(DEFAULT_ROI)
+        self.save_to_file()
+
     def set_ghost_mode(self, ghost: bool) -> None:
         self.ghost_mode = ghost
         self.save_to_file()
@@ -309,7 +402,22 @@ class OverlayConfigManager:
     # ------------------------------------------------------------------ #
 
     def save_to_file(self) -> None:
-        """설정을 JSON 파일로 저장합니다."""
+        """설정 저장을 예약합니다.
+
+        드래그나 슬라이더처럼 값이 연달아 바뀔 때 매번 디스크에 쓰지 않도록,
+        마지막 변경 후 0.4초 뒤에 한 번만 저장합니다. 종료할 때는 save_now()로 마무리합니다.
+        """
+        if not hasattr(self, "_save_timer"):
+            self._save_timer = QTimer()
+            self._save_timer.setSingleShot(True)
+            self._save_timer.setInterval(400)
+            self._save_timer.timeout.connect(self.save_now)
+        self._save_timer.start()
+
+    def save_now(self) -> None:
+        """설정을 JSON 파일로 바로 저장합니다."""
+        if hasattr(self, "_save_timer"):
+            self._save_timer.stop()
         try:
             data = {
                 "bg_color": self.bg_color.name(),
@@ -336,6 +444,8 @@ class OverlayConfigManager:
                 "show_song_info": self.show_song_info,
                 "hide_melon_window": self.hide_melon_window,
                 "show_media_controls": self.show_media_controls,
+                "close_to_tray": self.close_to_tray,
+                "roi": self.roi,
             }
             atomic_write_json(self.config_path, data)
         except Exception as e:
@@ -348,42 +458,48 @@ class OverlayConfigManager:
         try:
             with open(self.config_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-
-            if "bg_color" in data:
-                self.bg_color = QColor(data["bg_color"])
-                if "bg_alpha" in data:
-                    self.bg_color.setAlpha(data["bg_alpha"])
-            if "text_color" in data:
-                self.text_color = QColor(data["text_color"])
-            if "outline_color" in data:
-                self.outline_color = QColor(data["outline_color"])
-
-            self.outline_width = data.get("outline_width", self.outline_width)
-            self.font_family = data.get("font_family", self.font_family)
-            self.font_size = data.get("font_size", self.font_size)
-            self.ghost_mode = data.get("ghost_mode", self.ghost_mode)
-            self.visible = data.get("visible", self.visible)
-            self.move_enabled = data.get("move_enabled", self.move_enabled)
-            self.resize_enabled = data.get("resize_enabled", self.resize_enabled)
-            self.hotkey_ghost = data.get("hotkey_ghost", self.hotkey_ghost)
-            self.hotkey_quit = data.get("hotkey_quit", self.hotkey_quit)
-            self.hotkey_next = data.get("hotkey_next", self.hotkey_next)
-            self.hotkey_prev = data.get("hotkey_prev", self.hotkey_prev)
-            self.hotkey_pause = data.get("hotkey_pause", self.hotkey_pause)
-            self.x = data.get("x", self.x)
-            self.y = data.get("y", self.y)
-            self.width = data.get("width", self.width)
-            self.height = data.get("height", self.height)
-            self.dashboard_view_mode = data.get("dashboard_view_mode", self.dashboard_view_mode)
-            self.show_song_info = data.get("show_song_info", self.show_song_info)
-            self.hide_melon_window = bool(data.get("hide_melon_window", self.hide_melon_window))
-            self.show_media_controls = bool(data.get("show_media_controls", self.show_media_controls))
+            if not isinstance(data, dict):
+                raise ValueError("설정 파일 형식이 올바르지 않습니다")
         except Exception as e:
             print(f"Failed to load settings: {e}")
             return
 
-        if not isinstance(self.hotkey_quit, str):
-            self.hotkey_quit = DEFAULT_QUIT_HOTKEY
+        # 값마다 형식을 확인하고, 틀린 값은 버리고 기본값을 유지합니다.
+        style = sanitize_preset(data) or {}
+        if "bg_color" in style:
+            self.bg_color = QColor(style["bg_color"])
+        if "bg_alpha" in style:
+            self.bg_color.setAlpha(style["bg_alpha"])
+        if "text_color" in style:
+            self.text_color = QColor(style["text_color"])
+        if "outline_color" in style:
+            self.outline_color = QColor(style["outline_color"])
+        self.outline_width = style.get("outline_width", self.outline_width)
+        self.font_family = style.get("font_family", self.font_family)
+        self.font_size = style.get("font_size", self.font_size)
+
+        for key in ("ghost_mode", "visible", "move_enabled", "resize_enabled",
+                    "show_song_info", "hide_melon_window", "show_media_controls",
+                    "close_to_tray"):
+            if isinstance(data.get(key), bool):
+                setattr(self, key, data[key])
+        for key in ("hotkey_ghost", "hotkey_quit", "hotkey_next", "hotkey_prev", "hotkey_pause"):
+            value = data.get(key)
+            if isinstance(value, str) and len(value) <= 60:
+                setattr(self, key, value)
+        for key, lo, hi in (("x", -20000, 20000), ("y", -20000, 20000),
+                            ("width", 200, 4000), ("height", 80, 2000)):
+            v = _int_in(data.get(key), lo, hi)
+            if v is not None:
+                setattr(self, key, v)
+        roi = data.get("roi")
+        if isinstance(roi, list) and len(roi) == 4:
+            vals = [_int_in(v, 0, 10000) for v in roi]
+            if None not in vals and vals[2] >= 10 and vals[3] >= 10:
+                self.roi = vals
+        if data.get("dashboard_view_mode") in ("session", "daily", "weekly", "monthly"):
+            self.dashboard_view_mode = data["dashboard_view_mode"]
+
         if self.hotkey_quit.replace(" ", "").lower() in (
             _LEGACY_QUIT_HOTKEY, "leftshift+q", "rightshift+q"
         ):

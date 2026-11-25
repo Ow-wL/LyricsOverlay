@@ -56,13 +56,17 @@ class Theme:
         "shadow": (60, 60, 120, 30),
         # 글자
         "text_primary": "#16182C",
-        "text_secondary": "#5C6180",
-        "text_tertiary": "#8C90AA",
+        "text_secondary": "#474B68",
+        "text_tertiary": "#5F6382",  # 밝은 배경 대비 4.9:1 이상 (WCAG AA)
         "text_on_accent": "#FFFFFF",
         # 강조색 (보라 → 파랑 그라데이션)
-        "accent": "#6C5CF6",
+        "accent": "#5B4BE0",
         "accent_2": "#3E8BFF",
-        "accent_hover": "#5A4AE8",
+        "accent_hover": "#4A3BCC",
+        # 흰 글자를 올리는 채움 배경 (선택된 메뉴, 주요 버튼) — 흰 글자 대비 4.5:1 이상
+        "fill_1": "#5B4BE0",
+        "fill_2": "#2F6FE0",
+        "fill_hover": "#4A3BCC",
         "accent_soft": _rgba(108, 92, 246, 0.13),
         "accent_soft_strong": _rgba(108, 92, 246, 0.22),
         # 입력칸·대화상자처럼 불투명해야 하는 곳
@@ -71,6 +75,10 @@ class Theme:
         "solid_card": "#FFFFFF",
         "selection": _rgba(108, 92, 246, 0.16),
         "danger": "#E5484D",
+        # 상태 글자색 (밝은 배경에서도 4.5:1 이상)
+        "status_ok": "#167A47",
+        "status_warn": "#965A00",
+        "status_error": "#C42B30",
     }
     DARK = {
         "name": "dark",
@@ -91,11 +99,14 @@ class Theme:
         "shadow": (0, 0, 0, 110),
         "text_primary": "#ECEDF8",
         "text_secondary": "#A4A8C4",
-        "text_tertiary": "#6F7391",
+        "text_tertiary": "#8287A6",
         "text_on_accent": "#FFFFFF",
         "accent": "#8B7BFF",
         "accent_2": "#4D93FF",
         "accent_hover": "#9D8FFF",
+        "fill_1": "#5B4BE0",
+        "fill_2": "#2E6BD8",
+        "fill_hover": "#4A3BCC",
         "accent_soft": _rgba(139, 123, 255, 0.16),
         "accent_soft_strong": _rgba(139, 123, 255, 0.28),
         "input_bg": _rgba(255, 255, 255, 0.07),
@@ -103,6 +114,9 @@ class Theme:
         "solid_card": "#1C1D35",
         "selection": _rgba(139, 123, 255, 0.24),
         "danger": "#FF6B70",
+        "status_ok": "#4ADE80",
+        "status_warn": "#FBBF24",
+        "status_error": "#FF7A7F",
     }
 
 

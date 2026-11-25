@@ -10,6 +10,8 @@ from PySide6.QtWidgets import (  # type: ignore
     QApplication,
     QHBoxLayout,
     QMainWindow,
+    QMenu,
+    QSystemTrayIcon,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -59,11 +61,25 @@ class MainWindow(QMainWindow):
 
     theme_changed = Signal(str)
     window_closed = Signal()
+    quit_requested = Signal()  # 트레이 메뉴의 '종료'
 
     def __init__(self, stats: dict, app_config, initial_theme: str = "light"):
         super().__init__()
         self.setWindowTitle("Lyrics Overlay")
-        self.setFixedSize(1280, 720)
+        # 노트북·고배율 화면에서도 화면을 넘지 않도록, 크기를 조절할 수 있게 하고
+        # 처음 크기는 사용 가능한 화면 안에 맞춥니다.
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            avail = screen.availableGeometry()
+            # 최소 크기도 화면보다 크지 않게 (예: 1366×768 125% 배율이면 높이가 600 안팎)
+            self.setMinimumSize(min(940, avail.width()), min(580, avail.height() - 40))
+            w = min(1280, int(avail.width() * 0.92))
+            h = min(760, int(avail.height() * 0.9))
+            self.resize(max(w, self.minimumWidth()), max(h, self.minimumHeight()))
+            self.move(avail.center() - self.rect().center())
+        else:
+            self.setMinimumSize(940, 580)
+            self.resize(1280, 760)
         self.persistent_stats = stats
 
         icon_path = resource_path(os.path.join("asset", "icon.ico"))
@@ -80,11 +96,15 @@ class MainWindow(QMainWindow):
         self.app_config = app_config
         self.config_manager = OverlayConfigManager(app_config.data_dir)
         self.overlay = LyricsOverlay(self.config_manager)
+        self.overlay.ensure_on_screen()  # 모니터 구성이 바뀌어 화면 밖에 있으면 데려옴
+        self.overlay.edit_finished.connect(self.finish_overlay_edit)
 
         self._load_fonts()
         self._setup_ui()
         self.apply_theme(self.theme_manager.current_theme)
-        self.overlay.show()
+        self._setup_tray()
+        self._tray_notice_shown = False
+        self._quitting = False
 
     # ------------------------------------------------------------------ #
     # 초기화
@@ -169,6 +189,14 @@ class MainWindow(QMainWindow):
         self.info_page = InfoPage()
 
         self.setting_page.settings_changed.connect(self.update_overlay)
+        dp = self.dashboard_page
+        dp.overlay_visible_toggled.connect(self._set_overlay_visible)
+        dp.overlay_ghost_toggled.connect(self._set_overlay_ghost)
+        dp.overlay_edit_requested.connect(self._toggle_overlay_edit)
+        dp.overlay_reset_requested.connect(self.reset_overlay_position)
+        dp.roi_requested.connect(self.setting_page._on_pick_roi)
+        self.setting_page.overlay_edit_requested.connect(self.start_overlay_edit)
+        self.setting_page.overlay_reset_requested.connect(self.reset_overlay_position)
 
         self.content_stack.addWidget(self.dashboard_page)  # index 0
         self.content_stack.addWidget(self.music_page)       # index 1
@@ -193,22 +221,139 @@ class MainWindow(QMainWindow):
     # 공개 메서드
     # ------------------------------------------------------------------ #
 
+    def _setup_tray(self) -> None:
+        """트레이 아이콘: 창을 닫아도 가사 오버레이는 계속 실행됩니다."""
+        self.tray: QSystemTrayIcon | None = None
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        tray = QSystemTrayIcon(self.windowIcon(), self)
+        tray.setToolTip("Lyrics Overlay")
+        menu = QMenu(self)
+        menu.addAction("창 열기", self.show_from_tray)
+        self.tray_overlay_action = menu.addAction("오버레이 표시", self._tray_toggle_overlay)
+        self.tray_overlay_action.setCheckable(True)
+        self.tray_ghost_action = menu.addAction("고스트 모드 (클릭 통과)", self._tray_toggle_ghost)
+        self.tray_ghost_action.setCheckable(True)
+        menu.addSeparator()
+        menu.addAction("종료", self.request_quit)
+        menu.aboutToShow.connect(self._sync_tray_menu)
+        tray.setContextMenu(menu)
+        tray.activated.connect(self._on_tray_activated)
+        tray.show()
+        self.tray = tray
+
+    def _sync_tray_menu(self) -> None:
+        self.tray_overlay_action.setChecked(self.config_manager.visible)
+        self.tray_ghost_action.setChecked(self.config_manager.ghost_mode)
+
+    def _tray_toggle_overlay(self) -> None:
+        self._set_overlay_visible(not self.config_manager.visible)
+
+    def _tray_toggle_ghost(self) -> None:
+        self._set_overlay_ghost(not self.config_manager.ghost_mode)
+
+    def _set_overlay_visible(self, visible: bool) -> None:
+        self.config_manager.set_visible(visible)
+        self.update_overlay()
+        self.sync_controls()
+
+    def _set_overlay_ghost(self, ghost: bool) -> None:
+        if self.overlay.editing:
+            self.finish_overlay_edit()
+        self.config_manager.set_ghost_mode(ghost)
+        self.update_overlay()
+        self.sync_controls()
+
+    def sync_controls(self) -> None:
+        """대시보드·설정 화면의 스위치를 현재 설정에 맞춥니다."""
+        self.dashboard_page.sync_overlay_controls(self.overlay.editing)
+        self.setting_page.refresh_ui_from_config()
+
+    def _on_tray_activated(self, reason) -> None:
+        if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
+            self.show_from_tray()
+
+    def show_from_tray(self) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def request_quit(self) -> None:
+        self._quitting = True
+        self.quit_requested.emit()
+
     def closeEvent(self, event) -> None:
-        """메인 윈도우 닫기 이벤트 시 프로그램 전체를 명시적으로 종료합니다."""
+        """X 버튼: 설정에 따라 트레이로 숨기거나 프로그램을 종료합니다."""
+        if not self._quitting and self.tray is not None and self.config_manager.close_to_tray:
+            event.ignore()
+            self.hide()
+            if not self._tray_notice_shown:
+                self._tray_notice_shown = True
+                self.tray.showMessage(
+                    "Lyrics Overlay",
+                    "트레이에서 계속 실행 중이에요. 아이콘을 클릭하면 창이 다시 열립니다.",
+                    QSystemTrayIcon.Information, 3000,
+                )
+            return
         self.window_closed.emit()
+        if self.tray is not None:
+            self.tray.hide()
         if hasattr(self, "overlay") and self.overlay:
             self.overlay.close()
         super().closeEvent(event)
 
+    # ------------------------------------------------------------------ #
+    # 오버레이 위치·크기 조정 (편집 모드)
+    # ------------------------------------------------------------------ #
+
+    def start_overlay_edit(self) -> None:
+        """한 번에 편집 모드로: 잠시 클릭을 받게 하고 드래그로 옮기거나 크기를 바꿀 수 있게.
+
+        저장된 '클릭 통과'·'표시' 설정은 건드리지 않으므로 멜론 창 숨김 상태도 그대로입니다.
+        """
+        if self.overlay.editing:
+            return
+        self.overlay.ensure_on_screen()
+        self.overlay.set_edit_mode(True)
+        self.sync_controls()
+
+    def finish_overlay_edit(self, apply: bool = True) -> None:
+        """apply=False면 편집 전 위치·크기로 되돌립니다."""
+        if not self.overlay.editing:
+            return
+        if not apply:
+            self.overlay.cancel_edit_geometry()
+        self.overlay.set_edit_mode(False)
+        self.config_manager.save_now()
+        self.sync_controls()
+
+    def _toggle_overlay_edit(self) -> None:
+        if self.overlay.editing:
+            self.finish_overlay_edit(True)
+        else:
+            self.start_overlay_edit()
+
+    def reset_overlay_position(self) -> None:
+        if not self.config_manager.visible:
+            self._set_overlay_visible(True)
+        self.overlay.reset_position()
+        self.sync_controls()
+
     def update_overlay(self) -> None:
         """설정 변경 시 오버레이에 동기화합니다."""
         self.overlay.sync_with_config()
+        if self.overlay.editing:
+            self.overlay.set_edit_mode(True)  # 스타일이 바뀌어도 편집 표시 유지
+        self.dashboard_page.sync_overlay_controls(self.overlay.editing)
 
     def switch_page(self, index: int) -> None:
         for i, btn in enumerate(self.nav_buttons):
             btn.setChecked(i == index)
         self.content_stack.setCurrentIndex(index)
         # 통계 페이지 전환 시 데이터 업데이트
+        if index == 3:
+            # 오버레이를 드래그로 옮기거나 F9로 바꾼 값이 화면에 반영되게
+            self.setting_page.refresh_ui_from_config()
         if index == 2:
             self.stats_page.update_stats(
                 self.persistent_stats.get("play_history", []),
