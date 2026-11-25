@@ -10,6 +10,13 @@ import time
 import os
 import ctypes
 
+# 콘솔 출력이 파이프/cp949일 때 이모지 로그 하나로 프로그램이 죽지 않도록 합니다.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except Exception:
+        pass
+
 if os.name == 'nt':
     try:
         myappid = 'owwl.lyricsoverlay.app.1.0'
@@ -97,6 +104,12 @@ async def main() -> None:
     app = QApplication(sys.argv)
     
     _app_config = AppConfig()
+
+    # 지난번 강제 종료로 투명하게 남은 멜론 창이 있으면 가장 먼저 복구합니다.
+    # (이후 단계에서 무엇이 실패해도 멜론 창은 원래대로 돌아오게)
+    style_guard = WindowStyleGuard(_app_config.data_dir)
+    recovered = style_guard.recover_from_file()
+
     persistent_stats = load_stats(_app_config.data_dir)
     session_stats = make_session_stats(persistent_stats)
 
@@ -172,9 +185,15 @@ async def main() -> None:
     print("=" * 50)
     add_log("프로그램 시작")
 
-    # 멜론 창 스타일 관리 (지난번 강제 종료로 남은 상태가 있으면 먼저 복구)
-    style_guard = WindowStyleGuard(_app_config.data_dir)
-    recovered = style_guard.recover_from_file()
+
+    # 데이터 경로가 바뀌면 통계·설정·창 복구 기록을 모두 새 경로로 옮깁니다.
+    def on_data_dir_changed(new_dir: str) -> None:
+        save_stats(persistent_stats, new_dir)
+        add_log(f"데이터 경로 변경: {new_dir}")
+
+    _app_config.add_listener(config_manager.set_data_dir)
+    _app_config.add_listener(style_guard.set_data_dir)
+    _app_config.add_listener(on_data_dir_changed)
     if recovered:
         add_log(f"이전 실행에서 남은 창 상태 {recovered}개 복구")
 

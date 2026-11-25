@@ -194,6 +194,16 @@ class WindowStyleGuard:
 
     # -- 공개 API ------------------------------------------------------ #
 
+    def set_data_dir(self, data_dir: str) -> None:
+        """복구 기록 파일을 새 데이터 경로로 옮깁니다 (강제 종료 후 다음 실행이 찾을 수 있게)."""
+        old_path = self._state_path
+        self._state_path = os.path.join(data_dir, "window_restore.json")
+        if self._persist() and os.path.exists(old_path) and old_path != self._state_path:
+            try:
+                os.remove(old_path)
+            except OSError:
+                pass
+
     def set_ghost(self, hwnd: int, ghost: bool) -> bool:
         """성공하면 True. 실패하면 다음 루프에서 다시 시도하도록 False."""
         return self._apply_ghost(hwnd) if ghost else self.restore(hwnd)
@@ -218,7 +228,14 @@ class WindowStyleGuard:
             return 0
         try:
             with open(self._state_path, "r", encoding="utf-8") as f:
-                saved = {int(k): v for k, v in json.load(f).items()}
+                saved = {
+                    int(k): v for k, v in json.load(f).items()
+                    if isinstance(v, dict) and isinstance(v.get("exstyle"), int)
+                    and (v.get("layered") is None or (
+                        isinstance(v.get("layered"), list) and len(v["layered"]) == 3
+                        and all(isinstance(x, int) for x in v["layered"])
+                    ))
+                }
         except Exception as e:
             print(f"[⚠️] 창 상태 기록을 읽지 못했습니다: {e}")
             return 0
@@ -241,6 +258,7 @@ class WindowStyleGuard:
         ident = get_window_identity(hwnd)
         return (
             ident is not None
+            and ident.is_melon  # 기록 파일이 바뀌어도 멜론이 아닌 창은 절대 건드리지 않습니다
             and ident.pid == original.get("pid")
             and ident.created == original.get("created")
             and ident.exe == original.get("exe")
