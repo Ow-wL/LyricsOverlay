@@ -81,8 +81,11 @@ def _on_toggle_mode() -> None:
     if _window is None:
         return
     cfg: OverlayConfigManager = _window.config_manager
+    if _window.overlay.editing:
+        _window.finish_overlay_edit()  # 위치 조정 중 F9 → 조정을 끝내고 원래 모드로
+        return
     cfg.set_ghost_mode(not cfg.ghost_mode)
-    _window.setting_page.refresh_ui_from_config()  # 설정 화면 스위치도 함께 맞춤
+    _window.sync_controls()  # 대시보드·설정 화면 스위치도 함께 맞춤
     mode_name = "반투명 + 클릭통과" if cfg.ghost_mode else "불투명 + 클릭가능"
     print(f"\n[🔔] 모드 전환: {mode_name}")
     add_log(f"모드 전환: {mode_name}")

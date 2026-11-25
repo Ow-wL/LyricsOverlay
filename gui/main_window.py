@@ -62,11 +62,23 @@ class MainWindow(QMainWindow):
     theme_changed = Signal(str)
     window_closed = Signal()
     quit_requested = Signal()  # 트레이 메뉴의 '종료'
+    overlay_edit_changed = Signal(bool)  # 위치·크기 조정 모드 시작/끝
 
     def __init__(self, stats: dict, app_config, initial_theme: str = "light"):
         super().__init__()
         self.setWindowTitle("Lyrics Overlay")
-        self.setFixedSize(1280, 720)
+        # 노트북·고배율 화면에서도 화면을 넘지 않도록, 크기를 조절할 수 있게 하고
+        # 처음 크기는 사용 가능한 화면 안에 맞춥니다.
+        self.setMinimumSize(960, 620)
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            avail = screen.availableGeometry()
+            w = min(1280, int(avail.width() * 0.92))
+            h = min(760, int(avail.height() * 0.9))
+            self.resize(max(w, 960), max(h, 620))
+            self.move(avail.center() - self.rect().center())
+        else:
+            self.resize(1280, 760)
         self.persistent_stats = stats
 
         icon_path = resource_path(os.path.join("asset", "icon.ico"))
@@ -83,6 +95,9 @@ class MainWindow(QMainWindow):
         self.app_config = app_config
         self.config_manager = OverlayConfigManager(app_config.data_dir)
         self.overlay = LyricsOverlay(self.config_manager)
+        self.overlay.ensure_on_screen()  # 모니터 구성이 바뀌어 화면 밖에 있으면 데려옴
+        self.overlay.edit_finished.connect(self.finish_overlay_edit)
+        self._ghost_before_edit: bool | None = None
 
         self._load_fonts()
         self._setup_ui()
@@ -174,6 +189,13 @@ class MainWindow(QMainWindow):
         self.info_page = InfoPage()
 
         self.setting_page.settings_changed.connect(self.update_overlay)
+        dp = self.dashboard_page
+        dp.overlay_visible_toggled.connect(self._set_overlay_visible)
+        dp.overlay_ghost_toggled.connect(self._set_overlay_ghost)
+        dp.overlay_edit_requested.connect(self.start_overlay_edit)
+        dp.overlay_reset_requested.connect(self.reset_overlay_position)
+        self.setting_page.overlay_edit_requested.connect(self.start_overlay_edit)
+        self.setting_page.overlay_reset_requested.connect(self.reset_overlay_position)
 
         self.content_stack.addWidget(self.dashboard_page)  # index 0
         self.content_stack.addWidget(self.music_page)       # index 1
@@ -224,14 +246,27 @@ class MainWindow(QMainWindow):
         self.tray_ghost_action.setChecked(self.config_manager.ghost_mode)
 
     def _tray_toggle_overlay(self) -> None:
-        self.config_manager.set_visible(not self.config_manager.visible)
-        self.setting_page.refresh_ui_from_config()
-        self.update_overlay()
+        self._set_overlay_visible(not self.config_manager.visible)
 
     def _tray_toggle_ghost(self) -> None:
-        self.config_manager.set_ghost_mode(not self.config_manager.ghost_mode)
-        self.setting_page.refresh_ui_from_config()
+        self._set_overlay_ghost(not self.config_manager.ghost_mode)
+
+    def _set_overlay_visible(self, visible: bool) -> None:
+        self.config_manager.set_visible(visible)
         self.update_overlay()
+        self.sync_controls()
+
+    def _set_overlay_ghost(self, ghost: bool) -> None:
+        if self.overlay.editing:
+            self.finish_overlay_edit()
+        self.config_manager.set_ghost_mode(ghost)
+        self.update_overlay()
+        self.sync_controls()
+
+    def sync_controls(self) -> None:
+        """대시보드·설정 화면의 스위치를 현재 설정에 맞춥니다."""
+        self.dashboard_page.sync_overlay_controls(self.overlay.editing)
+        self.setting_page.refresh_ui_from_config()
 
     def _on_tray_activated(self, reason) -> None:
         if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
@@ -266,9 +301,45 @@ class MainWindow(QMainWindow):
             self.overlay.close()
         super().closeEvent(event)
 
+    # ------------------------------------------------------------------ #
+    # 오버레이 위치·크기 조정 (편집 모드)
+    # ------------------------------------------------------------------ #
+
+    def start_overlay_edit(self) -> None:
+        """한 번에 편집 모드로: 클릭 통과를 잠시 끄고 드래그로 옮기거나 크기를 바꿀 수 있게."""
+        if self.overlay.editing:
+            return
+        self._ghost_before_edit = self.config_manager.ghost_mode
+        self.config_manager.set_ghost_mode(False)
+        if not self.config_manager.visible:
+            self.config_manager.set_visible(True)
+        self.overlay.set_edit_mode(True)
+        self.sync_controls()
+        self.overlay_edit_changed.emit(True)
+
+    def finish_overlay_edit(self) -> None:
+        if not self.overlay.editing:
+            return
+        self.overlay.set_edit_mode(False)
+        if self._ghost_before_edit is not None:
+            self.config_manager.set_ghost_mode(self._ghost_before_edit)
+            self.overlay.set_ghost_mode(self._ghost_before_edit)
+        self._ghost_before_edit = None
+        self.sync_controls()
+        self.overlay_edit_changed.emit(False)
+
+    def reset_overlay_position(self) -> None:
+        if not self.config_manager.visible:
+            self._set_overlay_visible(True)
+        self.overlay.reset_position()
+        self.sync_controls()
+
     def update_overlay(self) -> None:
         """설정 변경 시 오버레이에 동기화합니다."""
         self.overlay.sync_with_config()
+        if self.overlay.editing:
+            self.overlay.set_edit_mode(True)  # 스타일이 바뀌어도 편집 표시 유지
+        self.dashboard_page.sync_overlay_controls(self.overlay.editing)
 
     def switch_page(self, index: int) -> None:
         for i, btn in enumerate(self.nav_buttons):
