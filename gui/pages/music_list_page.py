@@ -1,12 +1,13 @@
 """감상 기록 페이지."""
 
-from PySide6.QtCore import QRect, QSize, Qt  # type: ignore
+from PySide6.QtCore import QRect, QSize, Qt, Signal  # type: ignore
 from PySide6.QtGui import QColor, QFont, QFontMetrics  # type: ignore
 from PySide6.QtWidgets import (  # type: ignore
     QHBoxLayout,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QPushButton,
     QStyle,
     QStyledItemDelegate,
     QVBoxLayout,
@@ -19,6 +20,7 @@ from gui.widgets.card import Card
 from gui.widgets.glass import _qcolor, label, page_header
 
 _ENTRY_ROLE = Qt.UserRole + 1
+_ID_ROLE = Qt.UserRole + 2  # 원본 기록 dict의 id() — 삭제할 때 원본 리스트에서 찾는 열쇠
 
 
 def _format_time(ts: str) -> str:
@@ -89,8 +91,13 @@ class _HistoryDelegate(QStyledItemDelegate):
 class MusicListPage(QWidget):
     """감상한 곡 목록을 최신순으로 보여주고, 제목·가수로 검색할 수 있는 페이지."""
 
+    delete_requested = Signal(list)   # 지울 기록들의 id() 목록
+    clear_requested = Signal()
+    export_requested = Signal()
+
     def __init__(self):
         super().__init__()
+        self._entries: dict[int, dict] = {}  # id() → 원본 dict (참조를 잡아 두어 id 재사용 방지)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 14, 28, 6)
         layout.setSpacing(22)
@@ -124,7 +131,24 @@ class MusicListPage(QWidget):
         self.music_list.setItemDelegate(_HistoryDelegate(self.music_list))
         self.music_list.setUniformItemSizes(True)
         self.music_list.setMouseTracking(True)
+        self.music_list.setSelectionMode(QListWidget.ExtendedSelection)  # Ctrl/Shift로 여러 개 선택
+        self.music_list.itemSelectionChanged.connect(self._update_buttons)
         card_layout.addWidget(self.music_list)
+
+        actions = QHBoxLayout()
+        actions.setContentsMargins(6, 0, 6, 0)
+        hint = label("Ctrl·Shift로 여러 곡 선택 · Delete 키로 삭제", "Tertiary", "font-size: 12px;")
+        actions.addWidget(hint)
+        actions.addStretch()
+        self.btn_export = QPushButton("CSV로 내보내기")
+        self.btn_export.clicked.connect(self.export_requested.emit)
+        self.btn_delete = QPushButton("선택 삭제")
+        self.btn_delete.clicked.connect(self._delete_selected)
+        self.btn_clear = QPushButton("전체 삭제")
+        self.btn_clear.clicked.connect(self.clear_requested.emit)
+        for b in (self.btn_export, self.btn_delete, self.btn_clear):
+            actions.addWidget(b)
+        card_layout.addLayout(actions)
 
         self.empty_label = label(
             "아직 기록이 없어요. 멜론에서 음악을 재생하면 여기에 쌓입니다.", "Secondary"
@@ -139,11 +163,14 @@ class MusicListPage(QWidget):
     def _make_item(self, entry: dict) -> QListWidgetItem:
         item = QListWidgetItem(f"{entry.get('title', '')} - {entry.get('artist', '')}")
         item.setData(_ENTRY_ROLE, entry)
+        item.setData(_ID_ROLE, id(entry))
+        self._entries[id(entry)] = entry
         item.setToolTip(f"{entry.get('title', '')} — {entry.get('artist', '')}\n{_format_time(entry.get('timestamp', ''))}")
         return item
 
     def set_history(self, history: list[dict]) -> None:
         self.music_list.clear()
+        self._entries = {}
         for entry in history:
             self.music_list.addItem(self._make_item(entry))
         self._apply_filter(self.search.text())
@@ -155,6 +182,30 @@ class MusicListPage(QWidget):
         if not self._matches(entry, self.search.text()):
             item.setHidden(True)
         self._update_count()
+
+    # -- 삭제 ----------------------------------------------------------- #
+
+    def selected_ids(self) -> list[int]:
+        return [it.data(_ID_ROLE) for it in self.music_list.selectedItems() if not it.isHidden()]
+
+    def _delete_selected(self) -> None:
+        ids = self.selected_ids()
+        if ids:
+            self.delete_requested.emit(ids)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key_Delete and self.selected_ids():
+            self._delete_selected()
+            return
+        super().keyPressEvent(event)
+
+    def _update_buttons(self) -> None:
+        total = self.music_list.count()
+        n = len(self.selected_ids())
+        self.btn_delete.setEnabled(n > 0)
+        self.btn_delete.setText(f"선택 삭제 ({n})" if n else "선택 삭제")
+        self.btn_clear.setEnabled(total > 0)
+        self.btn_export.setEnabled(total > 0)
 
     # -- 검색 ----------------------------------------------------------- #
 
@@ -180,3 +231,4 @@ class MusicListPage(QWidget):
             self.count_label.setText(f"총 {total}곡" if total else "")
         self.empty_label.setVisible(total == 0)
         self.music_list.setVisible(total > 0)
+        self._update_buttons()

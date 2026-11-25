@@ -249,6 +249,11 @@ async def main() -> None:
     current_song_lines = 0
     current_song_played = 0.0   # 지금 곡을 실제로 재생한 시간 (초)
     session_played = 0.0        # 이번 실행에서 실제로 재생한 시간 (초)
+    # 파일에 남기는 누적값은 '감상 기록 저장'이 켜져 있을 때 늘어난 만큼만 더합니다.
+    base_total_lines = persistent_stats.get("total_lines", 0)
+    recorded_played = 0.0
+    recorded_lines = 0
+    recording = _app_config.record_history
     last_tick = time.monotonic()
 
     media = MelonMediaSession()
@@ -272,10 +277,11 @@ async def main() -> None:
         }
         overlay.update_song_info(title, artist)
         window.dashboard_page.set_now_playing(title, artist)
-        window.music_page.add_entry(current_song_info)
-        persistent_stats["play_history"].insert(0, current_song_info)
         add_log(f"{'반복 재생' if repeat else '새로운 곡 감지'}: {song_title_str}")
-        save_stats(persistent_stats, _app_config.data_dir)
+        if recording:
+            window.music_page.add_entry(current_song_info)
+            persistent_stats["play_history"].insert(0, current_song_info)
+            save_stats(persistent_stats, _app_config.data_dir)
 
     target_win = None
     next_window_scan = 0.0
@@ -340,12 +346,21 @@ async def main() -> None:
             last_tick = now
             # 미디어 세션을 못 찾으면 예전처럼 '멜론 창이 보이면 재생 중'으로 봅니다.
             playing = media_state.playing if media_state.available else target_win is not None
+            # '감상 기록 저장'을 끄면 그 순간부터 지금 곡의 저장된 기록도 더 이상 고치지 않습니다.
+            now_recording = _app_config.record_history
+            if recording and not now_recording and current_song_info is not None:
+                current_song_info = dict(current_song_info)  # 기록 목록과 분리된 복사본으로 계속 셈
+            if now_recording != recording:
+                add_log("감상 기록 저장 " + ("켬 (다음 곡부터 기록)" if now_recording else "끔"))
+            recording = now_recording
             if playing and current_song_info is not None:
                 current_song_played += dt
                 session_played += dt
                 current_song_info["play_time_sec"] = int(current_song_played)
+                if recording:
+                    recorded_played += dt
             session_stats["session_duration"] = session_played
-            persistent_stats["total_play_time_sec"] = int(session_stats["base_play_time"] + session_played)
+            persistent_stats["total_play_time_sec"] = int(session_stats["base_play_time"] + recorded_played)
 
             if target_win is None and applied_hwnd is not None and not hide_melon:
                 # 멜론이 최소화되거나 숨겨진 상태에서 일반 모드로 바꾼 경우
@@ -446,10 +461,11 @@ async def main() -> None:
                     nxt = fixed_lines[1] if len(fixed_lines) > 1 else ""
 
                     if curr != "..." and curr != last_lyric_text:
-                        session_stats["lines"] += 1
                         session_stats["session_lines"] += 1
                         last_lyric_text = curr
-                        persistent_stats["total_lines"] = session_stats["lines"]
+                        if recording:
+                            recorded_lines += 1
+                            persistent_stats["total_lines"] = base_total_lines + recorded_lines
                         
                         if current_song_info is not None:
                             current_song_lines += 1

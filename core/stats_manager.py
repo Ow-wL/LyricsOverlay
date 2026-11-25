@@ -94,15 +94,17 @@ def _sanitize_stats(data, default_stats: dict) -> dict:
     return data
 
 
-def save_stats(stats: dict, data_dir: str) -> None:
-    """통계 데이터를 파일에 저장합니다."""
+def save_stats(stats: dict, data_dir: str) -> bool:
+    """통계 데이터를 파일에 저장합니다. 성공하면 True."""
     stats_file_path = get_stats_file_path(data_dir)
     if os.path.abspath(stats_file_path) in _save_blocked:
-        return
+        return False
     try:
         atomic_write_json(stats_file_path, stats)
+        return True
     except Exception as e:
         print(f"[⚠️] 통계 저장 실패: {e}")
+        return False
 
 
 def parse_song_info(full_title: str) -> tuple[str, str]:
