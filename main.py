@@ -5,6 +5,7 @@ LyricsOverlay — 엔트리 포인트
 
 import asyncio
 import queue
+from concurrent.futures import ThreadPoolExecutor
 import sys
 import time
 import os
@@ -30,7 +31,9 @@ from PySide6.QtWidgets import QApplication  # type: ignore
 from core.hotkey_manager import HotkeyManager
 from core.ocr_engine import OCR_HELP, OCR_KOREAN, OCR_STATUS, ocr_available, windows_native_ocr_split
 from core.stats_manager import load_stats, make_session_stats, parse_song_info, save_stats
-from core.window_capture import WindowStyleGuard, capture_covered_window, find_melon_window, is_melon_minimized
+from core.window_capture import (
+    WindowStyleGuard, capture_covered_window, find_melon_window, is_melon_minimized, recheck_window,
+)
 from gui.main_window import MainWindow
 from lyrics.matcher import LyricMatcher
 from core.app_config import AppConfig
@@ -50,6 +53,24 @@ _app_config: AppConfig | None = None
 
 # 전역 단축키(keyboard 스레드)에서 메인 스레드로 넘길 작업
 _pending_actions: "queue.SimpleQueue" = queue.SimpleQueue()
+
+# 가사 인식 주기 (초). 가사는 몇 초에 한 번 바뀌므로 화면 갱신(0.05초)보다 느리게 읽어 CPU를 아낍니다.
+OCR_INTERVAL = 0.2
+# 멜론 창 전체 재탐색 주기 (초). 그 사이에는 찾아 둔 창이 유효한지만 확인합니다.
+WINDOW_RESCAN_INTERVAL = 1.0
+# 멜론 창 캡처는 멜론이 응답해야 끝나므로 별도 스레드에서 하고, 이 시간이 넘으면 이번 회차는 건너뜁니다.
+CAPTURE_TIMEOUT = 1.5
+_capture_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="capture")
+
+
+def _drain_pending_actions() -> None:
+    """단축키 콜백은 keyboard 스레드에서 들어오므로, 실제 처리는 메인 스레드에서 합니다."""
+    while True:
+        try:
+            action = _pending_actions.get_nowait()
+        except queue.Empty:
+            return
+        action()
 
 
 # ------------------------------------------------------------------ #
@@ -227,17 +248,35 @@ async def main() -> None:
     current_song_start_time = 0.0
     current_song_lines = 0
 
+    target_win = None
+    next_window_scan = 0.0
+    last_target_ok = False
+    next_ocr_at = 0.0
+    last_shown: tuple = ()
+    last_stats_ui = 0.0
+    capture_future = None  # 아직 끝나지 않은 캡처 (멜론이 응답하지 않을 때)
+
+    async def capture_pumped(hwnd_):
+        """캡처를 작업 스레드에서 돌리는 동안 화면과 단축키 처리를 계속합니다."""
+        nonlocal capture_future
+        if capture_future is not None and not capture_future.done():
+            return None  # 지난 캡처가 아직 멈춰 있음 → 이번 회차는 건너뜀
+        fut = asyncio.get_running_loop().run_in_executor(_capture_pool, capture_covered_window, hwnd_)
+        capture_future = fut
+        deadline = time.monotonic() + CAPTURE_TIMEOUT
+        while not fut.done():
+            app.processEvents()
+            _drain_pending_actions()
+            if not is_running or time.monotonic() > deadline:
+                return None
+            await asyncio.sleep(0.01)
+        return fut.result()
+
     try:
         while is_running:
             app.processEvents()
 
-            # 단축키 콜백은 keyboard 스레드에서 들어오므로, 실제 처리는 여기(메인 스레드)에서 합니다.
-            while True:
-                try:
-                    action = _pending_actions.get_nowait()
-                except queue.Empty:
-                    break
-                action()
+            _drain_pending_actions()
             if not is_running:
                 break
 
@@ -249,8 +288,17 @@ async def main() -> None:
             hide_melon = is_ghost_mode and config_manager.hide_melon_window
 
             # 멜론 프로세스의 창만 대상으로 삼습니다 (다른 프로그램 창을 건드리지 않도록).
-            target_win = find_melon_window()
             now = time.monotonic()
+            target_win = recheck_window(target_win) if now < next_window_scan else None
+            if target_win is None and now >= next_window_scan or target_win is None and last_target_ok:
+                target_win = find_melon_window()
+                next_window_scan = now + WINDOW_RESCAN_INTERVAL
+            last_target_ok = target_win is not None
+
+            # 1분마다 자동 저장 (멜론 창이 없어도)
+            if now - last_save_time >= 60:
+                save_stats(persistent_stats, _app_config.data_dir)
+                last_save_time = now
 
             if target_win is None and applied_hwnd is not None and not hide_melon:
                 # 멜론이 최소화되거나 숨겨진 상태에서 일반 모드로 바꾼 경우
@@ -271,6 +319,7 @@ async def main() -> None:
                     overlay.update_lyrics("", "")
                     window.dashboard_page.curr_lyric.setText("")
                     last_lyric_text = ""
+                    last_shown = ()
             else:
                 melon_missing_since = None
 
@@ -320,8 +369,14 @@ async def main() -> None:
                         add_log(f"새로운 곡 감지: {current_song_title}")
                         save_stats(persistent_stats, _app_config.data_dir)
 
-                # 캡처 및 OCR
-                full_img = capture_covered_window(hwnd)
+                # 캡처 및 OCR (OCR_INTERVAL마다)
+                if now < next_ocr_at:
+                    await asyncio.sleep(0.05)
+                    continue
+                next_ocr_at = now + OCR_INTERVAL
+                full_img = await capture_pumped(hwnd)
+                if not is_running:
+                    break
                 roi = None
                 if not ocr_available():
                     set_status("error", "OCR을 사용할 수 없어요", f"{OCR_STATUS}. {OCR_HELP}")
@@ -363,12 +418,6 @@ async def main() -> None:
                             add_log(status)
                         fixed_lines.append(fixed_text)
 
-                    # 터미널 출력
-                    print("\033[H\033[J")
-                    mode_status = "👻 게임 모드" if is_ghost_mode else "🖱️  조작 모드"
-                    print(f"상태: {mode_status} | 대상: {target_win.title}")
-                    print("-" * 40)
-
                     curr = fixed_lines[0] if len(fixed_lines) > 0 else "..."
                     nxt = fixed_lines[1] if len(fixed_lines) > 1 else ""
 
@@ -385,30 +434,33 @@ async def main() -> None:
                     if current_song_info is not None:
                         current_song_info["play_time_sec"] = int(time.time() - current_song_start_time)
 
-                    print(f"🔥 현재: {curr}")
-                    print(f"💤 다음: {nxt}")
-                    print("-" * 40)
-                    print("[ 시스템 로그 ]")
-                    for log in log_history:
-                        print(f" > {log}")
-
-                    # 오버레이 + 대시보드 업데이트
-                    overlay.update_lyrics(curr, nxt)
-                    window.dashboard_page.curr_lyric.setText(curr)
+                    # 화면과 터미널은 가사가 바뀔 때만 갱신합니다.
+                    if (curr, nxt) != last_shown:
+                        last_shown = (curr, nxt)
+                        overlay.update_lyrics(curr, nxt)
+                        window.dashboard_page.curr_lyric.setText(curr)
+                        print("\033[H\033[J")
+                        mode_status = "👻 게임 모드" if is_ghost_mode else "🖱️  조작 모드"
+                        print(f"상태: {mode_status} | 대상: {target_win.title}")
+                        print("-" * 40)
+                        print(f"🔥 현재: {curr}")
+                        print(f"💤 다음: {nxt}")
+                        print("-" * 40)
+                        print("[ 시스템 로그 ]")
+                        for log in log_history:
+                            print(f" > {log}")
 
                     session_duration = time.time() - session_stats["start_time"]
                     session_stats["session_duration"] = session_duration
                     total_play_time_sec = session_stats["base_play_time"] + session_duration
                     persistent_stats["total_play_time_sec"] = int(total_play_time_sec)
 
-                    window.dashboard_page.update_stats(session_stats, persistent_stats.get("play_history", []))
+                    # 통계 카드는 1초에 한 번이면 충분합니다.
+                    if now - last_stats_ui >= 1.0:
+                        last_stats_ui = now
+                        window.dashboard_page.update_stats(session_stats, persistent_stats.get("play_history", []))
 
                     QApplication.processEvents()
-
-            # 1분마다 자동 저장 (멜론 창이 없어도)
-            if now - last_save_time >= 60:
-                save_stats(persistent_stats, _app_config.data_dir)
-                last_save_time = now
 
             await asyncio.sleep(0.05)
 

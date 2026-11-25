@@ -129,6 +129,26 @@ def find_melon_window(min_width: int = 200) -> TargetWindow | None:
     return None
 
 
+def recheck_window(target: TargetWindow | None, min_width: int = 200) -> TargetWindow | None:
+    """이미 찾은 멜론 창이 아직 쓸 수 있으면 제목만 새로 읽어 돌려줍니다 (전체 창 열거보다 훨씬 쌈).
+
+    창이 닫혔거나 최소화·숨김 상태면 None을 돌려주므로, 그때 find_melon_window()로 다시 찾습니다.
+    """
+    if target is None:
+        return None
+    try:
+        hwnd = target.hwnd
+        if not win32gui.IsWindow(hwnd) or not win32gui.IsWindowVisible(hwnd) or win32gui.IsIconic(hwnd):
+            return None
+        title = win32gui.GetWindowText(hwnd)
+        left, _top, right, _bottom = win32gui.GetWindowRect(hwnd)
+        if not title or right - left <= min_width:
+            return None
+        return TargetWindow(hwnd, title, target.process)
+    except Exception:
+        return None
+
+
 def is_melon_minimized() -> bool:
     """멜론 창이 최소화돼 있어 가사를 읽을 수 없는 상태인지 확인합니다."""
     found = False
