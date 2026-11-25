@@ -143,6 +143,9 @@ class DashboardPage(QWidget):
         self.reset_pos_btn.setCursor(Qt.PointingHandCursor)
         self.reset_pos_btn.clicked.connect(self.overlay_reset_requested.emit)
         oc.addWidget(self.reset_pos_btn, 0, Qt.AlignHCenter)
+        oc.addStretch()  # 카드가 늘어나도 내용은 위에 모아 둠
+        # 창 높이가 부족해도 오버레이 카드는 줄어들지 않게 하고, 대신 '최근 활동'을 접습니다.
+        self.overlay_card.setMinimumHeight(self.overlay_card.sizeHint().height())
         right_col.addWidget(self.overlay_card)
 
         self.log_card = Card()
@@ -166,10 +169,16 @@ class DashboardPage(QWidget):
         bottom_layout.addWidget(right_wrap)
         layout.addLayout(bottom_layout, 1)
 
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        # 작은 창·고배율에서는 '최근 활동'을 숨겨 오버레이 카드와 가사 카드에 자리를 줍니다.
+        self.log_card.setVisible(self.height() >= 560)
+
     def _switch_row(self, text: str, switch) -> QHBoxLayout:
         row = QHBoxLayout()
         row.addWidget(label(text, "", "font-weight: 600;"))
         row.addStretch()
+        switch.setAccessibleName(text)
         row.addWidget(switch)
         return row
 

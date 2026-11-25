@@ -43,6 +43,19 @@ class AppConfig:
     def data_dir(self) -> str:
         return self._data_dir
 
+    @property
+    def record_history(self) -> bool:
+        """감상 기록을 파일에 남길지. 데이터 폴더를 바꿔도 유지되도록 앱 설정(레지스트리)에 둡니다."""
+        if not hasattr(self, "_record_history"):  # 메인 루프가 자주 읽으므로 메모리에 둡니다
+            value = self.settings.value("record_history", True)
+            self._record_history = value not in (False, "false", "0", 0)
+        return self._record_history
+
+    @record_history.setter
+    def record_history(self, on: bool) -> None:
+        self._record_history = bool(on)
+        self.settings.setValue("record_history", bool(on))
+
     def add_listener(self, fn: Callable[[str], None]) -> None:
         """데이터 경로가 바뀌면 새 경로로 fn(new_dir)을 호출합니다.
 

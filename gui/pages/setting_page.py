@@ -463,6 +463,25 @@ class SettingPage(QWidget):
         path_row.addStretch()
         path_row.addWidget(self.btn_change_path)
         sys_l.addLayout(path_row)
+        sys_l.addWidget(self._hline())
+
+        # 감상 기록 저장 여부와 개인정보 안내
+        sys_l.addLayout(self._toggle_row(
+            "감상 기록 저장",
+            "들은 곡의 제목·가수·시각·감상 시간을 데이터 폴더의 lyrics_stats.json에 남깁니다. "
+            "끄면 오버레이와 가사는 그대로 동작하고, 새 기록과 누적 감상 시간을 저장하지 않습니다. "
+            "(대시보드의 '세션' 통계는 이번 실행 동안만 셉니다)",
+            getattr(self.app_config, "record_history", True),
+            self._on_record_history_toggled, "record_history_check",
+        ))
+        privacy = self._lbl(
+            "감상 기록은 암호화되지 않은 파일로 저장돼요. 데이터 폴더가 '문서' 안에 있고 OneDrive의 "
+            "문서 폴더 백업이 켜져 있으면 클라우드에도 동기화될 수 있어요. 원하지 않으면 데이터 경로를 "
+            "OneDrive 밖으로 바꾸거나 기록 저장을 끄세요. 이미 쌓인 기록은 '감상 기록' 메뉴에서 지우거나 내보낼 수 있어요.",
+            UIConfig.FS_DESC, secondary=True,
+        )
+        privacy.setWordWrap(True)
+        sys_l.addWidget(privacy)
         lay.addWidget(sys_card)
 
         lay.addWidget(self._section_lbl("창"))
@@ -530,6 +549,7 @@ class SettingPage(QWidget):
         desc_lbl.setWordWrap(True)  # 긴 설명이 페이지를 가로로 늘리지 않도록
         vbox.addWidget(desc_lbl)
         chk = ToggleSwitch()
+        chk.setAccessibleName(title)
         chk.setChecked(checked)
         chk.toggled.connect(callback)
         setattr(self, attr_name, chk)
@@ -693,6 +713,10 @@ class SettingPage(QWidget):
         self.config.show_media_controls = checked
         self.config.save_to_file()
         self.settings_changed.emit()
+
+    def _on_record_history_toggled(self, checked: bool) -> None:
+        if self.app_config:
+            self.app_config.record_history = checked
 
     def _on_close_to_tray_toggled(self, checked: bool) -> None:
         self.config.close_to_tray = checked
