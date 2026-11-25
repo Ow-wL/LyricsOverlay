@@ -90,6 +90,11 @@ class RoiSelectDialog(QDialog):
     def __init__(self, image, roi: list[int], parent=None):
         super().__init__(parent)
         self.setWindowTitle("가사 인식 영역 지정")
+        # 앱 테마는 메인 창 중앙 위젯에만 걸려 있어, 대화상자에도 같은 스타일을 입힙니다.
+        main = parent.window() if parent is not None else None
+        if main is not None and hasattr(main, "centralWidget") and main.centralWidget():
+            self.setStyleSheet(main.centralWidget().styleSheet())
+            self.setAttribute(Qt.WA_StyledBackground, True)
         self.selected_roi: list[int] | None = None
 
         lay = QVBoxLayout(self)
