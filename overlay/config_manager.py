@@ -8,6 +8,8 @@ from core.utils import atomic_write_json
 # 예전 기본값. 전역 단축키라 다른 프로그램에서 대문자 Q만 쳐도 종료돼서 바꿨습니다.
 _LEGACY_QUIT_HOTKEY = "shift+q"
 DEFAULT_QUIT_HOTKEY = "ctrl+alt+q"
+# 멜론 창 캡처 이미지에서 가사(현재·다음 줄)가 있는 영역 [x, y, w, h] (100% 배율 기본 레이아웃 기준)
+DEFAULT_ROI = [28, 216, 251, 46]
 
 
 # ------------------------------------------------------------------ #
@@ -108,6 +110,7 @@ class OverlayConfigManager:
         self.hide_melon_window = True
         # 오버레이에 마우스를 올리면 재생 버튼 표시 (고스트 모드가 꺼져 있을 때만 동작)
         self.show_media_controls = True
+        self.roi = list(DEFAULT_ROI)
 
         self.load_from_file()
 
@@ -347,6 +350,11 @@ class OverlayConfigManager:
         self.visible = visible
         self.save_to_file()
 
+    def set_roi(self, roi: list[int] | None) -> None:
+        """가사 인식 영역을 바꿉니다. None이면 기본값으로."""
+        self.roi = list(roi) if roi else list(DEFAULT_ROI)
+        self.save_to_file()
+
     def set_ghost_mode(self, ghost: bool) -> None:
         self.ghost_mode = ghost
         self.save_to_file()
@@ -411,6 +419,7 @@ class OverlayConfigManager:
                 "show_song_info": self.show_song_info,
                 "hide_melon_window": self.hide_melon_window,
                 "show_media_controls": self.show_media_controls,
+                "roi": self.roi,
             }
             atomic_write_json(self.config_path, data)
         except Exception as e:
@@ -456,6 +465,11 @@ class OverlayConfigManager:
             v = _int_in(data.get(key), lo, hi)
             if v is not None:
                 setattr(self, key, v)
+        roi = data.get("roi")
+        if isinstance(roi, list) and len(roi) == 4:
+            vals = [_int_in(v, 0, 10000) for v in roi]
+            if None not in vals and vals[2] >= 10 and vals[3] >= 10:
+                self.roi = vals
         if data.get("dashboard_view_mode") in ("session", "daily", "weekly", "monthly"):
             self.dashboard_view_mode = data["dashboard_view_mode"]
 

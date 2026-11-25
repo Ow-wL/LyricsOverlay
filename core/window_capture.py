@@ -129,6 +129,29 @@ def find_melon_window(min_width: int = 200) -> TargetWindow | None:
     return None
 
 
+def is_melon_minimized() -> bool:
+    """멜론 창이 최소화돼 있어 가사를 읽을 수 없는 상태인지 확인합니다."""
+    found = False
+
+    def _check(hwnd, _):
+        nonlocal found
+        try:
+            if win32gui.IsIconic(hwnd) and win32gui.GetWindowText(hwnd):
+                ident = get_window_identity(hwnd)
+                if ident is not None and ident.is_melon:
+                    found = True
+                    return False
+        except Exception:
+            pass
+        return True
+
+    try:
+        win32gui.EnumWindows(_check, None)
+    except Exception:
+        pass  # 콜백이 False를 돌려 열거를 멈추면 pywin32가 예외를 냅니다
+    return found
+
+
 # ------------------------------------------------------------------ #
 # 캡처
 # ------------------------------------------------------------------ #
