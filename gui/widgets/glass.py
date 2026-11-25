@@ -14,6 +14,30 @@ from gui import theme
 from gui.icons import icon_font
 
 
+def draw_focus_ring(p: QPainter, rect: QRectF, radius: float) -> None:
+    """키보드로 포커스가 왔을 때 보이는 테두리 (마우스 사용자에겐 보이지 않음)."""
+    pen = QPen(QColor(theme.active()["accent"]), 2)
+    p.setPen(pen)
+    p.setBrush(Qt.NoBrush)
+    p.drawRoundedRect(rect.adjusted(1, 1, -1, -1), radius, radius)
+
+
+class KeyboardFocusMixin:
+    """Tab 키로 포커스가 왔을 때만 포커스 링을 그리기 위한 상태 추적."""
+
+    _kbd_focus = False
+
+    def focusInEvent(self, event) -> None:
+        self._kbd_focus = event.reason() in (Qt.TabFocusReason, Qt.BacktabFocusReason)
+        super().focusInEvent(event)
+        self.update()
+
+    def focusOutEvent(self, event) -> None:
+        self._kbd_focus = False
+        super().focusOutEvent(event)
+        self.update()
+
+
 def _qcolor(css: str) -> QColor:
     """'rgba(r, g, b, a)' 또는 '#hex' 문자열을 QColor로 변환."""
     css = css.strip()
@@ -62,7 +86,7 @@ class GlassBackground(QWidget):
 # 내비게이션 버튼 (아이콘 + 글자, 선택 시 강조 배경)
 # ------------------------------------------------------------------ #
 
-class NavButton(QAbstractButton):
+class NavButton(KeyboardFocusMixin, QAbstractButton):
     def __init__(self, glyph: str, text: str, height: int = 44, parent=None):
         super().__init__(parent)
         self.glyph = glyph
@@ -70,6 +94,8 @@ class NavButton(QAbstractButton):
         self.setCheckable(True)
         self.setCursor(Qt.PointingHandCursor)
         self.setFixedHeight(height)
+        self.setFocusPolicy(Qt.TabFocus)  # 키보드로 Tab 이동 → Space로 선택
+        self.setAccessibleName(text)
         self._hover = False
 
     def sizeHint(self) -> QSize:
@@ -93,8 +119,8 @@ class NavButton(QAbstractButton):
 
         if self.isChecked():
             grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
-            grad.setColorAt(0, QColor(t["accent"]))
-            grad.setColorAt(1, QColor(t["accent_2"]))
+            grad.setColorAt(0, QColor(t["fill_1"]))
+            grad.setColorAt(1, QColor(t["fill_2"]))
             p.setBrush(grad)
             p.setPen(Qt.NoPen)
             p.drawRoundedRect(rect, 12, 12)
@@ -116,19 +142,22 @@ class NavButton(QAbstractButton):
         font.setWeight(QFont.Bold if self.isChecked() else QFont.DemiBold)
         p.setFont(font)
         p.drawText(QRectF(46, 0, self.width() - 50, self.height()), Qt.AlignVCenter | Qt.AlignLeft, self.text())
+        if self.hasFocus() and self._kbd_focus:
+            draw_focus_ring(p, rect, 12)
 
 
 # ------------------------------------------------------------------ #
 # 토글 스위치 (QCheckBox와 같은 신호/메서드)
 # ------------------------------------------------------------------ #
 
-class ToggleSwitch(QCheckBox):
+class ToggleSwitch(KeyboardFocusMixin, QCheckBox):
     _W, _H = 44, 24
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setCursor(Qt.PointingHandCursor)
-        self.setFixedSize(self._W, self._H)
+        self.setFixedSize(self._W + 4, self._H + 4)  # 포커스 링 자리
+        self.setFocusPolicy(Qt.TabFocus)
         self._offset = 0.0
         self._anim = QPropertyAnimation(self, b"offset", self)
         self._anim.setDuration(140)
@@ -160,12 +189,15 @@ class ToggleSwitch(QCheckBox):
         return self.rect().contains(pos)
 
     def sizeHint(self) -> QSize:
-        return QSize(self._W, self._H)
+        return QSize(self._W + 4, self._H + 4)
 
     def paintEvent(self, event) -> None:
         t = theme.active()
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        if self.hasFocus() and self._kbd_focus:
+            draw_focus_ring(p, QRectF(self.rect()), (self._H + 4) / 2)
+        p.translate(2, 2)
         track = QRectF(0.5, 0.5, self._W - 1, self._H - 1)
 
         off_color = _qcolor(t["track"])
@@ -249,6 +281,7 @@ class SegmentedControl(QFrame):
             btn.setObjectName("Segment")
             btn.setCheckable(True)
             btn.setCursor(Qt.PointingHandCursor)
+            btn.setFocusPolicy(Qt.TabFocus)
             btn.clicked.connect(lambda _=False, k=key: self._select(k, emit=True))
             lay.addWidget(btn)
             self.buttons[key] = btn

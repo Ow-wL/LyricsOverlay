@@ -58,6 +58,7 @@ class SettingPage(QWidget):
         super().__init__()
         self.config = config_manager
         self.app_config = app_config
+        self._hotkey_edits: dict = {}
 
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 14, 12, 0)
@@ -390,10 +391,10 @@ class SettingPage(QWidget):
         al.setSpacing(14)
 
         ghost_row, self.ghost_hk_edit = self._hotkey_row(
-            "고스트 모드 토글", self.config.hotkey_ghost, self._on_hotkey_ghost_changed
+            "고스트 모드 토글", self.config.hotkey_ghost, "hotkey_ghost"
         )
         quit_row, self.quit_hk_edit = self._hotkey_row(
-            "프로그램 종료", self.config.hotkey_quit, self._on_hotkey_quit_changed
+            "프로그램 종료", self.config.hotkey_quit, "hotkey_quit"
         )
         al.addLayout(ghost_row)
         al.addLayout(quit_row)
@@ -407,8 +408,9 @@ class SettingPage(QWidget):
         ml.setSpacing(14)
 
         info = QLabel(
-            "단축키를 누르면 멜론 등 미디어 앱에 재생 제어 명령이 전달됩니다.\n"
-            "단축키 입력 칸을 클릭한 뒤 원하는 키 조합을 누르세요."
+            "키보드의 미디어 키처럼 동작해, 지금 재생 중인 미디어 앱(멜론 등)을 제어합니다. "
+            "브라우저에서 영상을 재생 중이면 그쪽이 반응할 수 있어요.\n"
+            "입력 칸을 클릭한 뒤 키 조합을 누르세요. Esc는 취소, Backspace는 단축키 해제입니다."
         )
         info.setObjectName("Secondary")
         info.setStyleSheet(f"font-size: {UIConfig.FS_DESC};")
@@ -417,18 +419,25 @@ class SettingPage(QWidget):
         ml.addWidget(self._hline())
 
         next_row, self.next_hk_edit = self._hotkey_row(
-            "다음 곡", self.config.hotkey_next, self._on_hotkey_next_changed
+            "다음 곡", self.config.hotkey_next, "hotkey_next"
         )
         prev_row, self.prev_hk_edit = self._hotkey_row(
-            "이전 곡", self.config.hotkey_prev, self._on_hotkey_prev_changed
+            "이전 곡", self.config.hotkey_prev, "hotkey_prev"
         )
         pause_row, self.pause_hk_edit = self._hotkey_row(
-            "재생 / 일시정지", self.config.hotkey_pause, self._on_hotkey_pause_changed
+            "재생 / 일시정지", self.config.hotkey_pause, "hotkey_pause"
         )
         ml.addLayout(next_row)
         ml.addLayout(prev_row)
         ml.addLayout(pause_row)
         lay.addWidget(media_card)
+
+        reset_row = QHBoxLayout()
+        reset_row.addStretch()
+        reset_btn = QPushButton("단축키 기본값으로")
+        reset_btn.clicked.connect(self._reset_hotkeys)
+        reset_row.addWidget(reset_btn)
+        lay.addLayout(reset_row)
 
         lay.addStretch()
         return self._wrap_scroll(inner)
@@ -548,8 +557,10 @@ class SettingPage(QWidget):
         hbox = QHBoxLayout()
         lbl = self._lbl(label_text, UIConfig.FS_TITLE_S, bold=600)
         edit = HotkeyEdit(current_val)
-        edit.setFixedWidth(165)
-        edit.changed.connect(callback)
+        edit.setFixedWidth(190)
+        attr = callback  # 설정 속성 이름 (예: "hotkey_ghost")
+        self._hotkey_edits[attr] = (edit, label_text)
+        edit.changed.connect(lambda text, a=attr: self._on_hotkey_changed(a, text))
         hbox.addWidget(lbl)
         hbox.addStretch()
         hbox.addWidget(edit)
@@ -661,24 +672,30 @@ class SettingPage(QWidget):
 
     def refresh_ui_from_config(self) -> None:
         """설정 변경 후 UI 요소 상태를 동기화합니다."""
-        self.overlay_switch.blockSignals(True)
-        self.overlay_switch.setChecked(self.config.visible)
-        self.overlay_switch.blockSignals(False)
-
-        self.alpha_slider.setValue(self.config.bg_color.alpha())
+        # 화면 값만 맞추고 변경 핸들러는 다시 부르지 않습니다 (불필요한 저장·재귀 방지).
+        widgets = [
+            (self.overlay_switch, self.config.visible),
+            (self.ghost_check, self.config.ghost_mode),
+            (self.move_check, self.config.move_enabled),
+            (self.resize_check, self.config.resize_enabled),
+            (self.song_info_check, self.config.show_song_info),
+            (self.media_controls_check, self.config.show_media_controls),
+            (self.hide_melon_check, self.config.hide_melon_window),
+            (self.alpha_slider, self.config.bg_color.alpha()),
+            (self.outline_slider, self.config.outline_width),
+            (self.width_slider, self.config.width),
+            (self.height_slider, self.config.height),
+        ]
+        for widget, value in widgets:
+            widget.blockSignals(True)
+            if isinstance(value, bool):
+                widget.setChecked(value)
+            else:
+                widget.setValue(value)
+            widget.blockSignals(False)
         self.alpha_val_label.setText(str(self.config.bg_color.alpha()))
-        self.outline_slider.setValue(self.config.outline_width)
         self.outline_val_label.setText(str(self.config.outline_width))
-        self.width_slider.setValue(self.config.width)
-        self.height_slider.setValue(self.config.height)
         self.size_val_label.setText(f"{self.config.width} x {self.config.height}")
-
-        self.ghost_check.setChecked(self.config.ghost_mode)
-        self.move_check.setChecked(self.config.move_enabled)
-        self.resize_check.setChecked(self.config.resize_enabled)
-        self.song_info_check.setChecked(self.config.show_song_info)
-        self.media_controls_check.setChecked(self.config.show_media_controls)
-        self.hide_melon_check.setChecked(self.config.hide_melon_window)
 
         self.btn_text_color.setStyleSheet(
             f"background-color: {self.config.text_color.name()};"
@@ -696,11 +713,11 @@ class SettingPage(QWidget):
     # ------------------------------------------------------------------ #
 
     def _on_visible_toggled(self, checked: bool) -> None:
-        self.config.visible = checked
+        self.config.set_visible(checked)
         self.settings_changed.emit()
 
     def _on_ghost_toggled(self, checked: bool) -> None:
-        self.config.ghost_mode = checked
+        self.config.set_ghost_mode(checked)
         self.settings_changed.emit()
 
     def _on_move_toggled(self, checked: bool) -> None:
@@ -730,26 +747,41 @@ class SettingPage(QWidget):
         self.config.save_to_file()
         self.settings_changed.emit()
 
-    def _on_hotkey_ghost_changed(self, text: str) -> None:
-        self.config.update_hotkey_ghost(text.strip())
-        self.settings_changed.emit()
+    def _on_hotkey_changed(self, attr: str, text: str) -> None:
+        """단축키 검증: 글자 하나짜리 조합이나 다른 기능과 겹치는 조합은 되돌립니다."""
+        from core.hotkey_manager import is_typing_hotkey
+
+        edit, name = self._hotkey_edits[attr]
+        old = getattr(self.config, attr)
+        text = text.strip()
+        if text and is_typing_hotkey(text):
+            edit.set_value(old)
+            QMessageBox.warning(
+                self, "쓸 수 없는 단축키",
+                "글자 하나(또는 Shift+글자)는 다른 프로그램에서 타이핑할 때도 눌려서 쓸 수 없어요.\n"
+                "Ctrl이나 Alt를 함께 눌러 주세요.",
+            )
+            return
+        norm = text.replace(" ", "").lower()
+        for other, (_, other_name) in self._hotkey_edits.items():
+            if other != attr and norm and getattr(self.config, other).replace(" ", "").lower() == norm:
+                edit.set_value(old)
+                QMessageBox.warning(
+                    self, "이미 쓰는 단축키",
+                    f"이 조합은 '{other_name}'에 이미 지정돼 있어요. 다른 조합을 골라 주세요.",
+                )
+                return
+        setattr(self.config, attr, text)
+        self.config.save_to_file()
         self.hotkeys_changed.emit()
 
-    def _on_hotkey_quit_changed(self, text: str) -> None:
-        self.config.update_hotkey_quit(text.strip())
-        self.settings_changed.emit()
-        self.hotkeys_changed.emit()
+    def _reset_hotkeys(self) -> None:
+        from overlay.config_manager import DEFAULT_HOTKEYS
 
-    def _on_hotkey_next_changed(self, text: str) -> None:
-        self.config.update_hotkey_next(text.strip())
-        self.hotkeys_changed.emit()
-
-    def _on_hotkey_prev_changed(self, text: str) -> None:
-        self.config.update_hotkey_prev(text.strip())
-        self.hotkeys_changed.emit()
-
-    def _on_hotkey_pause_changed(self, text: str) -> None:
-        self.config.update_hotkey_pause(text.strip())
+        for attr, value in DEFAULT_HOTKEYS.items():
+            setattr(self.config, attr, value)
+            self._hotkey_edits[attr][0].set_value(value)
+        self.config.save_to_file()
         self.hotkeys_changed.emit()
 
     def _on_alpha_changed(self, value: int) -> None:
