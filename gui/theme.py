@@ -71,6 +71,10 @@ class Theme:
         "solid_card": "#FFFFFF",
         "selection": _rgba(108, 92, 246, 0.16),
         "danger": "#E5484D",
+        # 상태 글자색 (밝은 배경에서도 4.5:1 이상)
+        "status_ok": "#167A47",
+        "status_warn": "#965A00",
+        "status_error": "#C42B30",
     }
     DARK = {
         "name": "dark",
@@ -103,6 +107,9 @@ class Theme:
         "solid_card": "#1C1D35",
         "selection": _rgba(139, 123, 255, 0.24),
         "danger": "#FF6B70",
+        "status_ok": "#4ADE80",
+        "status_warn": "#FBBF24",
+        "status_error": "#FF7A7F",
     }
 
 

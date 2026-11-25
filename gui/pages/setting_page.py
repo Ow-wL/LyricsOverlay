@@ -12,6 +12,7 @@ from PySide6.QtGui import QFont  # type: ignore
 from PySide6.QtWidgets import (  # type: ignore
     QCheckBox,
     QColorDialog,
+    QDialog,
     QFileDialog,
     QFontDialog,
     QFrame,
@@ -341,23 +342,32 @@ class SettingPage(QWidget):
         ))
         lay.addWidget(melon_card)
 
-        # ROI (비활성화)
-        lay.addWidget(self._section_lbl("영역 설정"))
-        roi_card = QFrame()
-        roi_card.setObjectName("MutedCard")
-        rl = QVBoxLayout(roi_card)
+        # 가사 인식 영역
+        lay.addWidget(self._section_lbl("가사 인식"))
+        roi_card = Card()
+        rl = QHBoxLayout(roi_card)
         rl.setContentsMargins(22, 16, 22, 16)
-        rl.setSpacing(10)
-        roi_title = self._lbl("가사 인식 영역 직접 지정 (준비 중)", UIConfig.FS_TITLE_S, bold=600)
-        roi_title.setObjectName("Tertiary")
-        roi_desc = self._lbl("가사가 출력되는 멜론 창의 영역을 직접 선택합니다.", UIConfig.FS_DESC, secondary=True)
-        self.roi_btn = QPushButton("가사 인식 영역 설정")
-        self.roi_btn.setEnabled(False)
+        rl.setSpacing(12)
+        roi_text = QVBoxLayout()
+        roi_text.setSpacing(4)
+        roi_text.addWidget(self._lbl("가사 인식 영역", UIConfig.FS_TITLE_S, bold=600))
+        roi_desc = self._lbl(
+            "가사가 안 읽히거나 엉뚱한 글자가 나오면, 멜론 창에서 가사가 보이는 곳을 직접 지정하세요. "
+            "화면 배율이 100%가 아니면 꼭 필요할 수 있어요.",
+            UIConfig.FS_DESC, secondary=True,
+        )
+        roi_desc.setWordWrap(True)
+        roi_text.addWidget(roi_desc)
+        self.roi_value_label = self._lbl("", UIConfig.FS_DESC, secondary=True)
+        roi_text.addWidget(self.roi_value_label)
+        rl.addLayout(roi_text, 1)
+        self.roi_btn = QPushButton("영역 지정하기")
+        self.roi_btn.setObjectName("PrimaryButton")
         self.roi_btn.setMinimumHeight(40)
-        rl.addWidget(roi_title)
-        rl.addWidget(roi_desc)
-        rl.addWidget(self.roi_btn)
+        self.roi_btn.clicked.connect(self._on_pick_roi)
+        rl.addWidget(self.roi_btn, 0, Qt.AlignVCenter)
         lay.addWidget(roi_card)
+        self._update_roi_label()
 
         lay.addStretch()
         return self._wrap_scroll(inner)
@@ -764,6 +774,37 @@ class SettingPage(QWidget):
         if ok:
             self.config.update_font(family=font.family(), size=font.pointSize())
             self.settings_changed.emit()
+
+    def _update_roi_label(self) -> None:
+        from overlay.config_manager import DEFAULT_ROI
+
+        x, y, w, h = self.config.roi
+        suffix = " (기본값)" if list(self.config.roi) == DEFAULT_ROI else ""
+        self.roi_value_label.setText(f"현재: 위치 ({x}, {y}) · 크기 {w} × {h}{suffix}")
+
+    def _on_pick_roi(self) -> None:
+        from core.window_capture import capture_covered_window, find_melon_window
+        from gui.roi_selector import RoiSelectDialog
+
+        target = find_melon_window()
+        img = capture_covered_window(target.hwnd) if target else None
+        if img is None:
+            QMessageBox.information(
+                self, "멜론 창을 찾을 수 없어요",
+                "멜론 PC 플레이어를 실행하고, 가사가 보이는 상태로 띄워 주세요.\n"
+                "창이 최소화돼 있으면 캡처할 수 없어요.",
+            )
+            return
+        dlg = RoiSelectDialog(img, self.config.roi, self)
+        result = dlg.exec()
+        if result == RoiSelectDialog.RESET:
+            self.config.set_roi(None)
+        elif result == QDialog.Accepted and dlg.selected_roi:
+            self.config.set_roi(dlg.selected_roi)
+        else:
+            return
+        self._update_roi_label()
+        self.settings_changed.emit()
 
     def _on_change_data_path(self) -> None:
         if not self.app_config:
