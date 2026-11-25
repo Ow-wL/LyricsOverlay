@@ -182,8 +182,15 @@ class StatsPage(QWidget):
         self.play_history = play_history
         self.theme_mode = theme_mode
         if not play_history:
+            # 기록을 모두 지웠을 때 예전 순위가 화면에 남지 않도록 목록도 비웁니다.
             self.bar_chart.set_data([], [], theme_mode)
+            self.top_songs_list.clear()
+            self.top_artists_list.clear()
+            self.btn_more_songs.setEnabled(False)
+            self.btn_more_artists.setEnabled(False)
             return
+        self.btn_more_songs.setEnabled(True)
+        self.btn_more_artists.setEnabled(True)
 
         today = datetime.now().date()
         counts: Counter = Counter()
