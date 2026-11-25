@@ -177,6 +177,7 @@ class MainWindow(QMainWindow):
         theme_row.addWidget(label("다크 모드", "Secondary", "font-weight: 600;"))
         theme_row.addStretch()
         self.theme_switch = ToggleSwitch()
+        self.theme_switch.setAccessibleName("다크 모드")
         self.theme_switch.setChecked(self.theme_manager.current_theme is Theme.DARK)
         self.theme_switch.toggled.connect(self._on_theme_switch)
         theme_row.addWidget(self.theme_switch)
