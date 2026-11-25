@@ -27,70 +27,19 @@ from PySide6.QtWidgets import (  # type: ignore
     QWidget,
 )
 
+from gui import icons
 from gui.theme import UIConfig
 from gui.widgets.card import Card, PresetItem, StylePreview
+from gui.widgets.glass import NavButton, ToggleSwitch, divider, label, page_header
 from gui.widgets.hotkey_edit import HotkeyEdit
 from overlay.config_manager import OverlayConfigManager
 
-_ACCENT = "#7C4DFF"
-_ACCENT_BG = "rgba(124,77,255,0.12)"
-
 _CATEGORIES = [
-    ("🎨", "외관"),
-    ("⚙️", "동작"),
-    ("⌨️", "단축키"),
-    ("💾", "시스템"),
+    (icons.PALETTE, "외관"),
+    (icons.SLIDERS, "동작"),
+    (icons.KEYBOARD, "단축키"),
+    (icons.SYSTEM, "시스템"),
 ]
-
-
-# ------------------------------------------------------------------ #
-# 사이드바 네비게이션 버튼
-# ------------------------------------------------------------------ #
-
-
-class _NavBtn(QPushButton):
-    """사이드바 카테고리 버튼."""
-
-    _SS_ACTIVE = f"""
-        QPushButton {{
-            background-color: {_ACCENT_BG};
-            color: {_ACCENT};
-            border: none;
-            border-left: 3px solid {_ACCENT};
-            border-radius: 0px;
-            text-align: left;
-            padding: 0 0 0 16px;
-            font-size: 15px;
-            font-weight: 700;
-        }}
-    """
-    _SS_IDLE = """
-        QPushButton {
-            background-color: transparent;
-            color: #828282;
-            border: none;
-            border-left: 3px solid transparent;
-            border-radius: 0px;
-            text-align: left;
-            padding: 0 0 0 16px;
-            font-size: 15px;
-            font-weight: 500;
-        }
-        QPushButton:hover {
-            background-color: rgba(0,0,0,0.05);
-            color: #333;
-        }
-    """
-
-    def __init__(self, icon: str, label: str, parent=None):
-        super().__init__(parent)
-        self.setText(f"{icon}   {label}")
-        self.setFixedHeight(50)
-        self.setCursor(Qt.PointingHandCursor)
-        self.setActive(False)
-
-    def setActive(self, active: bool) -> None:
-        self.setStyleSheet(self._SS_ACTIVE if active else self._SS_IDLE)
 
 
 # ------------------------------------------------------------------ #
@@ -110,29 +59,19 @@ class SettingPage(QWidget):
         self.app_config = app_config
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(48, 48, 48, 48)
-        root.setSpacing(24)
+        root.setContentsMargins(28, 14, 12, 0)
+        root.setSpacing(20)
 
         # ── 헤더
-        header = QLabel("오버레이 설정")
-        header.setObjectName("PageHeader")
-        header.setStyleSheet(
-            f"font-size: {UIConfig.FS_HEADER_MAIN}; font-weight: 900;"
-        )
+        header = page_header("설정", "오버레이의 모양과 동작, 단축키를 조정하세요")
         root.addWidget(header)
 
-        # ── 본문 = 사이드바 | 구분선 | 콘텐츠 스택
+        # ── 본문 = 카테고리 | 콘텐츠 스택
         body = QHBoxLayout()
-        body.setSpacing(0)
+        body.setSpacing(6)
         body.setContentsMargins(0, 0, 0, 0)
 
-        body.addWidget(self._build_sidebar())
-
-        sep = QFrame()
-        sep.setFrameShape(QFrame.VLine)
-        sep.setFixedWidth(1)
-        sep.setStyleSheet("background-color: #E0E0E0;")
-        body.addWidget(sep)
+        body.addWidget(self._build_sidebar(), 0, Qt.AlignTop)
 
         self.stack = QStackedWidget()
         self.stack.addWidget(self._build_appearance_page())   # 0
@@ -151,26 +90,23 @@ class SettingPage(QWidget):
     # ------------------------------------------------------------------ #
 
     def _build_sidebar(self) -> QWidget:
-        w = QWidget()
-        w.setFixedWidth(148)
-        w.setStyleSheet("background: transparent;")
+        w = Card()
+        w.setFixedWidth(176)
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(0, 8, 0, 0)
-        lay.setSpacing(2)
+        lay.setContentsMargins(10, 12, 10, 12)
+        lay.setSpacing(4)
 
-        self._nav_btns: list[_NavBtn] = []
-        for i, (icon, label) in enumerate(_CATEGORIES):
-            btn = _NavBtn(icon, label)
-            btn.clicked.connect(lambda _, idx=i: self._switch_page(idx))
+        self._nav_btns: list[NavButton] = []
+        for i, (glyph, text) in enumerate(_CATEGORIES):
+            btn = NavButton(glyph, text, height=40)
+            btn.clicked.connect(lambda _=False, idx=i: self._switch_page(idx))
             self._nav_btns.append(btn)
             lay.addWidget(btn)
-
-        lay.addStretch()
         return w
 
     def _switch_page(self, idx: int) -> None:
         for i, btn in enumerate(self._nav_btns):
-            btn.setActive(i == idx)
+            btn.setChecked(i == idx)
         self.stack.setCurrentIndex(idx)
 
     # ------------------------------------------------------------------ #
@@ -182,7 +118,8 @@ class SettingPage(QWidget):
         scroll.setWidget(inner)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setStyleSheet("background: transparent; border: none;")
+        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         return scroll
 
     # ================================================================== #
@@ -192,8 +129,8 @@ class SettingPage(QWidget):
     def _build_appearance_page(self) -> QScrollArea:
         inner = QWidget()
         lay = QVBoxLayout(inner)
-        lay.setContentsMargins(32, 20, 24, 32)
-        lay.setSpacing(20)
+        lay.setContentsMargins(16, 4, 20, 28)
+        lay.setSpacing(14)
 
         # ── 미리보기
         lay.addWidget(self._section_lbl("오버레이 미리보기"))
@@ -203,12 +140,12 @@ class SettingPage(QWidget):
         # ── 오버레이 활성화
         enable_card = Card()
         el = QHBoxLayout(enable_card)
-        el.setContentsMargins(24, 18, 24, 18)
+        el.setContentsMargins(22, 16, 22, 16)
         ev = QVBoxLayout()
-        ev.addWidget(self._lbl("오버레이 활성화", UIConfig.FS_TITLE_M, bold=800))
+        ev.setSpacing(2)
+        ev.addWidget(self._lbl("오버레이 표시", UIConfig.FS_TITLE_S, bold=700))
         ev.addWidget(self._lbl("가사 오버레이를 화면에 표시하거나 숨깁니다.", UIConfig.FS_DESC, secondary=True))
-        self.overlay_switch = QCheckBox()
-        self.overlay_switch.setCursor(Qt.PointingHandCursor)
+        self.overlay_switch = ToggleSwitch()
         self.overlay_switch.setChecked(self.config.visible)
         self.overlay_switch.toggled.connect(self._on_visible_toggled)
         el.addLayout(ev)
@@ -220,18 +157,21 @@ class SettingPage(QWidget):
         lay.addWidget(self._section_lbl("스타일 프리셋"))
         preset_card = Card()
         pl = QVBoxLayout(preset_card)
-        pl.setContentsMargins(24, 18, 24, 18)
+        pl.setContentsMargins(22, 16, 22, 16)
         pl.setSpacing(14)
 
         btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+        btn_row.addWidget(self._lbl("클릭해서 적용 · 직접 만든 프리셋은 우클릭으로 삭제", UIConfig.FS_DESC, secondary=True))
         btn_row.addStretch()
-        self.btn_import_styles = QPushButton("가져오기  📥")
+        self.btn_import_styles = QPushButton("가져오기")
         self.btn_import_styles.setFixedHeight(36)
         self.btn_import_styles.clicked.connect(self._import_styles_dialog)
-        self.btn_export_styles = QPushButton("내보내기  📤")
+        self.btn_export_styles = QPushButton("내보내기")
         self.btn_export_styles.setFixedHeight(36)
         self.btn_export_styles.clicked.connect(self._export_styles_dialog)
-        self.btn_save_preset = QPushButton("현재 스타일 저장  💾")
+        self.btn_save_preset = QPushButton("현재 스타일 저장")
+        self.btn_save_preset.setObjectName("PrimaryButton")
         self.btn_save_preset.setFixedHeight(36)
         self.btn_save_preset.clicked.connect(self._save_current_as_preset)
         btn_row.addWidget(self.btn_import_styles)
@@ -242,7 +182,8 @@ class SettingPage(QWidget):
         self.preset_container = QWidget()
         self.preset_grid = QGridLayout(self.preset_container)
         self.preset_grid.setContentsMargins(0, 0, 0, 0)
-        self.preset_grid.setSpacing(14)
+        self.preset_grid.setSpacing(12)
+        self.preset_grid.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         self._update_preset_list()
         pl.addWidget(self.preset_container)
         lay.addWidget(preset_card)
@@ -251,14 +192,14 @@ class SettingPage(QWidget):
         lay.addWidget(self._section_lbl("스타일 세부 설정"))
         style_card = Card()
         sl = QVBoxLayout(style_card)
-        sl.setContentsMargins(24, 18, 24, 18)
+        sl.setContentsMargins(22, 16, 22, 16)
         sl.setSpacing(18)
 
         # 글꼴
         font_row = QHBoxLayout()
         font_row.addWidget(self._lbl("오버레이 글꼴", UIConfig.FS_TITLE_S, bold=600))
-        self.btn_font = QPushButton("글꼴 변경  🔤")
-        self.btn_font.setFixedSize(140, 36)
+        self.btn_font = QPushButton("글꼴 변경")
+        self.btn_font.setFixedHeight(36)
         self.btn_font.clicked.connect(self._pick_font)
         font_row.addStretch()
         font_row.addWidget(self.btn_font)
@@ -272,9 +213,7 @@ class SettingPage(QWidget):
         alpha_hdr.addWidget(self._lbl("배경 불투명도", UIConfig.FS_TITLE_S, bold=600))
         alpha_hdr.addStretch()
         self.alpha_val_label = QLabel(str(self.config.bg_color.alpha()))
-        self.alpha_val_label.setStyleSheet(
-            f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 800; color: {_ACCENT};"
-        )
+        self.alpha_val_label.setObjectName("AccentValue")
         alpha_hdr.addWidget(self.alpha_val_label)
         self.alpha_slider = QSlider(Qt.Horizontal)
         self.alpha_slider.setRange(0, 255)
@@ -305,9 +244,7 @@ class SettingPage(QWidget):
         out_hdr.addWidget(self._lbl("아웃라인 두께", UIConfig.FS_TITLE_S, bold=600))
         out_hdr.addStretch()
         self.outline_val_label = QLabel(str(self.config.outline_width))
-        self.outline_val_label.setStyleSheet(
-            f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 800; color: {_ACCENT};"
-        )
+        self.outline_val_label.setObjectName("AccentValue")
         out_hdr.addWidget(self.outline_val_label)
         self.outline_slider = QSlider(Qt.Horizontal)
         self.outline_slider.setRange(0, 10)
@@ -325,9 +262,7 @@ class SettingPage(QWidget):
         size_hdr.addWidget(self._lbl("오버레이 크기 (너비 / 높이)", UIConfig.FS_TITLE_S, bold=600))
         size_hdr.addStretch()
         self.size_val_label = QLabel(f"{self.config.width} x {self.config.height}")
-        self.size_val_label.setStyleSheet(
-            f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 800; color: {_ACCENT};"
-        )
+        self.size_val_label.setObjectName("AccentValue")
         size_hdr.addWidget(self.size_val_label)
         size_sliders = QHBoxLayout()
         self.width_slider = QSlider(Qt.Horizontal)
@@ -355,13 +290,13 @@ class SettingPage(QWidget):
     def _build_behavior_page(self) -> QScrollArea:
         inner = QWidget()
         lay = QVBoxLayout(inner)
-        lay.setContentsMargins(32, 20, 24, 32)
-        lay.setSpacing(20)
+        lay.setContentsMargins(16, 4, 20, 28)
+        lay.setSpacing(14)
 
         lay.addWidget(self._section_lbl("오버레이 동작"))
         beh_card = Card()
         bl = QVBoxLayout(beh_card)
-        bl.setContentsMargins(24, 18, 24, 18)
+        bl.setContentsMargins(22, 16, 22, 16)
         bl.setSpacing(14)
 
         bl.addLayout(self._toggle_row(
@@ -396,7 +331,7 @@ class SettingPage(QWidget):
         lay.addWidget(self._section_lbl("멜론 창"))
         melon_card = Card()
         ml = QVBoxLayout(melon_card)
-        ml.setContentsMargins(24, 18, 24, 18)
+        ml.setContentsMargins(22, 16, 22, 16)
         ml.setSpacing(14)
         ml.addLayout(self._toggle_row(
             "고스트 모드에서 멜론 창 숨기기",
@@ -408,22 +343,17 @@ class SettingPage(QWidget):
 
         # ROI (비활성화)
         lay.addWidget(self._section_lbl("영역 설정"))
-        roi_card = Card()
+        roi_card = QFrame()
+        roi_card.setObjectName("MutedCard")
         rl = QVBoxLayout(roi_card)
-        rl.setContentsMargins(24, 18, 24, 18)
+        rl.setContentsMargins(22, 16, 22, 16)
         rl.setSpacing(10)
-        roi_title = QLabel("영역 설정 (비활성화됨)")
-        roi_title.setStyleSheet(
-            f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 600; color: #AAAAAA;"
-        )
-        roi_desc = QLabel("가사가 출력되는 멜론 창의 영역을 직접 선택합니다.")
-        roi_desc.setStyleSheet(f"font-size: {UIConfig.FS_DESC}; color: #AAAAAA;")
-        self.roi_btn = QPushButton("가사 인식 영역 설정 (ROI)  🎯")
+        roi_title = self._lbl("가사 인식 영역 직접 지정 (준비 중)", UIConfig.FS_TITLE_S, bold=600)
+        roi_title.setObjectName("Tertiary")
+        roi_desc = self._lbl("가사가 출력되는 멜론 창의 영역을 직접 선택합니다.", UIConfig.FS_DESC, secondary=True)
+        self.roi_btn = QPushButton("가사 인식 영역 설정")
         self.roi_btn.setEnabled(False)
-        self.roi_btn.setMinimumHeight(50)
-        self.roi_btn.setStyleSheet(
-            "background-color: #EEEEEE; color: #AAAAAA; border-radius: 10px;"
-        )
+        self.roi_btn.setMinimumHeight(40)
         rl.addWidget(roi_title)
         rl.addWidget(roi_desc)
         rl.addWidget(self.roi_btn)
@@ -439,14 +369,14 @@ class SettingPage(QWidget):
     def _build_hotkeys_page(self) -> QScrollArea:
         inner = QWidget()
         lay = QVBoxLayout(inner)
-        lay.setContentsMargins(32, 20, 24, 32)
-        lay.setSpacing(20)
+        lay.setContentsMargins(16, 4, 20, 28)
+        lay.setSpacing(14)
 
         # 앱 제어
         lay.addWidget(self._section_lbl("앱 제어"))
         app_card = Card()
         al = QVBoxLayout(app_card)
-        al.setContentsMargins(24, 18, 24, 18)
+        al.setContentsMargins(22, 16, 22, 16)
         al.setSpacing(14)
 
         ghost_row, self.ghost_hk_edit = self._hotkey_row(
@@ -463,28 +393,27 @@ class SettingPage(QWidget):
         lay.addWidget(self._section_lbl("미디어 컨트롤"))
         media_card = Card()
         ml = QVBoxLayout(media_card)
-        ml.setContentsMargins(24, 18, 24, 18)
+        ml.setContentsMargins(22, 16, 22, 16)
         ml.setSpacing(14)
 
         info = QLabel(
             "단축키를 누르면 멜론 등 미디어 앱에 재생 제어 명령이 전달됩니다.\n"
             "단축키 입력 칸을 클릭한 뒤 원하는 키 조합을 누르세요."
         )
-        info.setStyleSheet(
-            f"font-size: {UIConfig.FS_DESC}; color: {UIConfig.COLOR_SECONDARY_TEXT};"
-        )
+        info.setObjectName("Secondary")
+        info.setStyleSheet(f"font-size: {UIConfig.FS_DESC};")
         info.setWordWrap(True)
         ml.addWidget(info)
         ml.addWidget(self._hline())
 
         next_row, self.next_hk_edit = self._hotkey_row(
-            "다음 곡  ⏭", self.config.hotkey_next, self._on_hotkey_next_changed
+            "다음 곡", self.config.hotkey_next, self._on_hotkey_next_changed
         )
         prev_row, self.prev_hk_edit = self._hotkey_row(
-            "이전 곡  ⏮", self.config.hotkey_prev, self._on_hotkey_prev_changed
+            "이전 곡", self.config.hotkey_prev, self._on_hotkey_prev_changed
         )
         pause_row, self.pause_hk_edit = self._hotkey_row(
-            "일시정지 / 재생  ⏯", self.config.hotkey_pause, self._on_hotkey_pause_changed
+            "재생 / 일시정지", self.config.hotkey_pause, self._on_hotkey_pause_changed
         )
         ml.addLayout(next_row)
         ml.addLayout(prev_row)
@@ -501,13 +430,13 @@ class SettingPage(QWidget):
     def _build_system_page(self) -> QScrollArea:
         inner = QWidget()
         lay = QVBoxLayout(inner)
-        lay.setContentsMargins(32, 20, 24, 32)
-        lay.setSpacing(20)
+        lay.setContentsMargins(16, 4, 20, 28)
+        lay.setSpacing(14)
 
         lay.addWidget(self._section_lbl("데이터 관리"))
         sys_card = Card()
         sys_l = QVBoxLayout(sys_card)
-        sys_l.setContentsMargins(24, 18, 24, 18)
+        sys_l.setContentsMargins(22, 16, 22, 16)
         sys_l.setSpacing(12)
 
         path_row = QHBoxLayout()
@@ -516,7 +445,7 @@ class SettingPage(QWidget):
         current_path = self.app_config.data_dir if self.app_config else "알 수 없음"
         self.lbl_data_path = self._lbl(current_path, UIConfig.FS_DESC, secondary=True)
         path_info.addWidget(self.lbl_data_path)
-        self.btn_change_path = QPushButton("경로 변경하기  📂")
+        self.btn_change_path = QPushButton("경로 변경")
         self.btn_change_path.setFixedHeight(40)
         self.btn_change_path.clicked.connect(self._on_change_data_path)
         path_row.addLayout(path_info)
@@ -534,18 +463,17 @@ class SettingPage(QWidget):
 
     def _section_lbl(self, text: str) -> QLabel:
         lbl = QLabel(text)
-        lbl.setStyleSheet(
-            f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 800; "
-            f"color: {UIConfig.COLOR_SECONDARY_TEXT};"
-        )
+        lbl.setObjectName("SectionLabel")
+        lbl.setContentsMargins(4, 8, 0, 0)
         return lbl
 
     def _lbl(
         self, text: str, font_size: str, bold: int = 400, secondary: bool = False
     ) -> QLabel:
         lbl = QLabel(text)
-        color = f"color: {UIConfig.COLOR_SECONDARY_TEXT};" if secondary else ""
-        lbl.setStyleSheet(f"font-size: {font_size}; font-weight: {bold}; {color}")
+        if secondary:
+            lbl.setObjectName("Secondary")
+        lbl.setStyleSheet(f"font-size: {font_size}; font-weight: {bold};")
         return lbl
 
     # kept for legacy compatibility (some callers use _make_label)
@@ -558,11 +486,7 @@ class SettingPage(QWidget):
         return self._lbl(text, UIConfig.FS_TITLE_L, bold=800, secondary=True)
 
     def _hline(self) -> QFrame:
-        line = QFrame()
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        line.setStyleSheet("background-color: #E0E0E0;")
-        return line
+        return divider()
 
     def _make_hline(self) -> QFrame:
         return self._hline()
@@ -577,14 +501,13 @@ class SettingPage(QWidget):
     ) -> QHBoxLayout:
         hbox = QHBoxLayout()
         vbox = QVBoxLayout()
+        vbox.setSpacing(2)
         vbox.addWidget(self._lbl(title, UIConfig.FS_TITLE_S, bold=600))
         desc_lbl = self._lbl(desc, UIConfig.FS_DESC, secondary=True)
         desc_lbl.setWordWrap(True)  # 긴 설명이 페이지를 가로로 늘리지 않도록
         vbox.addWidget(desc_lbl)
-        chk = QCheckBox()
-        chk.setCursor(Qt.PointingHandCursor)
+        chk = ToggleSwitch()
         chk.setChecked(checked)
-        chk.setStyleSheet("QCheckBox::indicator { width: 24px; height: 24px; }")
         chk.toggled.connect(callback)
         setattr(self, attr_name, chk)
         hbox.addLayout(vbox, 1)
@@ -601,8 +524,7 @@ class SettingPage(QWidget):
         self, label_text: str, current_val: str, callback
     ) -> tuple:
         hbox = QHBoxLayout()
-        lbl = QLabel(label_text)
-        lbl.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 600;")
+        lbl = self._lbl(label_text, UIConfig.FS_TITLE_S, bold=600)
         edit = HotkeyEdit(current_val)
         edit.setFixedWidth(165)
         edit.changed.connect(callback)
@@ -617,15 +539,13 @@ class SettingPage(QWidget):
     def _color_ctrl(self, label_text: str, color_obj, target: str):
         vbox = QVBoxLayout()
         vbox.setSpacing(8)
-        lbl = QLabel(label_text)
-        lbl.setStyleSheet(
-            f"font-size: 16px; font-weight: 600; color: {UIConfig.COLOR_SECONDARY_TEXT};"
-        )
+        lbl = self._lbl(label_text, UIConfig.FS_DESC, bold=600, secondary=True)
         btn = QPushButton()
-        btn.setFixedSize(80, 36)
+        btn.setObjectName("ColorSwatch")
+        btn.setFixedSize(72, 32)
         btn.setCursor(Qt.PointingHandCursor)
         btn.setStyleSheet(
-            f"background-color: {color_obj.name()}; border-radius: 18px; border: 2px solid #E0E0E0;"
+            f"background-color: {color_obj.name()};"
         )
         btn.clicked.connect(lambda: self._pick_color(target, btn))
         vbox.addWidget(lbl)
@@ -651,7 +571,7 @@ class SettingPage(QWidget):
             preset.clicked.connect(self._on_preset_selected)
             self.preset_grid.addWidget(preset, row, col)
             col += 1
-            if col > 2:
+            if col > 3:
                 col = 0
                 row += 1
 
@@ -661,7 +581,7 @@ class SettingPage(QWidget):
             preset.delete_requested.connect(self._on_delete_preset)
             self.preset_grid.addWidget(preset, row, col)
             col += 1
-            if col > 2:
+            if col > 3:
                 col = 0
                 row += 1
 
@@ -738,13 +658,13 @@ class SettingPage(QWidget):
         self.hide_melon_check.setChecked(self.config.hide_melon_window)
 
         self.btn_text_color.setStyleSheet(
-            f"background-color: {self.config.text_color.name()}; border-radius: 18px; border: 2px solid #E0E0E0;"
+            f"background-color: {self.config.text_color.name()};"
         )
         self.btn_bg_color.setStyleSheet(
-            f"background-color: {self.config.bg_color.name()}; border-radius: 18px; border: 2px solid #E0E0E0;"
+            f"background-color: {self.config.bg_color.name()};"
         )
         self.btn_out_color.setStyleSheet(
-            f"background-color: {self.config.outline_color.name()}; border-radius: 18px; border: 2px solid #E0E0E0;"
+            f"background-color: {self.config.outline_color.name()};"
         )
         self.preview_area.update_preview(self.config)
 
@@ -827,7 +747,7 @@ class SettingPage(QWidget):
         color = QColorDialog.getColor(current_color)
         if color.isValid():
             btn.setStyleSheet(
-                f"background-color: {color.name()}; border-radius: 18px; border: 2px solid #E0E0E0;"
+                f"background-color: {color.name()};"
             )
             if target == "text":
                 self.config.update_text_style(color=color)

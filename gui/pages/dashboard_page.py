@@ -5,140 +5,118 @@ from PySide6.QtWidgets import (  # type: ignore
     QHBoxLayout,
     QLabel,
     QListWidget,
-    QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from gui.theme import UIConfig
+from gui import icons
 from gui.widgets.card import Card
+from gui.widgets.glass import SegmentedControl, icon_chip, label, page_header
 from gui.widgets.media_controls import MediaControls
-
-
 from overlay.config_manager import OverlayConfigManager
 
+_VIEW_OPTIONS = [("session", "세션"), ("daily", "오늘"), ("weekly", "이번 주"), ("monthly", "이번 달")]
+
+
 class DashboardPage(QWidget):
-    """실시간 가사 미리보기 및 시스템 로그를 보여주는 대시보드 페이지."""
+    """지금 재생 중인 가사, 감상 요약, 시스템 로그를 보여주는 페이지."""
 
     def __init__(self, config_manager: OverlayConfigManager):
         super().__init__()
         self.config = config_manager
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(60, 60, 60, 60)
-        layout.setSpacing(40)
+        layout.setContentsMargins(28, 14, 28, 6)
+        layout.setSpacing(22)
 
+        # ── 헤더
         header_layout = QHBoxLayout()
-        header = QLabel("대시보드")
-        header.setObjectName("PageHeader")
-        header.setStyleSheet(
-            f"font-size: {UIConfig.FS_HEADER_MAIN}; font-weight: 900;"
-        )
-        header_layout.addWidget(header)
+        header_layout.addWidget(page_header("대시보드", "지금 듣고 있는 음악과 감상 기록을 한눈에 확인하세요"))
         header_layout.addStretch()
-
-        view_group = QHBoxLayout()
-        view_group.setSpacing(8)
-        self.btn_session = QPushButton("세션")
-        self.btn_daily = QPushButton("오늘")
-        self.btn_weekly = QPushButton("이번 주")
-        self.btn_monthly = QPushButton("이번 달")
-        
-        self.view_buttons = [self.btn_session, self.btn_daily, self.btn_weekly, self.btn_monthly]
-        for btn in self.view_buttons:
-            btn.setCheckable(True)
-            btn.setFixedSize(80, 36)
-            btn.setCursor(Qt.PointingHandCursor)
-            view_group.addWidget(btn)
-            
         self.current_view_mode = self.config.dashboard_view_mode
-        
-        for btn, mode in zip(self.view_buttons, ["session", "daily", "weekly", "monthly"]):
-            btn.setChecked(mode == self.current_view_mode)
-            btn.clicked.connect(lambda checked, m=mode: self.change_view(m))
-            
-        header_layout.addLayout(view_group)
+        self.view_control = SegmentedControl(_VIEW_OPTIONS, self.current_view_mode)
+        self.view_control.changed.connect(self.change_view)
+        header_layout.addWidget(self.view_control, 0, Qt.AlignBottom)
         layout.addLayout(header_layout)
 
-        # 통계 카드 3개
+        # ── 통계 카드 3개
         stats_layout = QHBoxLayout()
-        stats_layout.setSpacing(24)
-        self.stat1 = self._create_stat_card("들은 노래 수", "0곡", "현재 세션 기준")
-        self.stat2 = self._create_stat_card("노래 플레이 타임", "0분", "현재 세션 기준")
-        self.stat3 = self._create_stat_card("매칭된 가사 라인", "0줄", "현재 세션 기준")
-        stats_layout.addWidget(self.stat1)
-        stats_layout.addWidget(self.stat2)
-        stats_layout.addWidget(self.stat3)
+        stats_layout.setSpacing(18)
+        self.stat1 = self._create_stat_card(icons.MUSIC_NOTE, "들은 노래", "0곡")
+        self.stat2 = self._create_stat_card(icons.CLOCK, "감상 시간", "0분")
+        self.stat3 = self._create_stat_card(icons.LINES, "매칭된 가사", "0줄")
+        for card in (self.stat1, self.stat2, self.stat3):
+            stats_layout.addWidget(card)
         layout.addLayout(stats_layout)
 
-        # 하단: 가사 미리보기 + 로그
+        # ── 하단: 지금 재생 중 + 로그
         bottom_layout = QHBoxLayout()
-        bottom_layout.setSpacing(24)
+        bottom_layout.setSpacing(18)
 
         self.lyrics_card = Card()
         lyrics_vbox = QVBoxLayout(self.lyrics_card)
-        lyrics_vbox.setContentsMargins(24, 24, 24, 24)
-        lyrics_title = QLabel("실시간 가사 미리보기")
-        lyrics_title.setStyleSheet(
-            f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 600;"
-        )
-        self.curr_lyric = QLabel("가사를 대기 중입니다...")
+        lyrics_vbox.setContentsMargins(26, 22, 26, 22)
+        lyrics_vbox.setSpacing(6)
+        lyrics_vbox.addWidget(label("지금 재생 중", "SectionLabel"))
+        self.song_title = label("재생 중인 곡이 없어요", "CardTitle", "font-size: 19px; font-weight: 800;")
+        self.song_artist = label("멜론에서 음악을 재생하면 여기에 표시됩니다", "Secondary")
+        lyrics_vbox.addWidget(self.song_title)
+        lyrics_vbox.addWidget(self.song_artist)
+
+        self.curr_lyric = QLabel("가사를 기다리는 중…")
         self.curr_lyric.setAlignment(Qt.AlignCenter)
-        self.curr_lyric.setStyleSheet(
-            "font-size: 32px; font-weight: 400; line-height: 48px;"
-        )
         self.curr_lyric.setWordWrap(True)
-        lyrics_header = QHBoxLayout()
-        lyrics_header.addWidget(lyrics_title)
-        lyrics_header.addStretch()
-        self.media_controls = MediaControls("app")
-        lyrics_header.addWidget(self.media_controls)
-        lyrics_vbox.addLayout(lyrics_header)
+        self.curr_lyric.setStyleSheet("font-size: 24px; font-weight: 700; padding: 8px 0;")
         lyrics_vbox.addStretch()
         lyrics_vbox.addWidget(self.curr_lyric)
         lyrics_vbox.addStretch()
 
+        self.media_controls = MediaControls("app")
+        lyrics_vbox.addWidget(self.media_controls, 0, Qt.AlignHCenter)
+
         self.log_card = Card()
-        self.log_card.setFixedWidth(400)
+        self.log_card.setFixedWidth(330)
         log_vbox = QVBoxLayout(self.log_card)
-        log_vbox.setContentsMargins(24, 24, 24, 24)
-        log_title = QLabel("시스템 로그")
-        log_title.setStyleSheet(f"font-size: {UIConfig.FS_TITLE_S}; font-weight: 600;")
+        log_vbox.setContentsMargins(20, 22, 20, 16)
+        log_vbox.setSpacing(10)
+        log_header = QHBoxLayout()
+        log_header.addWidget(label("시스템 로그", "CardTitle"))
+        log_header.addStretch()
+        log_header.addWidget(label(icons.LIST, "IconGlyph", "font-size: 14px;"))
+        log_vbox.addLayout(log_header)
         self.log_list = QListWidget()
-        log_vbox.addWidget(log_title)
+        self.log_list.setObjectName("LogList")
+        self.log_list.setWordWrap(True)
+        self.log_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         log_vbox.addWidget(self.log_list)
 
-        bottom_layout.addWidget(self.lyrics_card, 2)
-        bottom_layout.addWidget(self.log_card, 1)
-        layout.addLayout(bottom_layout)
+        bottom_layout.addWidget(self.lyrics_card, 1)
+        bottom_layout.addWidget(self.log_card)
+        layout.addLayout(bottom_layout, 1)
 
-    def _create_stat_card(self, title: str, value: str, sub: str) -> Card:
+    def _create_stat_card(self, glyph: str, title: str, value: str) -> Card:
         card = Card()
         vbox = QVBoxLayout(card)
-        vbox.setContentsMargins(24, 24, 24, 24)
-        vbox.setSpacing(8)
-        t = QLabel(title)
-        t.setStyleSheet(
-            f"font-size: 16px; font-weight: 600; color: {UIConfig.COLOR_SECONDARY_TEXT};"
-        )
-        v = QLabel(value)
-        v.setObjectName("StatValue")
-        v.setStyleSheet("font-size: 40px; font-weight: 600;")
-        s = QLabel(sub)
-        s.setObjectName("StatSub")
-        s.setStyleSheet(
-            f"font-size: 14px; color: {UIConfig.COLOR_SECONDARY_TEXT};"
-        )
-        vbox.addWidget(t)
-        vbox.addWidget(v)
-        vbox.addWidget(s)
+        vbox.setContentsMargins(22, 18, 22, 18)
+        vbox.setSpacing(2)
+        top = QHBoxLayout()
+        top.addWidget(label(title, "Secondary", "font-size: 13px; font-weight: 600;"))
+        top.addStretch()
+        top.addWidget(icon_chip(glyph, 34))
+        vbox.addLayout(top)
+        vbox.addWidget(label(value, "StatValue"))
+        vbox.addWidget(label("현재 세션 기준", "Tertiary", "font-size: 12px;"))
+        card.findChildren(QLabel)[-1].setObjectName("StatSub")
         return card
+
+    def set_now_playing(self, title: str, artist: str) -> None:
+        self.song_title.setText(title or "알 수 없는 곡")
+        self.song_artist.setText(artist or "")
 
     def change_view(self, mode: str) -> None:
         self.current_view_mode = mode
         self.config.dashboard_view_mode = mode
         self.config.save_to_file()
-        for btn, m in zip(self.view_buttons, ["session", "daily", "weekly", "monthly"]):
-            btn.setChecked(m == mode)
+        self.view_control.set_current(mode)
         if hasattr(self, "latest_session_stats") and hasattr(self, "latest_play_history"):
             self.update_stats(self.latest_session_stats, self.latest_play_history)
 

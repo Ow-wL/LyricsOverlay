@@ -260,6 +260,7 @@ async def main() -> None:
 
                         # 오버레이에 곡 정보 업데이트
                         overlay.update_song_info(title, artist)
+                        window.dashboard_page.set_now_playing(title, artist)
 
                         item = QListWidgetItem(f"{current_song_title} ({timestamp_short})")
                         item.setSizeHint(QSize(0, 60))
