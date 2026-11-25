@@ -14,3 +14,26 @@ def resource_path(relative_path: str) -> str:
         base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     return os.path.join(base_path, relative_path)
+
+
+def atomic_write_json(path: str, data) -> None:
+    """JSON을 임시 파일에 먼저 쓴 뒤 교체해, 저장 중 중단돼도 기존 파일이 깨지지 않게 합니다."""
+    import json
+    import tempfile
+
+    directory = os.path.dirname(os.path.abspath(path))
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=os.path.basename(path) + ".", suffix=".tmp", dir=directory
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise

@@ -2,6 +2,11 @@ import json
 import os
 import time
 
+from core.utils import atomic_write_json
+
+# 읽지 못한 통계 파일을 보관하지도 못했을 때, 기본값으로 덮어쓰지 않도록 저장을 막습니다.
+_save_blocked: set[str] = set()
+
 def get_stats_file_path(data_dir: str) -> str:
     return os.path.join(data_dir, "lyrics_stats.json")
 
@@ -45,15 +50,26 @@ def load_stats(data_dir: str) -> dict:
             return data
         except Exception as e:
             print(f"[⚠️] 통계 로드 실패: {e}")
+            # 깨진 파일을 따로 보관해, 이후 저장이 기존 기록을 덮어쓰지 않게 합니다.
+            backup_path = (
+                f"{stats_file_path}.corrupt-{time.strftime('%Y%m%d-%H%M%S')}-{time.time_ns() % 10**9}"
+            )
+            try:
+                os.replace(stats_file_path, backup_path)
+                print(f"[🧯] 손상된 통계 파일을 보관했습니다: {backup_path}")
+            except Exception as backup_err:
+                print(f"[⚠️] 손상된 통계 파일 보관 실패, 이번 실행에서는 저장하지 않습니다: {backup_err}")
+                _save_blocked.add(os.path.abspath(stats_file_path))
     return default_stats
 
 
 def save_stats(stats: dict, data_dir: str) -> None:
     """통계 데이터를 파일에 저장합니다."""
     stats_file_path = get_stats_file_path(data_dir)
+    if os.path.abspath(stats_file_path) in _save_blocked:
+        return
     try:
-        with open(stats_file_path, "w", encoding="utf-8") as f:
-            json.dump(stats, f, ensure_ascii=False, indent=4)
+        atomic_write_json(stats_file_path, stats)
     except Exception as e:
         print(f"[⚠️] 통계 저장 실패: {e}")
 
