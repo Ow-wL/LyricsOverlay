@@ -223,12 +223,12 @@ async def main() -> None:
     # 지금 가사 인식이 왜 되거나 안 되는지 대시보드에 보여 줍니다 (바뀔 때만 갱신).
     last_status: tuple = ()
 
-    def set_status(level: str, title: str, detail: str = "") -> None:
+    def set_status(level: str, title: str, detail: str = "", action: str = "") -> None:
         nonlocal last_status
-        if (level, title, detail) == last_status:
+        if (level, title, detail, action) == last_status:
             return
-        last_status = (level, title, detail)
-        window.dashboard_page.set_status(level, title, detail)
+        last_status = (level, title, detail, action)
+        window.dashboard_page.set_status(level, title, detail, action)
         if level != "ok":
             add_log(title)
 
@@ -348,7 +348,8 @@ async def main() -> None:
                     if (x1 - x0) * (y1 - y0) < rw * rh * 0.5:
                         set_status(
                             "error", "가사 인식 영역이 멜론 창을 벗어났어요",
-                            "설정 → 동작 → 가사 인식 영역에서 영역을 다시 지정하세요.",
+                            "멜론 창 크기나 화면 배율이 바뀌었을 수 있어요. 가사가 보이는 곳을 다시 지정해 주세요.",
+                            "roi",
                         )
                     else:
                         roi = full_img[y0:y1, x0:x1]
@@ -362,8 +363,9 @@ async def main() -> None:
                     elif now - last_text_seen > 8:
                         set_status(
                             "warn", "가사 영역에서 글자를 찾지 못했어요",
-                            "간주 중이거나 가사가 없는 곡일 수 있어요. 계속 이러면 설정에서 "
+                            "간주 중이거나 가사가 없는 곡일 수 있어요. 계속 이러면 "
                             "가사 인식 영역을 다시 지정해 보세요.",
+                            "roi",
                         )
 
                     fixed_lines: list[str] = []
