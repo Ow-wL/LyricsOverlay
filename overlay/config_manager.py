@@ -47,6 +47,10 @@ class OverlayConfigManager:
         self.height = 150
         self.dashboard_view_mode = "session"
         self.show_song_info = True
+        # 고스트 모드일 때 멜론 창을 투명하게 숨길지 (끄면 멜론 창과 오버레이를 함께 사용)
+        self.hide_melon_window = True
+        # 오버레이에 마우스를 올리면 재생 버튼 표시 (고스트 모드가 꺼져 있을 때만 동작)
+        self.show_media_controls = True
 
         self.load_from_file()
 
@@ -216,6 +220,7 @@ class OverlayConfigManager:
             "width": self.width,
             "height": self.height,
             "show_song_info": self.show_song_info,
+            "show_media_controls": self.show_media_controls,
         }
 
     def update_background(self, color=None, opacity: int | None = None) -> None:
@@ -329,6 +334,8 @@ class OverlayConfigManager:
                 "height": self.height,
                 "dashboard_view_mode": self.dashboard_view_mode,
                 "show_song_info": self.show_song_info,
+                "hide_melon_window": self.hide_melon_window,
+                "show_media_controls": self.show_media_controls,
             }
             atomic_write_json(self.config_path, data)
         except Exception as e:
@@ -369,6 +376,8 @@ class OverlayConfigManager:
             self.height = data.get("height", self.height)
             self.dashboard_view_mode = data.get("dashboard_view_mode", self.dashboard_view_mode)
             self.show_song_info = data.get("show_song_info", self.show_song_info)
+            self.hide_melon_window = bool(data.get("hide_melon_window", self.hide_melon_window))
+            self.show_media_controls = bool(data.get("show_media_controls", self.show_media_controls))
         except Exception as e:
             print(f"Failed to load settings: {e}")
             return

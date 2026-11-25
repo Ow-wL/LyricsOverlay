@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (  # type: ignore
 
 from gui.theme import UIConfig
 from gui.widgets.card import Card
+from gui.widgets.media_controls import MediaControls
 
 
 from overlay.config_manager import OverlayConfigManager
@@ -86,7 +87,12 @@ class DashboardPage(QWidget):
             "font-size: 32px; font-weight: 400; line-height: 48px;"
         )
         self.curr_lyric.setWordWrap(True)
-        lyrics_vbox.addWidget(lyrics_title)
+        lyrics_header = QHBoxLayout()
+        lyrics_header.addWidget(lyrics_title)
+        lyrics_header.addStretch()
+        self.media_controls = MediaControls("app")
+        lyrics_header.addWidget(self.media_controls)
+        lyrics_vbox.addLayout(lyrics_header)
         lyrics_vbox.addStretch()
         lyrics_vbox.addWidget(self.curr_lyric)
         lyrics_vbox.addStretch()
