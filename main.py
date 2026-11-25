@@ -37,6 +37,7 @@ from core.window_capture import (
 from gui.main_window import MainWindow
 from lyrics.matcher import LyricMatcher
 from core.app_config import AppConfig
+from core.media_session import MediaState, MelonMediaSession, is_restart
 from core.single_instance import SingleInstance
 from overlay.config_manager import OverlayConfigManager
 
@@ -245,8 +246,36 @@ async def main() -> None:
             add_log(title)
 
     current_song_info = None
-    current_song_start_time = 0.0
     current_song_lines = 0
+    current_song_played = 0.0   # 지금 곡을 실제로 재생한 시간 (초)
+    session_played = 0.0        # 이번 실행에서 실제로 재생한 시간 (초)
+    last_tick = time.monotonic()
+
+    media = MelonMediaSession()
+    media_state = MediaState()
+    next_media_poll = 0.0
+
+    def start_play(song_title_str: str, repeat: bool = False) -> None:
+        """새 재생 한 건을 기록합니다 (곡이 바뀌었거나 같은 곡을 처음부터 다시 틀었을 때)."""
+        nonlocal current_song_info, current_song_lines, current_song_played
+        session_stats["play_count"] += 1
+        title, artist = parse_song_info(song_title_str)
+        current_song_lines = 0
+        current_song_played = 0.0
+        matcher.reset_recent()  # 새 재생 시작 시 가사 위치 기억 초기화
+        current_song_info = {
+            "title": title,
+            "artist": artist,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "play_time_sec": 0,
+            "lines": 0,
+        }
+        overlay.update_song_info(title, artist)
+        window.dashboard_page.set_now_playing(title, artist)
+        window.music_page.add_entry(current_song_info)
+        persistent_stats["play_history"].insert(0, current_song_info)
+        add_log(f"{'반복 재생' if repeat else '새로운 곡 감지'}: {song_title_str}")
+        save_stats(persistent_stats, _app_config.data_dir)
 
     target_win = None
     next_window_scan = 0.0
@@ -300,6 +329,24 @@ async def main() -> None:
                 save_stats(persistent_stats, _app_config.data_dir)
                 last_save_time = now
 
+            # 재생 상태 (1초마다): 실제로 재생 중일 때만 감상 시간을 셉니다.
+            restarted = False
+            if now >= next_media_poll:
+                next_media_poll = now + 1.0
+                prev_state = media_state
+                media_state = await media.poll()
+                restarted = is_restart(prev_state, media_state, current_song_played)
+            dt = min(now - last_tick, 1.0)
+            last_tick = now
+            # 미디어 세션을 못 찾으면 예전처럼 '멜론 창이 보이면 재생 중'으로 봅니다.
+            playing = media_state.playing if media_state.available else target_win is not None
+            if playing and current_song_info is not None:
+                current_song_played += dt
+                session_played += dt
+                current_song_info["play_time_sec"] = int(current_song_played)
+            session_stats["session_duration"] = session_played
+            persistent_stats["total_play_time_sec"] = int(session_stats["base_play_time"] + session_played)
+
             if target_win is None and applied_hwnd is not None and not hide_melon:
                 # 멜론이 최소화되거나 숨겨진 상태에서 일반 모드로 바꾼 경우
                 if style_guard.restore(applied_hwnd):
@@ -344,30 +391,9 @@ async def main() -> None:
                 if current_song_title != last_song_title:
                     last_song_title = current_song_title
                     if current_song_title:
-                        session_stats["play_count"] += 1
-                        title, artist = parse_song_info(current_song_title)
-                        timestamp_full = time.strftime("%Y-%m-%d %H:%M:%S")
-                        
-                        current_song_start_time = time.time()
-                        current_song_lines = 0
-                        matcher.reset_recent()  # 새 곡 시작 시 매핑 이력 초기화
-                        current_song_info = {
-                            "title": title,
-                            "artist": artist,
-                            "timestamp": timestamp_full,
-                            "play_time_sec": 0,
-                            "lines": 0
-                        }
-
-                        # 오버레이에 곡 정보 업데이트
-                        overlay.update_song_info(title, artist)
-                        window.dashboard_page.set_now_playing(title, artist)
-
-                        window.music_page.add_entry(current_song_info)
-
-                        persistent_stats["play_history"].insert(0, current_song_info)
-                        add_log(f"새로운 곡 감지: {current_song_title}")
-                        save_stats(persistent_stats, _app_config.data_dir)
+                        start_play(current_song_title)
+                elif current_song_title and restarted:
+                    start_play(current_song_title, repeat=True)
 
                 # 캡처 및 OCR (OCR_INTERVAL마다)
                 if now < next_ocr_at:
@@ -429,8 +455,6 @@ async def main() -> None:
                             current_song_lines += 1
                             current_song_info["lines"] = current_song_lines
 
-                    if current_song_info is not None:
-                        current_song_info["play_time_sec"] = int(time.time() - current_song_start_time)
 
                     # 화면과 터미널은 가사가 바뀔 때만 갱신합니다.
                     if (curr, nxt) != last_shown:
@@ -447,11 +471,6 @@ async def main() -> None:
                         print("[ 시스템 로그 ]")
                         for log in log_history:
                             print(f" > {log}")
-
-                    session_duration = time.time() - session_stats["start_time"]
-                    session_stats["session_duration"] = session_duration
-                    total_play_time_sec = session_stats["base_play_time"] + session_duration
-                    persistent_stats["total_play_time_sec"] = int(total_play_time_sec)
 
                     # 통계 카드는 1초에 한 번이면 충분합니다.
                     if now - last_stats_ui >= 1.0:
