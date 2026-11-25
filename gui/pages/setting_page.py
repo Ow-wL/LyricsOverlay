@@ -549,6 +549,7 @@ class SettingPage(QWidget):
         desc_lbl.setWordWrap(True)  # 긴 설명이 페이지를 가로로 늘리지 않도록
         vbox.addWidget(desc_lbl)
         chk = ToggleSwitch()
+        chk.setAccessibleName(title)
         chk.setChecked(checked)
         chk.toggled.connect(callback)
         setattr(self, attr_name, chk)

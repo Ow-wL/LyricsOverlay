@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (  # type: ignore
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QSizePolicy,
     QStyle,
     QStyledItemDelegate,
     QVBoxLayout,
@@ -154,7 +155,9 @@ class MusicListPage(QWidget):
             "아직 기록이 없어요. 멜론에서 음악을 재생하면 여기에 쌓입니다.", "Secondary"
         )
         self.empty_label.setAlignment(Qt.AlignCenter)
-        card_layout.addWidget(self.empty_label)
+        # 목록이 숨겨졌을 때 이 문구가 남은 공간을 채워, 검색줄은 위·버튼은 아래에 붙어 있게 합니다.
+        self.empty_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        card_layout.insertWidget(card_layout.indexOf(self.music_list) + 1, self.empty_label)  # 버튼 줄보다 위
         layout.addWidget(self.list_card, 1)
         self._update_count()
 
