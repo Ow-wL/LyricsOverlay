@@ -372,6 +372,7 @@ async def main() -> None:
                         add_log(f"새 버전 {payload.version} 있음")
                 elif kind == "latest":
                     window.info_page.set_update_status(f"최신 버전을 쓰고 있어요 ({APP_VERSION})")
+                    window.info_page.hide_install()
                 elif manual:
                     window.info_page.set_update_status(f"확인하지 못했어요. 인터넷 연결을 확인해 주세요. ({payload[:80]})")
                 else:
