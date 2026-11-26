@@ -54,6 +54,14 @@ def pick_best_row(rows: list[tuple[str, str, str]], want_title: str, want_artist
     return best, best_score
 
 
+def melon_song_url(title: str, artist: str, song_id=None) -> str:
+    """감상 기록 한 곡을 멜론에서 여는 주소. 곡 ID를 알면 곡 상세, 모르면 멜론 검색."""
+    if isinstance(song_id, str) and song_id.isdigit() and 5 <= len(song_id) <= 12:
+        return f"https://www.melon.com/song/detail.htm?songId={song_id}"
+    query = " ".join(f"{title or ''} {artist if artist and artist != 'Unknown' else ''}".split())
+    return f"https://www.melon.com/search/total/index.htm?q={quote(query)}"
+
+
 class LyricsSearcher:
     """멜론에서 가사를 검색하고 캐싱하는 클래스."""
 
@@ -73,6 +81,8 @@ class LyricsSearcher:
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="lyrics")
         self._future: Future | None = None
         self._retry_at: float | None = None
+        # 가사를 찾은 곡의 멜론 곡 ID ('제목 - 가수' → ID). 감상 기록에서 멜론 링크로 씁니다.
+        self.song_ids: dict[str, str] = {}
 
     def search_lyrics(self, query: str) -> tuple[list[str], str | None]:
         """곡 제목 + 가수 쿼리에 해당하는 가사를 돌려줍니다 (UI를 막지 않음).
@@ -119,6 +129,9 @@ class LyricsSearcher:
             return [], f"🔁 가사 재검색: {display_name}"
 
         return self.cached_lyrics, None
+
+    def song_id_for(self, query: str) -> str | None:
+        return self.song_ids.get(query.replace("- Melon", "").strip())
 
     def shutdown(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)
@@ -187,6 +200,10 @@ class LyricsSearcher:
 
             if not song_id or len(str(song_id)) < 5:
                 return [], f"❌ 올바른 곡 ID를 찾지 못함: {display_name}", False
+
+            if len(self.song_ids) > 500:
+                self.song_ids.clear()
+            self.song_ids[display_name] = str(song_id)
 
             lyrics_url = (
                 f"https://www.melon.com/song/detail.htm?songId={song_id}"

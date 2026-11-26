@@ -38,6 +38,8 @@ EXPORT = ""
 FONT = ""
 SAVE = ""
 MONITOR = ""
+DOWNLOAD = ""
+OPEN_LINK = ""
 HISTORY = ""
 
 

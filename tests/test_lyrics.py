@@ -4,7 +4,7 @@ import unittest
 
 from tests import _qt  # noqa: F401  (경로 설정)
 from lyrics.matcher import LyricMatcher, line_score
-from lyrics.searcher import pick_best_row, score_row, split_title
+from lyrics.searcher import LyricsSearcher, melon_song_url, pick_best_row, score_row, split_title
 
 LYRICS = [
     "첫 번째 줄 가사입니다",
@@ -48,6 +48,29 @@ class SearchResultTest(unittest.TestCase):
     def test_live_version_scores_lower(self):
         self.assertLess(score_row("봄날", "방탄소년단", "봄날 Live", "방탄소년단"),
                         score_row("봄날", "방탄소년단", "봄날", "방탄소년단"))
+
+
+class MelonLinkTest(unittest.TestCase):
+    def test_song_id_opens_detail_page(self):
+        self.assertEqual(melon_song_url("봄날", "방탄소년단", "30244931"),
+                         "https://www.melon.com/song/detail.htm?songId=30244931")
+
+    def test_without_id_falls_back_to_search(self):
+        url = melon_song_url("봄날", "방탄소년단", None)
+        self.assertTrue(url.startswith("https://www.melon.com/search/total/index.htm?q="))
+        self.assertIn("%EB%B4%84%EB%82%A0", url)
+        self.assertNotIn(" ", url)
+
+    def test_bad_id_and_unknown_artist_ignored(self):
+        self.assertIn("search", melon_song_url("a&b", "Unknown", "12; drop"))
+        self.assertTrue(melon_song_url("a&b", "Unknown").endswith("q=a%26b"))
+
+    def test_searcher_remembers_id_by_window_title(self):
+        s = LyricsSearcher()
+        s.shutdown()
+        s.song_ids["봄날 - 방탄소년단"] = "30244931"
+        self.assertEqual(s.song_id_for("봄날 - 방탄소년단 - Melon"), "30244931")
+        self.assertIsNone(s.song_id_for("다른 곡 - 가수"))
 
 
 class MatcherTest(unittest.TestCase):
