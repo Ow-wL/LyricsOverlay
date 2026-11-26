@@ -5,6 +5,7 @@
 세션을 찾지 못하면 available=False로 두고, 호출하는 쪽이 예전 방식(창이 보이면 재생 중)으로 대신합니다.
 """
 
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -27,25 +28,31 @@ class MediaState:
     track_start: datetime | None = None  # 곡이 처음부터 재생되기 시작한 시각 (추정)
 
 
+_RETRY_AFTER_SEC = 30.0  # 세션을 읽다 실패하면 이만큼 쉬었다가 다시 시도
+
+
 class MelonMediaSession:
     def __init__(self):
         self._manager = None
-        self._failed = False
+        self._retry_at = 0.0
         self.state = MediaState()
+
+    async def _session(self):
+        """멜론의 미디어 세션 (없으면 None)."""
+        if self._manager is None:
+            self._manager = await _Manager.request_async()
+        for s in self._manager.get_sessions():
+            if "melon" in (s.source_app_user_model_id or "").lower():
+                return s
+        return None
 
     async def poll(self) -> MediaState:
         """현재 상태를 읽어 self.state에 담고 돌려줍니다. 실패해도 예외를 내지 않습니다."""
-        if _Manager is None or self._failed:
+        if _Manager is None or time.monotonic() < self._retry_at:
             self.state = MediaState()
             return self.state
         try:
-            if self._manager is None:
-                self._manager = await _Manager.request_async()
-            session = None
-            for s in self._manager.get_sessions():
-                if "melon" in (s.source_app_user_model_id or "").lower():
-                    session = s
-                    break
+            session = await self._session()
             if session is None:
                 self.state = MediaState()
                 return self.state
@@ -67,10 +74,36 @@ class MelonMediaSession:
                 track_start=start,
             )
         except Exception as e:
-            print(f"[⚠️] 미디어 세션을 읽지 못했습니다: {e}")
-            self._failed = True  # 계속 실패하는 환경이면 더 시도하지 않음
+            print(f"[⚠️] 미디어 세션을 읽지 못했습니다 ({_RETRY_AFTER_SEC:.0f}초 뒤 다시 시도): {e}")
+            # 예전에는 한 번 실패하면 앱을 다시 켤 때까지 포기했지만, 멜론 재시작 등 일시적인 경우가 많습니다.
+            self._manager = None
+            self._retry_at = time.monotonic() + _RETRY_AFTER_SEC
             self.state = MediaState()
         return self.state
+
+    async def control(self, action: str) -> bool:
+        """멜론에만 재생 명령을 보냅니다 ("prev" / "play_pause" / "next").
+
+        미디어 키는 Windows 전체에 전달돼 멜론이 한 번 누름을 두 번 처리하거나(이전 곡이 두 곡 넘어감,
+        일시정지·재생이 연달아 됨) 다른 플레이어가 반응할 수 있어서, 멜론 세션에 직접 보냅니다.
+        멜론 세션을 찾지 못하거나 명령이 거절되면 False (호출하는 쪽이 미디어 키로 대신합니다).
+        """
+        if _Manager is None:
+            return False
+        try:
+            session = await self._session()
+            if session is None:
+                return False
+            if action == "prev":
+                return bool(await session.try_skip_previous_async())
+            if action == "next":
+                return bool(await session.try_skip_next_async())
+            if action == "play_pause":
+                return bool(await session.try_toggle_play_pause_async())
+        except Exception as e:
+            print(f"[⚠️] 멜론에 재생 명령을 보내지 못했습니다 ({action}): {e}")
+            self._manager = None
+        return False
 
 
 def is_restart(prev: MediaState, cur: MediaState, played_sec: float) -> bool:
