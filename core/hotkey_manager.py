@@ -36,6 +36,23 @@ def send_play_pause() -> None:
     _send_media_key(VK_MEDIA_PLAY_PAUSE)
 
 
+class _OncePerPress:
+    """단축키를 누르고 있는 동안의 자동 반복을 무시하고, 한 번 누름에 한 번만 실행합니다."""
+
+    def __init__(self, callback):
+        self._callback = callback
+        self._armed = True
+
+    def __call__(self) -> None:
+        if not self._armed:
+            return
+        self._armed = False
+        self._callback()
+
+    def rearm(self, _event=None) -> None:
+        self._armed = True
+
+
 def is_typing_hotkey(hotkey: str) -> bool:
     """글자 하나(+Shift)만으로 된 조합인지 확인합니다.
 
@@ -57,9 +74,11 @@ def is_typing_hotkey(hotkey: str) -> bool:
 class HotkeyManager:
     """전역 단축키 등록 및 해제를 관리합니다."""
 
-    def __init__(self, on_ghost_toggle, on_quit):
+    def __init__(self, on_ghost_toggle, on_quit, on_media=None):
         self._on_ghost_toggle = on_ghost_toggle
         self._on_quit = on_quit
+        # on_media(action): "prev"/"play_pause"/"next". 없으면 예전처럼 미디어 키를 바로 보냅니다.
+        self._on_media = on_media
 
     def refresh(
         self,
@@ -85,7 +104,12 @@ class HotkeyManager:
                     log_fn(f"{name} 단축키 무시: {hotkey} (Ctrl/Alt 조합을 쓰세요)")
                 return
             try:
-                keyboard.add_hotkey(hotkey.strip(), callback, suppress=False)
+                # 키를 누르고 있으면 Windows가 키 입력을 자동 반복하는데, 그때마다 실행하면
+                # 1초만 눌러도 '이전 곡'이 10번 넘게 실행됩니다. 처음 누를 때 한 번만 실행하고,
+                # 마지막 키(예: Ctrl+Shift+← 의 ←)를 뗄 때까지 반복 입력은 무시합니다.
+                once = _OncePerPress(callback)
+                keyboard.add_hotkey(hotkey.strip(), once, suppress=False)
+                keyboard.on_release_key(hotkey.strip().split("+")[-1].strip(), once.rearm)
                 print(f"[⌨️] {name} 단축키 등록: {hotkey}")
             except Exception as e:
                 print(f"[⚠️] {name} 단축키 등록 실패 ({hotkey}): {e}")
@@ -94,9 +118,10 @@ class HotkeyManager:
 
         _register(hotkey_ghost, self._on_ghost_toggle, "고스트 모드")
         _register(hotkey_quit, self._on_quit, "프로그램 종료")
-        _register(hotkey_next, send_next_track, "다음 곡")
-        _register(hotkey_prev, send_prev_track, "이전 곡")
-        _register(hotkey_pause, send_play_pause, "일시정지/재생")
+        media = self._on_media
+        _register(hotkey_next, (lambda: media("next")) if media else send_next_track, "다음 곡")
+        _register(hotkey_prev, (lambda: media("prev")) if media else send_prev_track, "이전 곡")
+        _register(hotkey_pause, (lambda: media("play_pause")) if media else send_play_pause, "일시정지/재생")
 
         if log_fn:
             log_fn("단축키 갱신 완료")
