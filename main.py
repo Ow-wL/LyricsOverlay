@@ -31,7 +31,7 @@ from PySide6.QtWidgets import QApplication  # type: ignore
 from core import covers, melon_control
 from core.hotkey_manager import HotkeyManager, send_next_track, send_play_pause, send_prev_track
 from core.ocr_engine import OCR_HELP, OCR_KOREAN, OCR_STATUS, ocr_available, windows_native_ocr_split
-from core.stats_manager import load_stats, make_session_stats, parse_song_info, save_stats
+from core.stats_manager import load_stats, make_session_stats, parse_song_info, resumable_entry, save_stats
 from core.window_capture import (
     WindowStyleGuard, capture_covered_window, find_melon_window, is_melon_minimized, recheck_window,
 )
@@ -329,11 +329,23 @@ async def main() -> None:
     media_state = MediaState()
     next_media_poll = 0.0
 
-    def start_play(song_title_str: str, repeat: bool = False) -> None:
+    def start_play(song_title_str: str, repeat: bool = False, first: bool = False) -> None:
         """새 재생 한 건을 기록합니다 (곡이 바뀌었거나 같은 곡을 처음부터 다시 틀었을 때)."""
         nonlocal current_song_info, current_song_lines, current_song_played
-        session_stats["play_count"] += 1
         title, artist = parse_song_info(song_title_str)
+        if first and not repeat:
+            # 프로그램을 다시 켰는데(업데이트 재시작 등) 같은 곡이 이어지는 중이면 기록을 새로 만들지 않습니다.
+            prev = resumable_entry(persistent_stats.get("play_history", []), title, artist, time.time())
+            if prev is not None:
+                current_song_info = prev
+                current_song_lines = int(prev.get("lines", 0))
+                current_song_played = float(prev.get("play_time_sec", 0))
+                matcher.reset_recent()
+                overlay.update_song_info(title, artist)
+                window.set_now_playing(title, artist, prev.get("song_id"))
+                add_log(f"이어서 듣는 곡: {song_title_str}")
+                return
+        session_stats["play_count"] += 1
         current_song_lines = 0
         current_song_played = 0.0
         matcher.reset_recent()  # 새 재생 시작 시 가사 위치 기억 초기화
@@ -496,11 +508,13 @@ async def main() -> None:
 
                 # 곡 변경 감지
                 current_song_title = target_win.title.replace(" - Melon", "").strip()
-                if current_song_title != last_song_title:
+                # 곡이 없을 때의 창 제목('멜론 PC 플레이어' 등)은 '제목 - 가수' 형식이 아니므로 기록하지 않고,
+                # '이전 곡'으로도 기억하지 않습니다. 곡이 바뀌는 순간 잠깐 이 제목이 됐다가 같은 곡으로 돌아와도
+                # 같은 곡을 두 번 기록하지 않게 하려는 것입니다.
+                if is_song_title(current_song_title) and current_song_title != last_song_title:
+                    first_song = not last_song_title
                     last_song_title = current_song_title
-                    # 곡이 없을 때의 창 제목('멜론 PC 플레이어' 등)은 '제목 - 가수' 형식이 아니므로 기록하지 않습니다.
-                    if is_song_title(current_song_title):
-                        start_play(current_song_title)
+                    start_play(current_song_title, first=first_song)
                 elif is_song_title(current_song_title) and restarted:
                     start_play(current_song_title, repeat=True)
 

@@ -42,6 +42,26 @@ class StatsTest(unittest.TestCase):
         self.assertEqual(hist[0]["song_id"], "30244931")
         self.assertNotIn("song_id", hist[1])
 
+    def test_non_song_entries_dropped(self):
+        with tempfile.TemporaryDirectory() as d:
+            write_json(os.path.join(d, "lyrics_stats.json"), {"play_history": [
+                {"title": "감사", "artist": "김동률"},
+                {"title": "멜론 PC 플레이어", "artist": "Unknown"},
+                {"title": "멜론 PC 플레이어", "artist": "누군가"},  # 가수가 있으면 진짜 곡일 수 있어 남김
+            ]})
+            hist = sm.load_stats(d)["play_history"]
+        self.assertEqual([(e["title"], e["artist"]) for e in hist],
+                         [("감사", "김동률"), ("멜론 PC 플레이어", "누군가")])
+
+    def test_resume_same_song_after_restart(self):
+        import time as _t
+        ts = _t.strftime("%Y-%m-%d %H:%M:%S", _t.localtime(1_800_000_000))
+        hist = [{"title": "Takedown", "artist": "HUNTR/X", "timestamp": ts}]
+        self.assertIs(sm.resumable_entry(hist, "Takedown", "HUNTR/X", 1_800_000_060), hist[0])
+        self.assertIsNone(sm.resumable_entry(hist, "Takedown", "HUNTR/X", 1_800_000_000 + 3600))  # 오래 전
+        self.assertIsNone(sm.resumable_entry(hist, "다른 곡", "HUNTR/X", 1_800_000_060))
+        self.assertIsNone(sm.resumable_entry([], "Takedown", "HUNTR/X", 1_800_000_060))
+
     def test_corrupt_file_is_kept_aside(self):
         with tempfile.TemporaryDirectory() as d:
             write_json(os.path.join(d, "lyrics_stats.json"), [1, 2])
