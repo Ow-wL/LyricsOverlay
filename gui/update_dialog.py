@@ -4,18 +4,44 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from PySide6.QtCore import Qt, QTimer  # type: ignore
+from PySide6.QtGui import QTextDocument  # type: ignore
 from PySide6.QtWidgets import (  # type: ignore
     QDialog,
     QHBoxLayout,
-    QLabel,
-    QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QTextBrowser,
     QVBoxLayout,
 )
 
 from core import update_install, updater
 from core.version import APP_VERSION
+from gui import icons
+from gui.widgets.glass import icon_chip, label
+
+
+class _NotesView(QTextBrowser):
+    """릴리스 설명(마크다운)을 읽기 좋게 보여 줍니다.
+
+    HTML은 해석하지 않고(MarkdownNoHTML), 링크를 따라가거나 이미지·파일을 불러오지 않습니다.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.setOpenLinks(False)
+        self.setOpenExternalLinks(False)
+        self.document().setDocumentMargin(10)
+
+    def set_notes(self, text: str) -> None:
+        features = QTextDocument.MarkdownFeature(
+            QTextDocument.MarkdownDialectGitHub.value | QTextDocument.MarkdownNoHTML.value
+        )
+        self.document().setMarkdown(text, features)
+        self.verticalScrollBar().setValue(0)  # 처음부터 읽히도록
+        self.moveCursor(self.textCursor().MoveOperation.Start)
+
+    def loadResource(self, _type, _name):  # 이미지 등 외부·로컬 자원은 불러오지 않음
+        return None
 
 
 class UpdateDialog(QDialog):
@@ -38,31 +64,41 @@ class UpdateDialog(QDialog):
         if parent is not None and hasattr(parent, "centralWidget") and parent.centralWidget():
             self.setStyleSheet(parent.centralWidget().styleSheet())
             self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setMinimumWidth(460)
+        self.setMinimumWidth(520)
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(22, 20, 22, 18)
-        lay.setSpacing(10)
+        lay.setContentsMargins(26, 24, 26, 20)
+        lay.setSpacing(14)
 
-        title = QLabel(f"새 버전 {info.version}  (지금 {APP_VERSION})")
-        title.setStyleSheet("font-size: 17px; font-weight: 800;")
-        lay.addWidget(title)
+        # 머리: 아이콘 · 제목 · 버전 변화
+        head = QHBoxLayout()
+        head.setSpacing(14)
+        head.addWidget(icon_chip(icons.DOWNLOAD, 44))
+        head_text = QVBoxLayout()
+        head_text.setSpacing(2)
+        head_text.addWidget(label("새 버전이 나왔어요", "", "font-size: 18px; font-weight: 800; letter-spacing: -0.3px;"))
+        head_text.addWidget(label(f"{APP_VERSION}  →  {info.version}", "AccentValue", "font-size: 13px;"))
+        head.addLayout(head_text, 1)
+        lay.addLayout(head)
 
-        notes = QPlainTextEdit()  # 릴리스 설명은 일반 텍스트로만 보여 줍니다 (HTML·링크 해석 안 함)
-        notes.setReadOnly(True)
-        notes.setPlainText(info.notes.strip() or "변경 내용이 적혀 있지 않아요.")
-        notes.setMinimumHeight(160)
-        lay.addWidget(notes)
+        lay.addWidget(label("변경 내용", "SectionLabel"))
+        notes = _NotesView()
+        notes.setObjectName("ReleaseNotes")
+        notes.set_notes(info.notes.strip() or "변경 내용이 적혀 있지 않아요.")
+        notes.setMinimumHeight(200)
+        lay.addWidget(notes, 1)
 
         size_mb = info.exe_size / 1024 / 1024
-        self.message = QLabel(
+        self.message = label(
             f"{size_mb:.0f}MB를 받은 뒤 GitHub의 파일 검증값(SHA-256)과 비교하고, 프로그램을 닫았다가 "
-            "새 버전으로 바꿔 다시 시작해요. 받는 동안에도 가사 오버레이는 계속 동작해요."
+            "새 버전으로 바꿔 다시 시작해요. 받는 동안에도 가사 오버레이는 계속 동작해요.",
+            "Secondary", "font-size: 12px;",
         )
         self.message.setWordWrap(True)
         lay.addWidget(self.message)
 
         self.bar = QProgressBar()
         self.bar.setRange(0, 1000)
+        self.bar.setTextVisible(False)
         self.bar.hide()
         lay.addWidget(self.bar)
 

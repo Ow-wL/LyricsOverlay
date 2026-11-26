@@ -110,8 +110,9 @@ def build_stylesheet(t: dict) -> str:
     }}
     QPushButton:hover {{ background-color: {t['glass_hover']}; border-color: {t['accent_soft_strong']}; }}
     QPushButton:pressed {{ background-color: {t['glass_pressed']}; }}
-    QPushButton:focus {{ outline: none; border: 2px solid {t['accent']}; }}
-    QPushButton:disabled {{ color: {t['text_tertiary']}; background-color: transparent; border: 1px dashed {t['track']}; }}
+    /* 포커스 테두리는 평소와 같은 두께(1px)로 — 두께가 바뀌면 글자 자리가 줄어 잘립니다 */
+    QPushButton:focus {{ outline: none; border: 1px solid {t['accent']}; }}
+    QPushButton:disabled {{ color: {t['text_tertiary']}; background-color: transparent; border: 1px solid {t['hairline']}; }}
     QPushButton#PrimaryButton {{
         background: {accent_grad};
         color: {t['text_on_accent']};
@@ -141,14 +142,15 @@ def build_stylesheet(t: dict) -> str:
     }}
     QPushButton#Segment {{
         background: transparent;
-        border: none;
+        border: 1px solid transparent;
         border-radius: 9px;
         color: {t['text_secondary']};
-        padding: 6px 14px;
+        padding: 6px 16px;
+        min-width: 36px;
         font-weight: 600;
     }}
     QPushButton#Segment:hover {{ color: {t['text_primary']}; }}
-    QPushButton#Segment:focus {{ border: 2px solid {t['accent']}; }}
+    QPushButton#Segment:focus {{ border: 1px solid {t['accent']}; }}
     QPushButton#Segment:checked {{
         background-color: {t['solid_card']};
         color: {t['accent']};
@@ -182,6 +184,29 @@ def build_stylesheet(t: dict) -> str:
         selection-color: {t['text_on_accent']};
     }}
     QLineEdit:focus, QSpinBox:focus, QComboBox:focus {{ border: 1px solid {t['accent']}; }}
+    QPlainTextEdit, QTextEdit, QTextBrowser {{
+        background-color: {t['input_bg']};
+        color: {t['text_primary']};
+        border: 1px solid {t['hairline']};
+        border-radius: 12px;
+        padding: 6px 4px;
+        selection-background-color: {t['accent']};
+        selection-color: {t['text_on_accent']};
+    }}
+    QTextBrowser#ReleaseNotes {{
+        background-color: {t['input_bg']};
+        border: 1px solid {t['track']};
+        font-size: 13px;
+    }}
+    QProgressBar {{
+        background-color: {t['track']};
+        border: none;
+        border-radius: 4px;
+        min-height: 8px; max-height: 8px;
+        text-align: center;
+        color: transparent;
+    }}
+    QProgressBar::chunk {{ background: {accent_grad}; border-radius: 4px; }}
     QComboBox QAbstractItemView {{
         background-color: {t['solid_card']};
         border: 1px solid {t['hairline']};
