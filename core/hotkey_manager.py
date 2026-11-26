@@ -57,9 +57,11 @@ def is_typing_hotkey(hotkey: str) -> bool:
 class HotkeyManager:
     """전역 단축키 등록 및 해제를 관리합니다."""
 
-    def __init__(self, on_ghost_toggle, on_quit):
+    def __init__(self, on_ghost_toggle, on_quit, on_media=None):
         self._on_ghost_toggle = on_ghost_toggle
         self._on_quit = on_quit
+        # on_media(action): "prev"/"play_pause"/"next". 없으면 예전처럼 미디어 키를 바로 보냅니다.
+        self._on_media = on_media
 
     def refresh(
         self,
@@ -94,9 +96,10 @@ class HotkeyManager:
 
         _register(hotkey_ghost, self._on_ghost_toggle, "고스트 모드")
         _register(hotkey_quit, self._on_quit, "프로그램 종료")
-        _register(hotkey_next, send_next_track, "다음 곡")
-        _register(hotkey_prev, send_prev_track, "이전 곡")
-        _register(hotkey_pause, send_play_pause, "일시정지/재생")
+        media = self._on_media
+        _register(hotkey_next, (lambda: media("next")) if media else send_next_track, "다음 곡")
+        _register(hotkey_prev, (lambda: media("prev")) if media else send_prev_track, "이전 곡")
+        _register(hotkey_pause, (lambda: media("play_pause")) if media else send_play_pause, "일시정지/재생")
 
         if log_fn:
             log_fn("단축키 갱신 완료")

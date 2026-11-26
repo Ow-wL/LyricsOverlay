@@ -1,6 +1,7 @@
 """이전 곡 / 재생·일시정지 / 다음 곡 버튼 묶음.
 
-버튼을 누르면 Windows 미디어 키를 보내므로, 미디어 키에 반응하는 플레이어(멜론 등)가 제어됩니다.
+버튼은 action_triggered 신호만 보냅니다. 실제 명령은 main.py가 멜론의 미디어 세션에 한 번만 보냅니다
+(세션이 없을 때만 Windows 미디어 키로 대신).
 """
 
 from PySide6.QtCore import Qt, Signal  # type: ignore
@@ -70,6 +71,5 @@ class MediaControls(QWidget):
 
         self.adjustSize()
 
-    def _trigger(self, key: str, send) -> None:
-        send()
+    def _trigger(self, key: str, _send) -> None:
         self.action_triggered.emit(key)
