@@ -5,7 +5,7 @@ import os
 import sys
 
 from PySide6.QtCore import QRectF, Qt, Signal  # type: ignore
-from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QLinearGradient, QPainter  # type: ignore
+from PySide6.QtGui import QColor, QIcon, QLinearGradient, QPainter  # type: ignore
 from PySide6.QtWidgets import (  # type: ignore
     QApplication,
     QHBoxLayout,
@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (  # type: ignore
     QWidget,
 )
 
-from gui import icons
+from gui import icons, typography
 from gui import theme as theme_mod
 from gui.style import build_stylesheet
 from gui.theme import Theme, ThemeManager
@@ -114,18 +114,21 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ #
 
     def _load_fonts(self) -> None:
-        font_dir = resource_path(os.path.join("asset", "Font"))
-        if os.path.exists(font_dir):
-            for font_file in os.listdir(font_dir):
-                if font_file.endswith(".ttf"):
-                    QFontDatabase.addApplicationFont(os.path.join(font_dir, font_file))
-        font = QFont("Pretendard")
-        font.setPixelSize(14)
-        font.setStyleStrategy(
-            QFont.PreferAntialias | QFont.PreferQuality | QFont.NoSubpixelAntialias
-        )
-        font.setHintingPreference(QFont.PreferNoHinting)
-        QApplication.setFont(font)
+        typography.load_fonts(resource_path(os.path.join("asset", "Font")))
+        key = getattr(self.app_config, "ui_font", typography.DEFAULT_KEY)
+        typography.set_font_key(key if typography.font_key_valid(key) else typography.DEFAULT_KEY)
+        QApplication.setFont(typography.app_font())
+
+    def set_ui_font(self, key: str) -> None:
+        """설정에서 앱 글꼴을 바꾸면 바로 다시 그립니다."""
+        if not typography.font_key_valid(key):
+            return
+        typography.set_font_key(key)
+        if hasattr(self.app_config, "ui_font"):
+            self.app_config.ui_font = key
+        QApplication.setFont(typography.app_font())
+        typography.refresh(self)
+        self.apply_theme(self.theme_manager.current_theme)
 
     def _setup_ui(self) -> None:
         self.central_widget = GlassBackground()
@@ -207,6 +210,7 @@ class MainWindow(QMainWindow):
         dp.update_install_requested.connect(self._install_update)
         self.info_page.auto_check_toggled.connect(self._set_auto_update_check)
         self.info_page.install_requested.connect(self._install_update)
+        self.setting_page.ui_font_changed.connect(self.set_ui_font)
         self.music_page.delete_requested.connect(self.delete_history)
         self.music_page.clear_requested.connect(self.clear_history)
         self.music_page.export_requested.connect(self.export_history)

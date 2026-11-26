@@ -2,7 +2,7 @@ from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath
 from PySide6.QtWidgets import QWidget
 
-from gui import theme
+from gui import theme, typography
 from gui.widgets.glass import _qcolor
 
 
@@ -28,10 +28,10 @@ class BarChartWidget(QWidget):
         painter.setRenderHint(QPainter.TextAntialiasing)
 
         w, h = self.width(), self.height()
-        font = QFont("Pretendard")
+        font = QFont(typography.family())
 
         if not self.data or max(self.data) == 0:
-            font.setPixelSize(14)
+            font.setPixelSize(typography.px(14))
             painter.setFont(font)
             painter.setPen(QColor(t["text_tertiary"]))
             painter.drawText(self.rect(), Qt.AlignCenter, "아직 이 기간의 감상 기록이 없어요")
@@ -86,13 +86,13 @@ class BarChartWidget(QWidget):
             painter.fillPath(path, grad)
 
             if val > 0:
-                font.setPixelSize(12)
+                font.setPixelSize(typography.px(12))
                 font.setWeight(QFont.Bold)
                 painter.setFont(font)
                 painter.setPen(QColor(t["accent"] if is_peak else t["text_secondary"]))
                 painter.drawText(QRectF(bx - 20, by - 22, bar_width + 40, 18), Qt.AlignCenter, str(val))
 
-            font.setPixelSize(11)
+            font.setPixelSize(typography.px(11))
             font.setWeight(QFont.Normal)
             painter.setFont(font)
             painter.setPen(QColor(t["text_tertiary"]))

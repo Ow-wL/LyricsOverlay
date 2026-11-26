@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (  # type: ignore
     QWidget,
 )
 
-from gui import icons
+from gui import icons, typography
 from gui.widgets.card import Card
 from gui.widgets.glass import SegmentedControl, label, page_header
 from gui.widgets.rank_list import RankList
@@ -51,7 +51,7 @@ class DetailListDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
 
         header = QLabel(title)
-        header.setStyleSheet("font-size: 20px; font-weight: 800; margin-bottom: 6px;")
+        typography.apply_css(header, "font-size: 20px; font-weight: 800; margin-bottom: 6px;")
         layout.addWidget(header)
 
         self.list_widget = RankList()
