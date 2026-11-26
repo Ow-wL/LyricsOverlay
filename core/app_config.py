@@ -135,6 +135,15 @@ class AppConfig:
         self.settings.setValue("auto_update_check", bool(on))
 
     @property
+    def ui_font(self) -> str:
+        """앱 화면 글꼴 (gui.typography.UI_FONTS의 키). 가사 오버레이 글꼴과는 따로입니다."""
+        return str(self.settings.value("ui_font", "pretendard") or "pretendard")
+
+    @ui_font.setter
+    def ui_font(self, key: str) -> None:
+        self.settings.setValue("ui_font", key or "pretendard")
+
+    @property
     def skipped_version(self) -> str:
         """'이 버전 건너뛰기'를 누른 버전. 자동 확인에서는 이 버전을 다시 알리지 않습니다."""
         return str(self.settings.value("skipped_version", "") or "")

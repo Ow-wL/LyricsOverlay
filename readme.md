@@ -186,7 +186,7 @@ gui/
   update_dialog.py   업데이트 창
 docs/guide/          사용 가이드 원본과 스크린샷·빌드 스크립트
 tools/make_icon.py   여러 크기 아이콘 생성
-asset/               아이콘, Pretendard 글꼴, README 스크린샷
+asset/               아이콘, 앱 글꼴(Pretendard·나눔스퀘어 네오·Wanted Sans), README 스크린샷
 ```
 
 </details>
@@ -238,6 +238,6 @@ asset/               아이콘, Pretendard 글꼴, README 스크린샷
 
 - 개인 학습과 포트폴리오 용도로 만든 비공식 도구이며, 멜론(카카오엔터테인먼트)과 관계가 없습니다.
 - 가사는 재생 중에 웹에서 조회해 화면에 표시하는 데만 쓰고, 저장소나 데이터 파일에 가사 본문을 남기지 않습니다.
-- 내장 글꼴 Pretendard는 [SIL Open Font License 1.1](./asset/Font/OFL-Pretendard.txt)을 따릅니다.
+- 내장 글꼴 Pretendard와 Wanted Sans는 SIL Open Font License 1.1([Pretendard](./asset/Font/OFL-Pretendard.txt), [Wanted Sans](./asset/Font/WantedSans/OFL-WantedSans.txt))을, 나눔스퀘어 네오는 [네이버 나눔글꼴 라이선스](./asset/Font/NanumSquareNeo/LICENSE-NanumSquareNeo.txt)를 따릅니다.
 
 만든 사람: 이주형 ([@Ow-wL](https://github.com/Ow-wL)) · 문의와 버그 제보는 [Issues](https://github.com/Ow-wL/LyricsOverlay/issues)로 남겨 주세요.

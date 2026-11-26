@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (  # type: ignore
     QAbstractButton, QAbstractScrollArea, QCheckBox, QFrame, QHBoxLayout, QLabel, QPushButton, QWidget,
 )
 
-from gui import theme
+from gui import theme, typography
 from gui.icons import icon_font
 
 
@@ -176,10 +176,7 @@ class NavButton(KeyboardFocusMixin, QAbstractButton):
         p.setFont(icon_font(16))
         p.drawText(QRectF(14, 0, 22, self.height()), Qt.AlignVCenter | Qt.AlignHCenter, self.glyph)
 
-        font = QFont(self.font())
-        font.setFamily("Pretendard")
-        font.setPixelSize(14)
-        font.setWeight(QFont.Bold if self.isChecked() else QFont.DemiBold)
+        font = typography.font(14, QFont.Bold if self.isChecked() else QFont.DemiBold)
         p.setFont(font)
         p.drawText(QRectF(46, 0, self.width() - 50, self.height()), Qt.AlignVCenter | Qt.AlignLeft, self.text())
         if self.hasFocus() and self._kbd_focus:
@@ -280,7 +277,7 @@ def label(text: str, object_name: str = "", style: str = "") -> QLabel:
     if object_name:
         lbl.setObjectName(object_name)
     if style:
-        lbl.setStyleSheet(style)
+        typography.apply_css(lbl, style)
     return lbl
 
 

@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (  # type: ignore
     QWidget,
 )
 
+from gui import typography
+
 _MIN_SIZE = 10  # 이미지 픽셀 기준 최소 크기
 
 
@@ -102,7 +104,7 @@ class RoiSelectDialog(QDialog):
         lay.setSpacing(12)
 
         title = QLabel("멜론 창에서 가사가 보이는 곳을 드래그해 선택하세요")
-        title.setStyleSheet("font-size: 16px; font-weight: 700;")
+        typography.apply_css(title, "font-size: 16px; font-weight: 700;")
         lay.addWidget(title)
         hint = QLabel("현재 줄과 다음 줄이 모두 들어가게, 제목·버튼은 빠지게 잡으면 가장 잘 인식됩니다.")
         hint.setWordWrap(True)
