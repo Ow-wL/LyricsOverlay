@@ -85,6 +85,25 @@ class ControlTest(unittest.TestCase):
         self.assertIsNotNone(m._manager)
 
 
+class MelonWindowCommandTest(unittest.TestCase):
+    def test_sends_appcommand_to_melon_window(self):
+        import core.melon_control as mc
+
+        sent = []
+        fake_send = mock.Mock(side_effect=lambda h, m, w, l, *a: sent.append((h.value, m, l.value)) or 1)
+        with mock.patch.object(mc, "find_control_window", return_value=1234), \
+                mock.patch.object(mc.ctypes.windll.user32, "SendMessageTimeoutW", fake_send):
+            self.assertTrue(mc.send_app_command("prev"))
+            self.assertFalse(mc.send_app_command("rewind"))  # 모르는 명령
+        self.assertEqual(sent, [(1234, mc.WM_APPCOMMAND, 12 << 16)])
+
+    def test_no_melon_window(self):
+        import core.melon_control as mc
+
+        with mock.patch.object(mc, "find_control_window", return_value=None):
+            self.assertFalse(mc.send_app_command("next"))
+
+
 class ButtonTest(unittest.TestCase):
     def test_buttons_emit_without_sending_keys(self):
         from PySide6.QtWidgets import QApplication, QPushButton  # type: ignore

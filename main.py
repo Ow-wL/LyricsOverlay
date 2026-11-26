@@ -28,6 +28,7 @@ if os.name == 'nt':
 import cv2
 from PySide6.QtWidgets import QApplication  # type: ignore
 
+from core import melon_control
 from core.hotkey_manager import HotkeyManager, send_next_track, send_play_pause, send_prev_track
 from core.ocr_engine import OCR_HELP, OCR_KOREAN, OCR_STATUS, ocr_available, windows_native_ocr_split
 from core.stats_manager import load_stats, make_session_stats, parse_song_info, save_stats
@@ -208,10 +209,15 @@ async def main() -> None:
         last_media_cmd.update(key=key, at=now_)
 
         async def run() -> None:
-            ok = await media.control(key)
-            if not ok:
-                media_fallback[key]()
-            add_log(f"미디어 제어: {media_labels.get(key, key)}" + ("" if ok else " (미디어 키)"))
+            # 1) 멜론 창에 직접 (멜론만, 한 번)  2) 미디어 세션  3) Windows 미디어 키
+            how = ""
+            if not melon_control.send_app_command(key):
+                if await media.control(key):
+                    how = " (미디어 세션)"
+                else:
+                    media_fallback[key]()
+                    how = " (미디어 키)"
+            add_log(f"미디어 제어: {media_labels.get(key, key)}{how}")
 
         task = asyncio.get_running_loop().create_task(run())
         media_tasks.add(task)
