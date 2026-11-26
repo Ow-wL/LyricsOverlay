@@ -1,6 +1,6 @@
 """테마 설정: UIConfig(글꼴 크기 등 공통 값), Theme(라이트/다크 색상 토큰), ThemeManager.
 
-디자인 방향: 오로라 그라데이션 배경 위에 반투명 '유리' 패널을 올리는 글래스모피즘.
+디자인 방향: 시안 A '아트워크 중심 플랫' (Spotify·YouTube Music 계열). 단색 바탕, 장식 대신 앨범 커버.
 색상은 모두 이 파일의 토큰에서 가져오고, 위젯에는 색을 직접 적지 않습니다.
 """
 
@@ -25,7 +25,7 @@ class UIConfig:
     LIGHT_BORDER = "#E3E5F0"
 
     # ----- 레이아웃 -----
-    RADIUS_CARD = 18
+    RADIUS_CARD = 12
     RADIUS_CONTROL = 10
 
 
@@ -35,84 +35,80 @@ def _rgba(r: int, g: int, b: int, a: float) -> str:
 
 
 class Theme:
+    """시안 A '아트워크 중심 플랫': 단색 바탕과 카드, 색은 앨범 커버가 만들고 강조색은 재생·주요 버튼에만."""
+
     LIGHT = {
         "name": "light",
-        # 배경: 기본 그라데이션 + 은은한 색 번짐(blob)
-        "bg_top": "#F1F2FA",
-        "bg_bottom": "#E9ECF7",
-        "blobs": [  # (x 비율, y 비율, 반지름 비율, 색, 알파)
-            (0.12, 0.10, 0.55, "#B9A8FF", 0.55),
-            (0.88, 0.18, 0.50, "#9CC7FF", 0.50),
-            (0.70, 0.95, 0.60, "#FFC4E1", 0.45),
-        ],
-        # 유리 패널
-        "glass": _rgba(255, 255, 255, 0.50),
-        "glass_strong": _rgba(255, 255, 255, 0.74),
-        "glass_border": _rgba(255, 255, 255, 0.90),
-        "glass_hover": _rgba(255, 255, 255, 0.80),
-        "glass_pressed": _rgba(255, 255, 255, 0.95),
-        "hairline": _rgba(30, 34, 80, 0.08),
-        "track": _rgba(30, 34, 80, 0.12),
-        "shadow": (60, 60, 120, 30),
-        # 글자
-        "text_primary": "#16182C",
+        "bg_top": "#F6F6F8",
+        "bg_bottom": "#F6F6F8",
+        "blobs": [],
+        "side": "#EFEFF3",
+        "card": "#FFFFFF",
+        # 버튼·입력 등 (이름은 예전 그대로 둡니다)
+        "glass": "#FFFFFF",
+        "glass_strong": "#F1F1F5",
+        "glass_border": "#E4E4EA",
+        "glass_hover": "#EBEBF1",
+        "glass_pressed": "#E2E2EA",
+        "hairline": "#E9E9EE",
+        "track": "#E1E1E8",
+        "shadow": (20, 20, 50, 14),
+        "nav_on": "#E6E4FA",
+        "nav_on_fg": "#2B1B78",
+        "text_primary": "#121318",
         "text_secondary": "#34384F",
-        "text_tertiary": "#474B66",  # 밝은 배경 대비 7:1 안팎
+        "text_tertiary": "#474B66",
         "text_on_accent": "#FFFFFF",
-        # 강조색 (보라 → 파랑 그라데이션)
         "accent": "#5B4BE0",
-        "accent_2": "#3E8BFF",
+        "accent_2": "#5B4BE0",
         "accent_hover": "#4A3BCC",
-        # 흰 글자를 올리는 채움 배경 (선택된 메뉴, 주요 버튼) — 흰 글자 대비 4.5:1 이상
         "fill_1": "#5B4BE0",
-        "fill_2": "#2F6FE0",
+        "fill_2": "#5B4BE0",
         "fill_hover": "#4A3BCC",
-        "accent_soft": _rgba(108, 92, 246, 0.13),
-        "accent_soft_strong": _rgba(108, 92, 246, 0.22),
-        # 입력칸·대화상자처럼 불투명해야 하는 곳
-        "input_bg": _rgba(255, 255, 255, 0.78),
-        "solid_bg": "#F5F6FC",
+        "accent_soft": _rgba(91, 75, 224, 0.10),
+        "accent_soft_strong": _rgba(91, 75, 224, 0.22),
+        "input_bg": "#FFFFFF",
+        "solid_bg": "#F6F6F8",
         "solid_card": "#FFFFFF",
-        "selection": _rgba(108, 92, 246, 0.16),
+        "selection": _rgba(91, 75, 224, 0.12),
         "danger": "#E5484D",
-        # 상태 글자색 (밝은 배경에서도 4.5:1 이상)
         "status_ok": "#167A47",
         "status_warn": "#965A00",
         "status_error": "#C42B30",
     }
     DARK = {
         "name": "dark",
-        "bg_top": "#0D0E1A",
-        "bg_bottom": "#0A0B14",
-        "blobs": [
-            (0.10, 0.08, 0.55, "#6D3BFF", 0.42),
-            (0.92, 0.22, 0.50, "#1F6FFF", 0.34),
-            (0.65, 1.00, 0.60, "#C2307E", 0.26),
-        ],
-        "glass": _rgba(255, 255, 255, 0.055),
-        "glass_strong": _rgba(255, 255, 255, 0.095),
-        "glass_border": _rgba(255, 255, 255, 0.13),
-        "glass_hover": _rgba(255, 255, 255, 0.11),
-        "glass_pressed": _rgba(255, 255, 255, 0.16),
-        "hairline": _rgba(255, 255, 255, 0.08),
-        "track": _rgba(255, 255, 255, 0.14),
-        "shadow": (0, 0, 0, 110),
-        "text_primary": "#ECEDF8",
+        "bg_top": "#0F1016",
+        "bg_bottom": "#0F1016",
+        "blobs": [],
+        "side": "#0B0C11",
+        "card": "#171821",
+        "glass": "#171821",
+        "glass_strong": "#22242F",
+        "glass_border": "#262834",
+        "glass_hover": "#20222D",
+        "glass_pressed": "#2A2C3A",
+        "hairline": "#23252F",
+        "track": "#2C2E3A",
+        "shadow": (0, 0, 0, 0),
+        "nav_on": "#1F2131",
+        "nav_on_fg": "#FFFFFF",
+        "text_primary": "#F2F3F8",
         "text_secondary": "#BEC2DC",
         "text_tertiary": "#A3A8C6",
         "text_on_accent": "#FFFFFF",
-        "accent": "#8B7BFF",
-        "accent_2": "#4D93FF",
-        "accent_hover": "#9D8FFF",
-        "fill_1": "#5B4BE0",
-        "fill_2": "#2E6BD8",
-        "fill_hover": "#4A3BCC",
-        "accent_soft": _rgba(139, 123, 255, 0.16),
-        "accent_soft_strong": _rgba(139, 123, 255, 0.28),
-        "input_bg": _rgba(255, 255, 255, 0.07),
-        "solid_bg": "#14152A",
-        "solid_card": "#1C1D35",
-        "selection": _rgba(139, 123, 255, 0.24),
+        "accent": "#9D90FF",
+        "accent_2": "#9D90FF",
+        "accent_hover": "#B1A6FF",
+        "fill_1": "#6E5BFF",
+        "fill_2": "#6E5BFF",
+        "fill_hover": "#7D6CFF",
+        "accent_soft": _rgba(157, 144, 255, 0.14),
+        "accent_soft_strong": _rgba(157, 144, 255, 0.28),
+        "input_bg": "#1C1D27",
+        "solid_bg": "#14151D",
+        "solid_card": "#1C1D27",
+        "selection": _rgba(157, 144, 255, 0.20),
         "danger": "#FF6B70",
         "status_ok": "#4ADE80",
         "status_warn": "#FBBF24",

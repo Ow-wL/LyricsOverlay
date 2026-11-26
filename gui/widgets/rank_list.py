@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (  # type: ignore
 )
 
 from gui import theme, typography
+from gui.widgets.artwork import paint_art
 from gui.widgets.glass import _qcolor
 
 _RANK_ROLE = Qt.UserRole + 10
@@ -21,7 +22,7 @@ def _font(px: int, weight=QFont.Normal) -> QFont:
 
 
 class RankDelegate(QStyledItemDelegate):
-    ROW_H = 48
+    ROW_H = 50
 
     def sizeHint(self, option, index) -> QSize:
         return QSize(option.rect.width(), self.ROW_H)
@@ -35,25 +36,18 @@ class RankDelegate(QStyledItemDelegate):
         if option.state & QStyle.State_MouseOver:
             painter.setPen(Qt.NoPen)
             painter.setBrush(_qcolor(t["glass_hover"]))
-            painter.drawRoundedRect(QRectF(r), 12, 12)
+            painter.drawRoundedRect(QRectF(r), 8, 8)
 
         rank = data.get("rank", 0)
-        # 순위 배지: 1~3위는 채움, 나머지는 옅은 배경
-        badge = QRectF(r.left() + 8, r.center().y() - 14, 28, 28)
-        painter.setPen(Qt.NoPen)
-        if rank <= 3:
-            grad = QLinearGradient(badge.topLeft(), badge.bottomRight())
-            grad.setColorAt(0, QColor(t["fill_1"]))
-            grad.setColorAt(1, QColor(t["fill_2"]))
-            painter.setBrush(grad)
-            num_color = QColor(t["text_on_accent"])
-        else:
-            painter.setBrush(_qcolor(t["accent_soft"]))
-            num_color = QColor(t["accent"])
-        painter.drawRoundedRect(badge, 9, 9)
-        painter.setFont(_font(13, QFont.Bold))
-        painter.setPen(num_color)
-        painter.drawText(badge, Qt.AlignCenter, str(rank))
+        # 순위 숫자 (상위 3위는 강조색) + 앨범 커버
+        num = QRectF(r.left() + 4, r.top(), 24, r.height())
+        painter.setFont(_font(15, QFont.Bold))
+        painter.setPen(QColor(t["accent"] if rank <= 3 else t["text_secondary"]))
+        painter.drawText(num, Qt.AlignCenter, str(rank))
+        badge = QRectF(num.right() + 8, r.center().y() - 19, 38, 38)
+        art = data.get("art") or {}
+        paint_art(painter, badge, art.get("title") or data.get("title", ""), art.get("artist", ""),
+                  art.get("song_id"), radius=5, circle=bool(art.get("circle")))
 
         # 오른쪽: 횟수 + 비율 막대
         count_text = f"{data.get('count', 0)}회"
@@ -111,12 +105,15 @@ class RankList(QListWidget):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setObjectName("RankList")
 
-    def set_rows(self, rows: list[tuple[str, str, int]]) -> None:
+    def set_rows(self, rows: list[tuple]) -> None:
+        """rows: [(제목, 부제, 횟수)] 또는 [(제목, 부제, 횟수, 커버 정보 dict)]"""
         self.clear()
-        top = max((c for _, _, c in rows), default=1)
-        for rank, (title, subtitle, count) in enumerate(rows, 1):
+        top = max((row[2] for row in rows), default=1)
+        for rank, row in enumerate(rows, 1):
+            title, subtitle, count = row[:3]
+            art = row[3] if len(row) > 3 else None
             item = QListWidgetItem(f"{rank}. {title} {subtitle} {count}회")  # 접근성·복사용 텍스트
             item.setData(_RANK_ROLE, {"rank": rank, "title": title, "subtitle": subtitle,
-                                      "count": count, "max": top})
+                                      "count": count, "max": top, "art": art})
             item.setToolTip(f"{title} — {subtitle} · {count}회" if subtitle else f"{title} · {count}회")
             self.addItem(item)
