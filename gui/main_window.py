@@ -206,6 +206,7 @@ class MainWindow(QMainWindow):
         dp.update_skip_requested.connect(self._skip_update)
         dp.update_install_requested.connect(self._install_update)
         self.info_page.auto_check_toggled.connect(self._set_auto_update_check)
+        self.info_page.install_requested.connect(self._install_update)
         self.music_page.delete_requested.connect(self.delete_history)
         self.music_page.clear_requested.connect(self.clear_history)
         self.music_page.export_requested.connect(self.export_history)
@@ -367,6 +368,7 @@ class MainWindow(QMainWindow):
         can_install = self._can_self_update() and info.can_auto_update
         self.dashboard_page.show_update(info.version, can_install)
         self.info_page.set_update_status(f"새 버전 {info.version}이 있어요 (지금 버전: {APP_VERSION})")
+        self.info_page.show_install(can_install)
         if not manual and self.tray is not None:
             self.tray.showMessage(
                 "Lyrics Overlay 업데이트",
