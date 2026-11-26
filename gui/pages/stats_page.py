@@ -22,15 +22,36 @@ from gui.widgets.rank_list import RankList
 
 # matplotlib 폰트 설정 제거됨
 
-def _song_rows(history: list[dict]) -> list[tuple[str, str, int]]:
-    """[(제목, 가수, 횟수)] 많이 들은 순."""
-    counts = Counter((e.get("title", ""), e.get("artist", "")) for e in history)
-    return [(title, artist, n) for (title, artist), n in counts.most_common()]
+# 곡이 아닌데 기록된 창 제목 (곡이 없을 때 멜론 창 제목). 순위에서 뺍니다.
+NON_SONG_TITLES = {"멜론 PC 플레이어", "Melon", "멜론"}
 
 
-def _artist_rows(history: list[dict]) -> list[tuple[str, str, int]]:
-    counts = Counter(e.get("artist", "") for e in history if e.get("artist") not in ("", "Unknown"))
-    return [(artist, "", n) for artist, n in counts.most_common()]
+def _is_song(e: dict) -> bool:
+    return e.get("title", "") not in NON_SONG_TITLES
+
+
+def _song_rows(history: list[dict]) -> list[tuple]:
+    """[(제목, 가수, 횟수, 커버 정보)] 많이 들은 순."""
+    counts = Counter((e.get("title", ""), e.get("artist", "")) for e in history if _is_song(e))
+    ids = {(e.get("title", ""), e.get("artist", "")): e.get("song_id") for e in history if e.get("song_id")}
+    return [(title, artist, n, {"title": title, "artist": artist, "song_id": ids.get((title, artist))})
+            for (title, artist), n in counts.most_common()]
+
+
+def _artist_rows(history: list[dict]) -> list[tuple]:
+    """[(가수, "", 횟수, 그 가수의 가장 많이 들은 곡 커버)]"""
+    songs = [e for e in history if _is_song(e) and e.get("artist") not in ("", "Unknown", None)]
+    counts = Counter(e["artist"] for e in songs)
+    top_song: dict[str, tuple] = {}
+    for (title, artist), _n in Counter((e.get("title", ""), e["artist"]) for e in songs).most_common():
+        top_song.setdefault(artist, (title, artist))
+    ids = {(e.get("title", ""), e["artist"]): e.get("song_id") for e in songs if e.get("song_id")}
+    rows = []
+    for artist, n in counts.most_common():
+        title, _ = top_song.get(artist, ("", artist))
+        rows.append((artist, "", n, {"title": title, "artist": artist, "song_id": ids.get((title, artist)),
+                                     "circle": True}))
+    return rows
 
 
 class DetailListDialog(QDialog):

@@ -4,8 +4,8 @@ import ctypes
 import os
 import sys
 
-from PySide6.QtCore import QRectF, Qt, Signal  # type: ignore
-from PySide6.QtGui import QColor, QIcon, QLinearGradient, QPainter  # type: ignore
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal  # type: ignore
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPainterPath, QPixmap  # type: ignore
 from PySide6.QtWidgets import (  # type: ignore
     QApplication,
     QHBoxLayout,
@@ -37,26 +37,114 @@ from core.version import APP_VERSION
 
 
 class BrandMark(QWidget):
-    """사이드바 상단의 작은 로고 (그라데이션 사각형 + 음표)."""
+    """사이드바 상단 로고 마크.
+
+    asset/brand_mark.png가 있으면 그 이미지를, 없으면 워드마크 색(남색·청록)으로 'LO' 모노그램을 그립니다.
+    """
+
+    NAVY = "#24165E"
+    TEAL = "#5BC4C2"
 
     def __init__(self, size: int = 38, parent=None):
         super().__init__(parent)
         self.setFixedSize(size, size)
+        path = resource_path(os.path.join("asset", "brand_mark.png"))
+        self._image = QPixmap(path) if os.path.exists(path) else None
+
+    def paintEvent(self, event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.SmoothPixmapTransform)
+        r = QRectF(self.rect())
+        if self._image is not None and not self._image.isNull():
+            clip = QPainterPath()
+            clip.addRoundedRect(r, 10, 10)
+            p.setClipPath(clip)
+            p.drawPixmap(self.rect(), self._image)
+            return
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(self.NAVY))
+        p.drawRoundedRect(r, 10, 10)
+        f = QFont(typography.family())
+        f.setPixelSize(int(self.height() * 0.42))
+        f.setWeight(QFont.Black)
+        p.setFont(f)
+        fm = QFontMetrics(f)
+        lw, ow = fm.horizontalAdvance("L"), fm.horizontalAdvance("O")
+        x = (self.width() - lw - ow + 1) / 2
+        base = (self.height() + fm.ascent() - fm.descent()) / 2
+        p.setPen(QColor("#FFFFFF"))
+        p.drawText(QPointF(x, base), "L")
+        p.setPen(QColor(self.TEAL))
+        p.drawText(QPointF(x + lw - 1, base), "O")
+
+
+class Wordmark(QWidget):
+    """'LYRICS / OVERLAY' 두 줄 워드마크 (로고 이미지와 같은 색 배치)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(130, 36)
 
     def paintEvent(self, event) -> None:
         t = theme_mod.active()
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        r = QRectF(self.rect())
-        grad = QLinearGradient(r.topLeft(), r.bottomRight())
-        grad.setColorAt(0, QColor(t["accent"]))
-        grad.setColorAt(1, QColor(t["accent_2"]))
-        p.setPen(Qt.NoPen)
-        p.setBrush(grad)
-        p.drawRoundedRect(r, 11, 11)
-        p.setPen(QColor("#FFFFFF"))
-        p.setFont(icons.icon_font(18))
-        p.drawText(r, Qt.AlignCenter, icons.MUSIC)
+        f1 = QFont(typography.family())
+        f1.setPixelSize(17)
+        f1.setWeight(QFont.Black)
+        f1.setLetterSpacing(QFont.AbsoluteSpacing, 0.6)
+        p.setFont(f1)
+        p.setPen(QColor("#FFFFFF" if t["name"] == "dark" else BrandMark.NAVY))
+        p.drawText(QRectF(0, 0, self.width(), 19), Qt.AlignLeft | Qt.AlignBottom, "LYRICS")
+        f2 = QFont(typography.family())
+        f2.setPixelSize(11)
+        f2.setWeight(QFont.Black)
+        f2.setLetterSpacing(QFont.AbsoluteSpacing, 2.6)
+        p.setFont(f2)
+        p.setPen(QColor(BrandMark.TEAL if t["name"] == "dark" else "#2A9D9B"))
+        p.drawText(QRectF(0, 21, self.width(), 14), Qt.AlignLeft | Qt.AlignTop, "OVERLAY")
+
+
+class MiniNowPlaying(QWidget):
+    """사이드바 아래 '지금 재생' 한 줄 (커버 + 제목/가수)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(58)
+        self.title, self.artist, self.song_id = "", "", None
+        self.hide()
+
+    def set_song(self, title: str, artist: str, song_id=None) -> None:
+        self.title, self.artist, self.song_id = title or "", artist or "", song_id
+        self.setVisible(bool(self.title))
+        self.setToolTip(f"{self.title} — {self.artist}" if self.title else "")
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        from gui.widgets.artwork import paint_art
+
+        t = theme_mod.active()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        p.setPen(QColor(t["glass_border"]))
+        p.setBrush(QColor(t["card"]))
+        p.drawRoundedRect(r, 10, 10)
+        art = QRectF(10, (self.height() - 38) / 2, 38, 38)
+        paint_art(p, art, self.title, self.artist, self.song_id, radius=5)
+        left = int(art.right()) + 10
+        w = self.width() - left - 10
+        tf = typography.font(13, QFont.Bold)
+        p.setFont(tf)
+        p.setPen(QColor(t["text_primary"]))
+        p.drawText(QRectF(left, 10, w, 20), Qt.AlignLeft | Qt.AlignVCenter,
+                   QFontMetrics(tf).elidedText(self.title, Qt.ElideRight, w))
+        af = typography.font(12)
+        p.setFont(af)
+        p.setPen(QColor(t["text_secondary"]))
+        p.drawText(QRectF(left, 29, w, 18), Qt.AlignLeft | Qt.AlignVCenter,
+                   QFontMetrics(af).elidedText(self.artist, Qt.ElideRight, w))
 
 
 class MainWindow(QMainWindow):
@@ -135,29 +223,25 @@ class MainWindow(QMainWindow):
         self.central_widget.setObjectName("CentralWidget")
         self.setCentralWidget(self.central_widget)
         main_layout = QHBoxLayout(self.central_widget)
-        main_layout.setContentsMargins(18, 18, 0, 18)
-        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
-        # ── 사이드바 (떠 있는 유리 패널)
-        self.sidebar = Card()
+        # ── 사이드바 (창 왼쪽에 붙은 단색 패널)
+        self.sidebar = Card(shadow=False)
         self.sidebar.setObjectName("Sidebar")
         self.sidebar.setFixedWidth(232)
         sidebar_layout = QVBoxLayout(self.sidebar)
-        sidebar_layout.setContentsMargins(16, 22, 16, 16)
+        sidebar_layout.setContentsMargins(14, 22, 14, 14)
         sidebar_layout.setSpacing(4)
 
         brand = QHBoxLayout()
-        brand.setSpacing(12)
-        brand.setContentsMargins(6, 0, 0, 0)
+        brand.setSpacing(10)
+        brand.setContentsMargins(8, 0, 0, 0)
         brand.addWidget(BrandMark())
-        brand_text = QVBoxLayout()
-        brand_text.setSpacing(0)
-        brand_text.addWidget(label("Lyrics Overlay", "BrandName"))
-        brand_text.addWidget(label("실시간 가사 오버레이", "Tertiary", "font-size: 12px;"))
-        brand.addLayout(brand_text)
+        brand.addWidget(Wordmark(), 0, Qt.AlignVCenter)
         brand.addStretch()
         sidebar_layout.addLayout(brand)
-        sidebar_layout.addSpacing(28)
+        sidebar_layout.addSpacing(26)
 
         menu_label = label("메뉴", "SectionLabel")
         menu_label.setContentsMargins(10, 0, 0, 6)
@@ -171,6 +255,8 @@ class MainWindow(QMainWindow):
         for btn in [self.btn_dashboard, self.btn_music, self.btn_stats, self.btn_settings, self.btn_info]:
             sidebar_layout.addWidget(btn)
         sidebar_layout.addStretch()
+        self.mini_now = MiniNowPlaying()
+        sidebar_layout.addWidget(self.mini_now)
 
         # 테마 전환 스위치
         theme_row = QHBoxLayout()
@@ -222,6 +308,7 @@ class MainWindow(QMainWindow):
         self.content_stack.addWidget(self.info_page)        # index 4
 
         main_layout.addWidget(self.sidebar)
+        self.content_stack.setContentsMargins(0, 18, 0, 12)
         main_layout.addWidget(self.content_stack, 1)
 
         self.nav_buttons = [
@@ -366,6 +453,18 @@ class MainWindow(QMainWindow):
     @staticmethod
     def _can_self_update() -> bool:
         return bool(getattr(sys, "frozen", False))  # 소스 실행은 git으로 업데이트
+
+    def set_now_playing(self, title: str, artist: str, song_id=None) -> None:
+        self.dashboard_page.set_now_playing(title, artist, song_id)
+        self.mini_now.set_song(title, artist, song_id)
+
+    def refresh_covers(self) -> None:
+        """새 앨범 커버를 받았을 때 커버를 그리는 곳을 다시 그립니다."""
+        self.dashboard_page.refresh_cover()
+        self.mini_now.update()
+        self.music_page.music_list.viewport().update()
+        for lst in (self.stats_page.top_songs_list, self.stats_page.top_artists_list):
+            lst.viewport().update()
 
     def show_update_available(self, info, manual: bool) -> None:
         self.pending_update = info
