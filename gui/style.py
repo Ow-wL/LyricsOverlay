@@ -15,9 +15,6 @@ def build_stylesheet(t: dict) -> str:
     accent_grad = (
         f"qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {t['fill_1']}, stop:1 {t['fill_2']})"
     )
-    glass_grad = (
-        f"qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {t['glass_strong']}, stop:1 {t['glass']})"
-    )
     r = UIConfig.RADIUS_CARD
     rc = UIConfig.RADIUS_CONTROL
     return typography.css(f"""
@@ -37,12 +34,17 @@ def build_stylesheet(t: dict) -> str:
     }}
 
     /* ---------- 유리 패널 ---------- */
-    QFrame#Card, QFrame#Sidebar {{
-        background: {glass_grad};
+    QFrame#Card {{
+        background: {t['card']};
         border: 1px solid {t['glass_border']};
         border-radius: {r}px;
     }}
-    QFrame#Sidebar {{ border-radius: 22px; }}
+    QFrame#Sidebar {{
+        background: {t['side']};
+        border: none;
+        border-right: 1px solid {t['hairline']};
+        border-radius: 0px;
+    }}
     QFrame#MutedCard {{
         background: transparent;
         border: 1px dashed {t['track']};

@@ -88,15 +88,17 @@ class GlassBackground(QWidget):
 
     def _paint_card_shadows(self, p: QPainter, t: dict) -> None:
         r, g, b, a = t["shadow"]
+        if a <= 0:
+            return
         p.setPen(Qt.NoPen)
         for card in self.findChildren(QFrame):
-            if not getattr(card, "casts_shadow", False) or not card.isVisible():
+            if not getattr(card, "casts_shadow", False) or not card.isVisible() or card.objectName() == "Sidebar":
                 continue
             rect = QRectF(QRect(card.mapTo(self, QPoint(0, 0)), card.size()))
             clip = self._visible_area(card)
             if clip is None:
                 continue
-            radius = 22 if card.objectName() == "Sidebar" else 20
+            radius = 12
             # 카드 안쪽은 비워 둡니다 (반투명 유리 밑에 그림자가 비치면 카드가 탁해 보임)
             outside = QPainterPath()
             outside.addRect(clip)
@@ -158,18 +160,15 @@ class NavButton(KeyboardFocusMixin, QAbstractButton):
         rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
 
         if self.isChecked():
-            grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
-            grad.setColorAt(0, QColor(t["fill_1"]))
-            grad.setColorAt(1, QColor(t["fill_2"]))
-            p.setBrush(grad)
+            p.setBrush(_qcolor(t.get("nav_on", t["fill_1"])))
             p.setPen(Qt.NoPen)
-            p.drawRoundedRect(rect, 12, 12)
-            fg = QColor(t["text_on_accent"])
+            p.drawRoundedRect(rect, 10, 10)
+            fg = QColor(t.get("nav_on_fg", t["text_on_accent"]))
         else:
             if self._hover:
                 p.setBrush(_qcolor(t["glass_hover"]))
                 p.setPen(Qt.NoPen)
-                p.drawRoundedRect(rect, 12, 12)
+                p.drawRoundedRect(rect, 10, 10)
             fg = QColor(t["text_primary"] if self._hover else t["text_secondary"])
 
         p.setPen(fg)
