@@ -1,6 +1,7 @@
 """대시보드 페이지."""
 
-from PySide6.QtCore import Qt, Signal  # type: ignore
+from PySide6.QtCore import QRectF, Qt, Signal  # type: ignore
+from PySide6.QtGui import QColor, QPainter, QPainterPath  # type: ignore
 from PySide6.QtWidgets import (  # type: ignore
     QHBoxLayout,
     QLabel,
@@ -10,13 +11,72 @@ from PySide6.QtWidgets import (  # type: ignore
     QWidget,
 )
 
-from gui import icons, typography
+from gui import icons, theme, typography
+from gui.widgets.artwork import blurred_backdrop, paint_art
 from gui.widgets.card import Card
 from gui.widgets.glass import SegmentedControl, ToggleSwitch, icon_chip, label, page_header
 from gui.widgets.media_controls import MediaControls
 from overlay.config_manager import OverlayConfigManager
 
 _VIEW_OPTIONS = [("session", "세션"), ("daily", "오늘"), ("weekly", "이번 주"), ("monthly", "이번 달")]
+
+
+class CoverView(QWidget):
+    """지금 재생 중인 곡의 큰 앨범 커버."""
+
+    def __init__(self, size: int, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(size, size)
+        self.title, self.artist, self.song_id = "", "", None
+
+    def set_song(self, title: str, artist: str, song_id=None) -> None:
+        self.title, self.artist, self.song_id = title or "", artist or "", song_id
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        p = QPainter(self)
+        if not self.title:
+            paint_placeholder_empty(p, QRectF(self.rect()))
+            return
+        paint_art(p, QRectF(self.rect()), self.title, self.artist, self.song_id, radius=10)
+
+
+def paint_placeholder_empty(p: QPainter, rect: QRectF) -> None:
+    t = theme.active()
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor(t["glass_strong"]))
+    p.drawRoundedRect(rect, 10, 10)
+    p.setPen(QColor(t["text_tertiary"]))
+    p.setFont(icons.icon_font(int(rect.height() * 0.3)))
+    p.drawText(rect, Qt.AlignCenter, icons.MUSIC)
+
+
+class NowPlayingCard(Card):
+    """배경에 지금 곡의 커버를 아주 흐리게 깔아, 곡마다 카드 색이 달라집니다."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.title, self.artist, self.song_id = "", "", None
+
+    def set_song(self, title: str, artist: str, song_id=None) -> None:
+        self.title, self.artist, self.song_id = title or "", artist or "", song_id
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        backdrop = blurred_backdrop(self.title, self.artist, self.song_id) if self.title else None
+        if backdrop is None:
+            return
+        t = theme.active()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.SmoothPixmapTransform)
+        clip = QPainterPath()
+        clip.addRoundedRect(QRectF(self.rect()).adjusted(1, 1, -1, -1), 12, 12)
+        p.setClipPath(clip)
+        p.setOpacity(0.42 if t["name"] == "dark" else 0.28)
+        p.drawPixmap(self.rect(), backdrop)
 
 
 class DashboardPage(QWidget):
@@ -100,18 +160,28 @@ class DashboardPage(QWidget):
         bottom_layout = QHBoxLayout()
         bottom_layout.setSpacing(18)
 
-        self.lyrics_card = Card()
+        self.lyrics_card = NowPlayingCard()
         lyrics_vbox = QVBoxLayout(self.lyrics_card)
-        lyrics_vbox.setContentsMargins(26, 22, 26, 22)
+        lyrics_vbox.setContentsMargins(24, 22, 24, 22)
         lyrics_vbox.setSpacing(6)
-        lyrics_vbox.addWidget(label("지금 재생 중", "SectionLabel"))
-        self.song_title = label("재생 중인 곡이 없어요", "CardTitle", "font-size: 19px; font-weight: 800;")
-        self.song_artist = label("멜론에서 음악을 재생하면 여기에 표시됩니다", "Secondary")
+        head = QHBoxLayout()
+        head.setSpacing(18)
+        self.cover = CoverView(112)
+        head.addWidget(self.cover, 0, Qt.AlignTop)
+        head_text = QVBoxLayout()
+        head_text.setSpacing(4)
+        head_text.addWidget(label("지금 재생 중", "SectionLabel"))
+        self.song_title = label("재생 중인 곡이 없어요", "CardTitle", "font-size: 22px; font-weight: 800;")
+        self.song_artist = label("멜론에서 음악을 재생하면 여기에 표시됩니다", "Secondary", "font-size: 14px;")
         # 곡 정보와 가사는 외부(창 제목·웹)에서 온 문자열이므로 HTML로 해석하지 않습니다.
         for lbl in (self.song_title, self.song_artist):
             lbl.setTextFormat(Qt.PlainText)
-        lyrics_vbox.addWidget(self.song_title)
-        lyrics_vbox.addWidget(self.song_artist)
+            lbl.setWordWrap(True)
+        head_text.addWidget(self.song_title)
+        head_text.addWidget(self.song_artist)
+        head_text.addStretch()
+        head.addLayout(head_text, 1)
+        lyrics_vbox.addLayout(head)
 
         # 인식 상태 (왜 가사가 안 나오는지 바로 알 수 있게)
         self.status_title = label("준비 중", "StatusTitle")
@@ -325,10 +395,17 @@ class DashboardPage(QWidget):
         self.status_detail.setText(detail)
         self.status_detail.setVisible(bool(detail))
 
-    def set_now_playing(self, title: str, artist: str) -> None:
+    def set_now_playing(self, title: str, artist: str, song_id=None) -> None:
         self.mark_step(0)
         self.song_title.setText(title or "알 수 없는 곡")
         self.song_artist.setText(artist or "")
+        self.cover.set_song(title, artist, song_id)
+        self.lyrics_card.set_song(title, artist, song_id)
+
+    def refresh_cover(self) -> None:
+        """새 커버를 받았을 때 다시 그립니다."""
+        self.cover.update()
+        self.lyrics_card.update()
 
     def change_view(self, mode: str) -> None:
         self.current_view_mode = mode
