@@ -54,6 +54,41 @@ def pick_best_row(rows: list[tuple[str, str, str]], want_title: str, want_artist
     return best, best_score
 
 
+def search_query_for(want_title: str, want_artist: str) -> str:
+    """멜론 검색어: 괄호 속 부가 정보와 기호를 뺀 제목 + 가수."""
+    clean_title = re.sub(r"[\(\[].*?[\)\]]", "", want_title).strip()
+    clean_title = " ".join(re.sub(r"[^a-zA-Z0-9가-힣\s]", " ", clean_title).split())
+    return f"{clean_title} {want_artist}".strip()
+
+
+def parse_search_rows(html: str) -> list[tuple[str, str, str]]:
+    """멜론 곡 검색 결과 페이지 → [(song_id, 제목, 가수)] (최대 10개)."""
+    soup = BeautifulSoup(html, "html.parser")
+    rows = []
+    for tr in soup.select("div.tb_list table tbody tr")[:10]:
+        title_a = tr.select_one("a.fc_gray")
+        artist_a = tr.select_one("#artistName a.fc_mgray") or tr.select_one("a.fc_mgray")
+        id_match = re.search(r"goSongDetail\(['\"]?(\d+)", str(tr))
+        chk = tr.select_one("input[name='input_check'], input[name='check_song']")
+        song_id = id_match.group(1) if id_match else (chk.get("value") if chk else None)
+        if title_a and song_id:
+            rows.append((song_id, title_a.get_text(" ", strip=True),
+                         artist_a.get_text(" ", strip=True) if artist_a else ""))
+    return rows
+
+
+_COVER_PREFIX = "https://cdnimg.melon.co.kr/"
+
+
+def cover_url_from_detail(soup) -> str | None:
+    """곡 상세 페이지의 앨범 이미지 주소 (멜론 이미지 서버 주소만 받습니다)."""
+    tag = soup.select_one('meta[property="og:image"]')
+    url = (tag.get("content") or "").strip() if tag else ""
+    if not url.startswith(_COVER_PREFIX) or not url.lower().split("?")[0].endswith((".jpg", ".jpeg", ".png")):
+        return None
+    return url
+
+
 def melon_song_url(title: str, artist: str, song_id=None) -> str:
     """감상 기록 한 곡을 멜론에서 여는 주소. 곡 ID를 알면 곡 상세, 모르면 멜론 검색."""
     if isinstance(song_id, str) and song_id.isdigit() and 5 <= len(song_id) <= 12:
@@ -83,6 +118,7 @@ class LyricsSearcher:
         self._retry_at: float | None = None
         # 가사를 찾은 곡의 멜론 곡 ID ('제목 - 가수' → ID). 감상 기록에서 멜론 링크로 씁니다.
         self.song_ids: dict[str, str] = {}
+        self.song_covers: dict[str, str] = {}  # '제목 - 가수' → 앨범 이미지 주소
 
     def search_lyrics(self, query: str) -> tuple[list[str], str | None]:
         """곡 제목 + 가수 쿼리에 해당하는 가사를 돌려줍니다 (UI를 막지 않음).
@@ -133,6 +169,9 @@ class LyricsSearcher:
     def song_id_for(self, query: str) -> str | None:
         return self.song_ids.get(query.replace("- Melon", "").strip())
 
+    def cover_for(self, query: str) -> str | None:
+        return self.song_covers.get(query.replace("- Melon", "").strip())
+
     def shutdown(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)
 
@@ -162,31 +201,11 @@ class LyricsSearcher:
         Returns (lines, status_message, retryable)
         """
         want_title, want_artist = split_title(query)
-
-        # 괄호 제거 및 검색어 조합
-        clean_title = re.sub(r"[\(\[].*?[\)\]]", "", want_title).strip()
-        clean_title_search = " ".join(
-            re.sub(r"[^a-zA-Z0-9가-힣\s]", " ", clean_title).split()
-        )
-        search_query = f"{clean_title_search} {want_artist}"
+        search_query = search_query_for(want_title, want_artist)
 
         try:
-            encoded_query = quote(search_query)
-            search_url = (
-                f"https://www.melon.com/search/song/index.htm?q={encoded_query}"
-            )
-            soup = BeautifulSoup(self._get_text(search_url), "html.parser")
-
-            rows = []
-            for tr in soup.select("div.tb_list table tbody tr")[:10]:
-                title_a = tr.select_one("a.fc_gray")
-                artist_a = tr.select_one("#artistName a.fc_mgray") or tr.select_one("a.fc_mgray")
-                id_match = re.search(r"goSongDetail\(['\"]?(\d+)", str(tr))
-                chk = tr.select_one("input[name='input_check'], input[name='check_song']")
-                song_id = id_match.group(1) if id_match else (chk.get("value") if chk else None)
-                if title_a and song_id:
-                    rows.append((song_id, title_a.get_text(" ", strip=True),
-                                 artist_a.get_text(" ", strip=True) if artist_a else ""))
+            search_url = f"https://www.melon.com/search/song/index.htm?q={quote(search_query)}"
+            rows = parse_search_rows(self._get_text(search_url))
             if not rows:
                 print(f"[DEBUG] 검색 결과 없음: {search_query}")
                 return [], f"❌ 검색 결과 없음: {display_name}", False
@@ -209,6 +228,11 @@ class LyricsSearcher:
                 f"https://www.melon.com/song/detail.htm?songId={song_id}"
             )
             l_soup = BeautifulSoup(self._get_text(lyrics_url), "html.parser")
+            cover = cover_url_from_detail(l_soup)
+            if cover:
+                if len(self.song_covers) > 500:
+                    self.song_covers.clear()
+                self.song_covers[display_name] = cover
 
             lyric_div = l_soup.select_one("#d_video_summary") or l_soup.select_one(
                 ".lyric_area"
