@@ -519,6 +519,12 @@ async def main() -> None:
                     for status in statuses:
                         add_log(status)
 
+                    # 가사를 찾았으면 멜론 곡 ID를 기록에 남겨, 감상 기록에서 바로 곡 페이지를 열 수 있게 합니다.
+                    if current_song_info is not None and "song_id" not in current_song_info:
+                        sid = matcher.searcher.song_id_for(target_win.title)
+                        if sid and parse_song_info(target_win.title.replace(" - Melon", "").strip()) == (current_song_info["title"], current_song_info["artist"]):
+                            current_song_info["song_id"] = sid
+
                     curr = fixed_lines[0] if len(fixed_lines) > 0 else "..."
                     nxt = fixed_lines[1] if len(fixed_lines) > 1 else ""
 

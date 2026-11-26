@@ -71,6 +71,9 @@ def _sanitize_entry(entry) -> dict | None:
         time.strptime(ts, "%Y-%m-%d %H:%M:%S")
     except (TypeError, ValueError):
         clean["timestamp"] = "1970-01-01 00:00:00"
+    sid = clean.get("song_id")
+    if not (isinstance(sid, str) and sid.isdigit() and 5 <= len(sid) <= 12):
+        clean.pop("song_id", None)
     for key in ("play_time_sec", "lines"):
         v = clean.get(key, 0)
         clean[key] = int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0 else 0
