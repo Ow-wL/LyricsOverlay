@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (  # type: ignore
 )
 
 from gui import icons
-from gui import theme
+from gui import theme, typography
 from gui.widgets.card import Card
 from gui.widgets.glass import _qcolor, label, page_header
 from lyrics.searcher import melon_song_url
@@ -59,10 +59,7 @@ def _day_label(day: str) -> str:
 
 
 def _font(px: int, weight=QFont.Normal) -> QFont:
-    f = QFont("Pretendard")
-    f.setPixelSize(px)
-    f.setWeight(weight)
-    return f
+    return typography.font(px, weight)
 
 
 class _HistoryDelegate(QStyledItemDelegate):

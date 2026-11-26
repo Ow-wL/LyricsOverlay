@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (  # type: ignore
     QWidget,
 )
 
-from gui import theme
+from gui import theme, typography
 from gui.widgets.glass import _qcolor
 from overlay.config_manager import OverlayConfigManager
 from overlay.outlined_label import OutlinedLabel
@@ -133,9 +133,7 @@ class PresetItem(QFrame):
         painter.fillPath(path, QBrush(QColor(self.data.get("text_color", "#FFFFFF"))))
 
         # 이름
-        name_font = QFont("Pretendard")
-        name_font.setPixelSize(12)
-        name_font.setWeight(QFont.DemiBold)
+        name_font = typography.font(12, QFont.DemiBold)
         painter.setFont(name_font)
         painter.setPen(QColor(t["text_secondary"]))
         painter.drawText(
