@@ -248,6 +248,8 @@ behavior.verticalScrollBar().setValue(0)
 sp._switch_page(2)
 shot("settings_hotkeys_light.png")
 sp._switch_page(3)
+# 실제 임시 폴더 경로(PC 사용자 이름 포함)가 찍히지 않게 예시 경로로 바꿉니다.
+sp.lbl_data_path.setText(r"C:\Users\사용자\Documents\LyricsOverlay")
 shot("settings_system_light.png")
 
 # 가사 인식 영역 지정
