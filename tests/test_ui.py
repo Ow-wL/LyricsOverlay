@@ -10,7 +10,9 @@ app = QApplication.instance() or QApplication([])
 from core.updater import ReleaseInfo  # noqa: E402
 from gui.pages.info_page import InfoPage  # noqa: E402
 from gui.pages.music_list_page import MusicListPage  # noqa: E402
+from gui import typography  # noqa: E402
 from gui.update_dialog import UpdateDialog, _NotesView  # noqa: E402
+from gui.widgets.glass import label  # noqa: E402
 
 
 class HistoryLinkTest(unittest.TestCase):
@@ -50,6 +52,29 @@ class UpdateDialogTest(unittest.TestCase):
         self.assertNotIn("**", text)
         self.assertIn("<b>", text)  # HTML은 해석하지 않고 글자 그대로
         dlg.done(0)
+
+
+class TypographyTest(unittest.TestCase):
+    def tearDown(self):
+        typography.set_font_key(typography.DEFAULT_KEY)
+
+    def test_sizes_boosted_once(self):
+        self.assertEqual(typography.css("font-size: 12px; color: red"),
+                         f"font-size: {12 + typography.SIZE_BOOST}px; color: red")
+        self.assertEqual(typography.font(13).pixelSize(), 13 + typography.SIZE_BOOST)
+
+    def test_font_switch_updates_labels(self):
+        lbl = label("x", "", "font-size: 12px; font-weight: 600;")
+        typography.set_font_key("nanum_square_neo")
+        typography.refresh(lbl)
+        self.assertIn("font-weight: 700", lbl.styleSheet())  # 세미볼드가 없는 글꼴
+        self.assertEqual(typography.family(), "NanumSquare Neo TTF")
+        typography.set_font_key("없는 값")
+        self.assertEqual(typography.family(), "Pretendard")
+
+    def test_only_known_keys_valid(self):
+        self.assertTrue(typography.font_key_valid("wanted_sans"))
+        self.assertFalse(typography.font_key_valid("Comic Sans"))
 
 
 if __name__ == "__main__":

@@ -10,17 +10,14 @@ from PySide6.QtWidgets import (  # type: ignore
     QStyledItemDelegate,
 )
 
-from gui import theme
+from gui import theme, typography
 from gui.widgets.glass import _qcolor
 
 _RANK_ROLE = Qt.UserRole + 10
 
 
 def _font(px: int, weight=QFont.Normal) -> QFont:
-    f = QFont("Pretendard")
-    f.setPixelSize(px)
-    f.setWeight(weight)
-    return f
+    return typography.font(px, weight)
 
 
 class RankDelegate(QStyledItemDelegate):

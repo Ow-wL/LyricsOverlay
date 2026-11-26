@@ -56,8 +56,8 @@ class Theme:
         "shadow": (60, 60, 120, 30),
         # 글자
         "text_primary": "#16182C",
-        "text_secondary": "#474B68",
-        "text_tertiary": "#5F6382",  # 밝은 배경 대비 4.9:1 이상 (WCAG AA)
+        "text_secondary": "#34384F",
+        "text_tertiary": "#474B66",  # 밝은 배경 대비 7:1 안팎
         "text_on_accent": "#FFFFFF",
         # 강조색 (보라 → 파랑 그라데이션)
         "accent": "#5B4BE0",
@@ -98,8 +98,8 @@ class Theme:
         "track": _rgba(255, 255, 255, 0.14),
         "shadow": (0, 0, 0, 110),
         "text_primary": "#ECEDF8",
-        "text_secondary": "#A4A8C4",
-        "text_tertiary": "#8287A6",
+        "text_secondary": "#BEC2DC",
+        "text_tertiary": "#A3A8C6",
         "text_on_accent": "#FFFFFF",
         "accent": "#8B7BFF",
         "accent_2": "#4D93FF",
