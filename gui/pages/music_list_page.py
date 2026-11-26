@@ -2,8 +2,8 @@
 
 from datetime import date, timedelta
 
-from PySide6.QtCore import QRect, QSize, Qt, Signal  # type: ignore
-from PySide6.QtGui import QColor, QFont, QFontMetrics  # type: ignore
+from PySide6.QtCore import QRect, QSize, Qt, QUrl, Signal  # type: ignore
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontMetrics  # type: ignore
 from PySide6.QtWidgets import (  # type: ignore
     QHBoxLayout,
     QLineEdit,
@@ -21,6 +21,7 @@ from gui import icons
 from gui import theme
 from gui.widgets.card import Card
 from gui.widgets.glass import _qcolor, label, page_header
+from lyrics.searcher import melon_song_url
 
 _ENTRY_ROLE = Qt.UserRole + 1
 _ID_ROLE = Qt.UserRole + 2  # 원본 기록 dict의 id() — 삭제할 때 원본 리스트에서 찾는 열쇠
@@ -118,9 +119,18 @@ class _HistoryDelegate(QStyledItemDelegate):
         painter.setPen(QColor(t["text_secondary"]))
         painter.drawText(QRect(r.right() - 16 - tw, r.top(), tw, r.height()), Qt.AlignVCenter | Qt.AlignRight, time_text)
 
+        # 마우스를 올리면 시각 왼쪽에 '멜론에서 열기' 아이콘 (더블 클릭 안내)
+        link_w = 0
+        if option.state & QStyle.State_MouseOver:
+            link_w = 26
+            painter.setFont(icons.icon_font(13))
+            painter.setPen(QColor(t["accent"]))
+            painter.drawText(QRect(r.right() - 16 - tw - 8 - link_w, r.top(), link_w, r.height()),
+                             Qt.AlignCenter, icons.OPEN_LINK)
+
         # 제목 / 가수 두 줄
         left = chip.right() + 14
-        avail = r.right() - 16 - tw - 16 - left
+        avail = r.right() - 16 - tw - 16 - link_w - left
         title_font = _font(15, QFont.DemiBold)
         painter.setFont(title_font)
         painter.setPen(QColor(t["text_primary"]))
@@ -179,11 +189,12 @@ class MusicListPage(QWidget):
         self.music_list.setMouseTracking(True)
         self.music_list.setSelectionMode(QListWidget.ExtendedSelection)  # Ctrl/Shift로 여러 개 선택
         self.music_list.itemSelectionChanged.connect(self._update_buttons)
+        self.music_list.itemDoubleClicked.connect(self._open_in_melon)
         card_layout.addWidget(self.music_list)
 
         actions = QHBoxLayout()
         actions.setContentsMargins(6, 0, 6, 0)
-        hint = label("Ctrl·Shift로 여러 곡 선택 · Delete 키로 삭제", "Secondary", "font-size: 12px;")
+        hint = label("더블 클릭하면 멜론에서 열려요 · Ctrl·Shift로 여러 곡 선택 · Delete 키로 삭제", "Secondary", "font-size: 12px;")
         actions.addWidget(hint)
         actions.addStretch()
         self.btn_export = QPushButton("CSV로 내보내기")
@@ -213,7 +224,7 @@ class MusicListPage(QWidget):
         item.setData(_ENTRY_ROLE, entry)
         item.setData(_ID_ROLE, id(entry))
         self._entries[id(entry)] = entry
-        item.setToolTip(f"{entry.get('title', '')} — {entry.get('artist', '')}\n{_format_time(entry.get('timestamp', ''))}")
+        item.setToolTip(f"{entry.get('title', '')} — {entry.get('artist', '')}\n{_format_time(entry.get('timestamp', ''))}\n더블 클릭하면 멜론에서 열어요")
         return item
 
     def _make_header(self, day: str) -> QListWidgetItem:
@@ -247,6 +258,21 @@ class MusicListPage(QWidget):
             item.setHidden(True)
         self._refresh_headers()
         self._update_count()
+
+    # -- 멜론에서 열기 ---------------------------------------------------- #
+
+    def entry_url(self, item) -> str | None:
+        if item is None or self._is_header(item):
+            return None
+        entry = self._entries.get(item.data(_ID_ROLE)) or item.data(_ENTRY_ROLE) or {}
+        if not entry.get("title"):
+            return None
+        return melon_song_url(entry.get("title", ""), entry.get("artist", ""), entry.get("song_id"))
+
+    def _open_in_melon(self, item) -> None:
+        url = self.entry_url(item)
+        if url:
+            QDesktopServices.openUrl(QUrl(url))
 
     # -- 삭제 ----------------------------------------------------------- #
 
