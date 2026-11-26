@@ -645,6 +645,10 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    if "--smoke-test" in sys.argv:
+        # 빌드 확인용 자체 점검 (build.ps1이 실행). 실제 설정·데이터·멜론은 건드리지 않습니다.
+        from core.smoke_test import run as run_smoke_test
+        sys.exit(run_smoke_test(sys.argv))
     if "--apply-update" in sys.argv:
         # 업데이트로 받은 새 exe가 '적용 모드'로 실행된 경우: 화면 없이 교체만 하고 끝냅니다.
         from core.update_install import run_apply_mode
