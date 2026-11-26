@@ -1,6 +1,6 @@
 """앱 버전 (정보 페이지 등에서 표시). 릴리즈할 때 이 값만 올리면 됩니다."""
 
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 
 # 작업 표시줄이 이 앱을 구분하는 ID (AppUserModelID).
 # Windows는 이 ID별로 작업 표시줄 아이콘을 기억해 두는데, 예전 ID(owwl.lyricsoverlay.app.1.0)에는
