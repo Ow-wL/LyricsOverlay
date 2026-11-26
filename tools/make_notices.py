@@ -90,7 +90,7 @@ def main() -> int:
         "- Microsoft Visual C++ 런타임 (VCRUNTIME140 등) — Microsoft 재배포 허용 조건에 따라 포함",
         "- 글꼴 Pretendard — SIL OFL 1.1",
         "- 글꼴 Wanted Sans — SIL OFL 1.1",
-        "- 글꼴 나눔스퀘어 네오 — 네이버 나눔글꼴 라이선스",
+        "- 글꼴 나눔스퀘어 네오 — SIL OFL 1.1 (NAVER, Reserved Font Name 포함)",
     ]
     parts.append("포함된 구성요소\n\n" + "\n".join(rows) + "\n")
 

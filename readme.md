@@ -244,6 +244,6 @@ asset/               아이콘, 앱 글꼴(Pretendard·나눔스퀘어 네오·W
 - 개인 학습과 포트폴리오 용도로 만든 비공식 도구이며, 멜론(카카오엔터테인먼트)과 제휴하지 않았습니다. 멜론(Melon)은 카카오엔터테인먼트의 상표입니다.
 - 가사는 재생 중에 웹에서 조회해 화면에 표시하는 데만 쓰고, 데이터 파일에 가사 본문을 남기지 않습니다. 저장소의 스크린샷은 예시 가사와 대체 커버로 만든 것입니다.
 - Lyrics Overlay는 [MIT 라이선스](LICENSE)로 공개합니다. 배포 exe에 포함된 Qt·PySide6(LGPL-3.0) 등 오픈소스 구성요소와 글꼴의 라이선스는 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)에 있으며, 앱의 **정보 → 오픈소스 라이선스**에서도 열 수 있습니다.
-- 내장 글꼴 Pretendard와 Wanted Sans는 SIL Open Font License 1.1([Pretendard](./asset/Font/OFL-Pretendard.txt), [Wanted Sans](./asset/Font/WantedSans/OFL-WantedSans.txt))을, 나눔스퀘어 네오는 [네이버 나눔글꼴 라이선스](./asset/Font/NanumSquareNeo/LICENSE-NanumSquareNeo.txt)를 따릅니다.
+- 내장 글꼴 Pretendard와 Wanted Sans는 SIL Open Font License 1.1([Pretendard](./asset/Font/OFL-Pretendard.txt), [Wanted Sans](./asset/Font/WantedSans/OFL-WantedSans.txt))을, 나눔스퀘어 네오는 NAVER의 [SIL Open Font License 1.1](./asset/Font/NanumSquareNeo/LICENSE-NanumSquareNeo.txt)을 따릅니다.
 
 만든 사람: 이주형 ([@Ow-wL](https://github.com/Ow-wL)) · 문의와 버그 제보는 [Issues](https://github.com/Ow-wL/LyricsOverlay/issues)로 남겨 주세요.
