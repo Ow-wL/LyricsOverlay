@@ -6,6 +6,7 @@
   HotkeyEdit, MutedCard, LogList, IconGlyph
 """
 
+from gui import typography
 from gui.icons import ICON_FONT_CSS
 from gui.theme import UIConfig
 
@@ -19,7 +20,7 @@ def build_stylesheet(t: dict) -> str:
     )
     r = UIConfig.RADIUS_CARD
     rc = UIConfig.RADIUS_CONTROL
-    return f"""
+    return typography.css(f"""
     QWidget {{
         color: {t['text_primary']};
         font-family: 'Pretendard';
@@ -292,4 +293,4 @@ def build_stylesheet(t: dict) -> str:
         background-color: {t['input_bg']};
     }}
     QCheckBox::indicator:checked {{ background-color: {t['accent']}; border: 1px solid {t['accent']}; }}
-    """
+    """)

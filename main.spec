@@ -4,7 +4,7 @@
 #
 # 실행 중 코드가 읽는 파일은 모두 여기 datas에 있어야 합니다.
 #   asset/icon.ico  — 창·작업 표시줄·트레이 아이콘
-#   asset/Font      — Pretendard 글꼴
+#   asset/Font      — 앱 글꼴 (Pretendard, 하위 폴더의 나눔스퀘어 네오·Wanted Sans)
 
 
 a = Analysis(

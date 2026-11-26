@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (  # type: ignore
     QWidget,
 )
 
-from gui import icons
+from gui import icons, typography
 from gui.theme import UIConfig
 from gui.widgets.card import Card, PresetFlow, PresetItem, StylePreview
 from gui.widgets.glass import SegmentedControl, ToggleSwitch, divider, label, page_header
@@ -55,6 +55,7 @@ class SettingPage(QWidget):
     hotkeys_changed = Signal()
     overlay_edit_requested = Signal()
     overlay_reset_requested = Signal()
+    ui_font_changed = Signal(str)
 
     def __init__(self, config_manager: OverlayConfigManager, app_config=None):
         super().__init__()
@@ -405,7 +406,7 @@ class SettingPage(QWidget):
             "입력 칸을 클릭한 뒤 키 조합을 누르세요. Esc는 취소, Backspace는 단축키 해제입니다."
         )
         info.setObjectName("Secondary")
-        info.setStyleSheet(f"font-size: {UIConfig.FS_DESC};")
+        typography.apply_css(info, f"font-size: {UIConfig.FS_DESC};")
         info.setWordWrap(True)
         ml.addWidget(info)
         ml.addWidget(self._hline())
@@ -484,6 +485,28 @@ class SettingPage(QWidget):
         sys_l.addWidget(privacy)
         lay.addWidget(sys_card)
 
+        lay.addWidget(self._section_lbl("화면"))
+        font_card = Card()
+        fl = QHBoxLayout(font_card)
+        fl.setContentsMargins(22, 16, 22, 16)
+        font_text = QVBoxLayout()
+        font_text.setSpacing(2)
+        font_text.addWidget(self._lbl("앱 글꼴", UIConfig.FS_TITLE_S, bold=600))
+        font_desc = self._lbl(
+            "메뉴·설정·감상 기록 등 이 창의 글꼴입니다. 가사 오버레이 글꼴은 '외관'에서 따로 정해요.",
+            UIConfig.FS_DESC, secondary=True,
+        )
+        font_desc.setWordWrap(True)
+        font_text.addWidget(font_desc)
+        fl.addLayout(font_text, 1)
+        current_font = getattr(self.app_config, "ui_font", typography.DEFAULT_KEY)
+        if not typography.font_key_valid(current_font):
+            current_font = typography.DEFAULT_KEY
+        self.ui_font_picker = SegmentedControl([(k, name) for k, name, _ in typography.UI_FONTS], current_font)
+        self.ui_font_picker.changed.connect(self.ui_font_changed.emit)
+        fl.addWidget(self.ui_font_picker, 0, Qt.AlignVCenter)
+        lay.addWidget(font_card)
+
         lay.addWidget(self._section_lbl("창"))
         win_card = Card()
         wl = QVBoxLayout(win_card)
@@ -515,7 +538,7 @@ class SettingPage(QWidget):
         lbl = QLabel(text)
         if secondary:
             lbl.setObjectName("Secondary")
-        lbl.setStyleSheet(f"font-size: {font_size}; font-weight: {bold};")
+        typography.apply_css(lbl, f"font-size: {font_size}; font-weight: {bold};")
         return lbl
 
     # kept for legacy compatibility (some callers use _make_label)

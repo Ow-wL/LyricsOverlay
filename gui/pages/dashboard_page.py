@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (  # type: ignore
     QWidget,
 )
 
-from gui import icons
+from gui import icons, typography
 from gui.widgets.card import Card
 from gui.widgets.glass import SegmentedControl, ToggleSwitch, icon_chip, label, page_header
 from gui.widgets.media_controls import MediaControls
@@ -131,7 +131,7 @@ class DashboardPage(QWidget):
         self.curr_lyric.setTextFormat(Qt.PlainText)
         self.curr_lyric.setAlignment(Qt.AlignCenter)
         self.curr_lyric.setWordWrap(True)
-        self.curr_lyric.setStyleSheet("font-size: 24px; font-weight: 700; padding: 8px 0;")
+        typography.apply_css(self.curr_lyric, "font-size: 24px; font-weight: 700; padding: 8px 0;")
         lyrics_vbox.addStretch()
         lyrics_vbox.addWidget(self.curr_lyric)
         lyrics_vbox.addStretch()
