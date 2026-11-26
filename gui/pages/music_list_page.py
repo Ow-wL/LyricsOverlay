@@ -2,7 +2,7 @@
 
 from datetime import date, timedelta
 
-from PySide6.QtCore import QRect, QSize, Qt, QUrl, Signal  # type: ignore
+from PySide6.QtCore import QRect, QRectF, QSize, Qt, QUrl, Signal  # type: ignore
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontMetrics  # type: ignore
 from PySide6.QtWidgets import (  # type: ignore
     QHBoxLayout,
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (  # type: ignore
 from gui import icons
 from gui import theme, typography
 from gui.widgets.card import Card
+from gui.widgets.artwork import paint_art
 from gui.widgets.glass import _qcolor, label, page_header
 from lyrics.searcher import melon_song_url
 
@@ -65,7 +66,7 @@ def _font(px: int, weight=QFont.Normal) -> QFont:
 class _HistoryDelegate(QStyledItemDelegate):
     """날짜 머리 행과 곡 행을 그립니다. 곡 행: 아이콘 · 제목(굵게)/가수 두 줄 · 시각."""
 
-    _ROW_H = 58
+    _ROW_H = 60
     _HEAD_H = 40
 
     def sizeHint(self, option, index) -> QSize:
@@ -99,13 +100,9 @@ class _HistoryDelegate(QStyledItemDelegate):
         painter.setPen(Qt.NoPen)
         painter.drawRoundedRect(r, 12, 12)
 
-        # 왼쪽 아이콘 칩
-        chip = QRect(r.left() + 10, r.center().y() - 18, 36, 36)
-        painter.setBrush(_qcolor(t["accent_soft"]))
-        painter.drawRoundedRect(chip, 10, 10)
-        painter.setFont(icons.icon_font(15))
-        painter.setPen(QColor(t["accent"]))
-        painter.drawText(chip, Qt.AlignCenter, icons.MUSIC_NOTE)
+        # 왼쪽 앨범 커버 (없으면 곡마다 다른 색의 대체 타일)
+        chip = QRect(r.left() + 8, r.center().y() - 22, 44, 44)
+        paint_art(painter, QRectF(chip), entry.get("title", ""), entry.get("artist", ""), entry.get("song_id"), radius=6)
 
         # 오른쪽 시각
         ts = entry.get("timestamp", "")

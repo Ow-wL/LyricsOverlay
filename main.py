@@ -28,7 +28,7 @@ if os.name == 'nt':
 import cv2
 from PySide6.QtWidgets import QApplication  # type: ignore
 
-from core import melon_control
+from core import covers, melon_control
 from core.hotkey_manager import HotkeyManager, send_next_track, send_play_pause, send_prev_track
 from core.ocr_engine import OCR_HELP, OCR_KOREAN, OCR_STATUS, ocr_available, windows_native_ocr_split
 from core.stats_manager import load_stats, make_session_stats, parse_song_info, save_stats
@@ -141,6 +141,15 @@ def _on_quit() -> None:
 # ------------------------------------------------------------------ #
 # 메인 루프
 # ------------------------------------------------------------------ #
+
+def is_song_title(title: str) -> bool:
+    """멜론 창 제목이 곡('제목 - 가수')인지. 곡이 없을 때는 '멜론 PC 플레이어' 같은 제목이 됩니다."""
+    title = (title or "").strip()
+    if " - " not in title:
+        return False
+    name, _, artist = title.rpartition(" - ")
+    return bool(name.strip()) and bool(artist.strip())
+
 
 async def main() -> None:
     global _window, is_running, persistent_stats, session_stats, _app_config
@@ -267,6 +276,10 @@ async def main() -> None:
     _app_config.add_listener(config_manager.set_data_dir)
     _app_config.add_listener(style_guard.set_data_dir)
     _app_config.add_listener(on_data_dir_changed)
+
+    # 앨범 커버 (데이터 폴더/covers). 화면은 core.covers.store를 통해 커버를 찾습니다.
+    covers.store = covers.CoverStore(_app_config.data_dir)
+    _app_config.add_listener(covers.store.set_data_dir)
     if recovered:
         add_log(f"이전 실행에서 남은 창 상태 {recovered}개 복구")
 
@@ -332,7 +345,7 @@ async def main() -> None:
             "lines": 0,
         }
         overlay.update_song_info(title, artist)
-        window.dashboard_page.set_now_playing(title, artist)
+        window.set_now_playing(title, artist)
         add_log(f"{'반복 재생' if repeat else '새로운 곡 감지'}: {song_title_str}")
         if recording:
             window.music_page.add_entry(current_song_info)
@@ -420,6 +433,8 @@ async def main() -> None:
                 prev_state = media_state
                 media_state = await media.poll()
                 restarted = is_restart(prev_state, media_state, current_song_played)
+                if covers.store.take_updated():
+                    window.refresh_covers()
             dt = min(now - last_tick, 1.0)
             last_tick = now
             # 미디어 세션을 못 찾으면 예전처럼 '멜론 창이 보이면 재생 중'으로 봅니다.
@@ -483,9 +498,10 @@ async def main() -> None:
                 current_song_title = target_win.title.replace(" - Melon", "").strip()
                 if current_song_title != last_song_title:
                     last_song_title = current_song_title
-                    if current_song_title:
+                    # 곡이 없을 때의 창 제목('멜론 PC 플레이어' 등)은 '제목 - 가수' 형식이 아니므로 기록하지 않습니다.
+                    if is_song_title(current_song_title):
                         start_play(current_song_title)
-                elif current_song_title and restarted:
+                elif is_song_title(current_song_title) and restarted:
                     start_play(current_song_title, repeat=True)
 
                 # 가사를 볼 사람이 없거나 멜론이 멈춰 있으면 캡처·OCR·가사 검색을 쉽니다 (CPU·외부 요청 절약).
@@ -554,6 +570,10 @@ async def main() -> None:
                         sid = matcher.searcher.song_id_for(target_win.title)
                         if sid and parse_song_info(target_win.title.replace(" - Melon", "").strip()) == (current_song_info["title"], current_song_info["artist"]):
                             current_song_info["song_id"] = sid
+                            cover = matcher.searcher.cover_for(target_win.title)
+                            if cover:
+                                covers.store.remember(current_song_info["title"], current_song_info["artist"], sid, cover)
+                            window.set_now_playing(current_song_info["title"], current_song_info["artist"], sid)
 
                     curr = fixed_lines[0] if len(fixed_lines) > 0 else "..."
                     nxt = fixed_lines[1] if len(fixed_lines) > 1 else ""
@@ -605,6 +625,7 @@ async def main() -> None:
         if _app_config:
             save_stats(persistent_stats, _app_config.data_dir)
         matcher.searcher.shutdown()
+        covers.store.shutdown()
         updater.shutdown()
         cv2.destroyAllWindows()
 
