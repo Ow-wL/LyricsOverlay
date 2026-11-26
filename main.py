@@ -26,12 +26,12 @@ if os.name == 'nt':
         pass
 
 import cv2
-from PySide6.QtWidgets import QApplication  # type: ignore
+from PySide6.QtWidgets import QApplication, QMessageBox  # type: ignore
 
-from core import covers, melon_control
+from core import covers, melon_control, melon_http
 from core.hotkey_manager import HotkeyManager, send_next_track, send_play_pause, send_prev_track
 from core.ocr_engine import OCR_HELP, OCR_KOREAN, OCR_STATUS, ocr_available, windows_native_ocr_split
-from core.stats_manager import load_stats, make_session_stats, parse_song_info, save_stats
+from core.stats_manager import load_stats, make_session_stats, parse_song_info, resumable_entry, save_stats
 from core.window_capture import (
     WindowStyleGuard, capture_covered_window, find_melon_window, is_melon_minimized, recheck_window,
 )
@@ -279,7 +279,54 @@ async def main() -> None:
 
     # 앨범 커버 (데이터 폴더/covers). 화면은 core.covers.store를 통해 커버를 찾습니다.
     covers.store = covers.CoverStore(_app_config.data_dir)
+    covers.store.enabled = _app_config.melon_covers
     _app_config.add_listener(covers.store.set_data_dir)
+    matcher.searcher.enabled = _app_config.melon_lyrics
+    sp = window.setting_page
+
+    def refresh_covers_status() -> None:
+        left = covers.store.backfill_left
+        paused = melon_http.paused_for()
+        if paused:
+            text = f"멜론이 요청을 거절해 {int(paused) // 60 + 1}분 동안 쉬는 중이에요."
+        elif left:
+            text = f"예전 기록 커버를 찾는 중이에요 (남은 곡 {left}개)."
+        else:
+            text = f"받아 둔 커버 {covers.store.file_count()}개"
+        sp.set_covers_status(text, backfilling=bool(left))
+
+    def on_melon_lyrics(on: bool) -> None:
+        _app_config.melon_lyrics = on
+        matcher.searcher.enabled = on
+        add_log(f"멜론 가사 가져오기: {'켬' if on else '끔'}")
+
+    def on_melon_covers(on: bool) -> None:
+        _app_config.melon_covers = on
+        covers.store.enabled = on
+        if not on:
+            covers.store.cancel_backfill()
+        add_log(f"앨범 커버 받기: {'켬' if on else '끔'}")
+        refresh_covers_status()
+
+    def on_backfill() -> None:
+        n = covers.store.backfill(persistent_stats.get("play_history", []))
+        add_log(f"예전 기록 커버 채우기: {n}곡 예약" if n else "예전 기록 커버 채우기: 찾을 곡이 없어요")
+        refresh_covers_status()
+
+    def on_clear_covers() -> None:
+        if QMessageBox.question(window, "받은 커버 지우기",
+                                "받아 둔 앨범 커버를 모두 지울까요? 감상 기록은 그대로예요.") != QMessageBox.Yes:
+            return
+        n = covers.store.clear()
+        window.refresh_covers()
+        add_log(f"받은 커버 지움 ({n}개 파일)")
+        refresh_covers_status()
+
+    sp.melon_lyrics_toggled.connect(on_melon_lyrics)
+    sp.melon_covers_toggled.connect(on_melon_covers)
+    sp.covers_backfill_requested.connect(on_backfill)
+    sp.covers_clear_requested.connect(on_clear_covers)
+    refresh_covers_status()
     if recovered:
         add_log(f"이전 실행에서 남은 창 상태 {recovered}개 복구")
 
@@ -329,11 +376,23 @@ async def main() -> None:
     media_state = MediaState()
     next_media_poll = 0.0
 
-    def start_play(song_title_str: str, repeat: bool = False) -> None:
+    def start_play(song_title_str: str, repeat: bool = False, first: bool = False) -> None:
         """새 재생 한 건을 기록합니다 (곡이 바뀌었거나 같은 곡을 처음부터 다시 틀었을 때)."""
         nonlocal current_song_info, current_song_lines, current_song_played
-        session_stats["play_count"] += 1
         title, artist = parse_song_info(song_title_str)
+        if first and not repeat:
+            # 프로그램을 다시 켰는데(업데이트 재시작 등) 같은 곡이 이어지는 중이면 기록을 새로 만들지 않습니다.
+            prev = resumable_entry(persistent_stats.get("play_history", []), title, artist, time.time())
+            if prev is not None:
+                current_song_info = prev
+                current_song_lines = int(prev.get("lines", 0))
+                current_song_played = float(prev.get("play_time_sec", 0))
+                matcher.reset_recent()
+                overlay.update_song_info(title, artist)
+                window.set_now_playing(title, artist, prev.get("song_id"))
+                add_log(f"이어서 듣는 곡: {song_title_str}")
+                return
+        session_stats["play_count"] += 1
         current_song_lines = 0
         current_song_played = 0.0
         matcher.reset_recent()  # 새 재생 시작 시 가사 위치 기억 초기화
@@ -435,6 +494,7 @@ async def main() -> None:
                 restarted = is_restart(prev_state, media_state, current_song_played)
                 if covers.store.take_updated():
                     window.refresh_covers()
+                    refresh_covers_status()
             dt = min(now - last_tick, 1.0)
             last_tick = now
             # 미디어 세션을 못 찾으면 예전처럼 '멜론 창이 보이면 재생 중'으로 봅니다.
@@ -496,11 +556,13 @@ async def main() -> None:
 
                 # 곡 변경 감지
                 current_song_title = target_win.title.replace(" - Melon", "").strip()
-                if current_song_title != last_song_title:
+                # 곡이 없을 때의 창 제목('멜론 PC 플레이어' 등)은 '제목 - 가수' 형식이 아니므로 기록하지 않고,
+                # '이전 곡'으로도 기억하지 않습니다. 곡이 바뀌는 순간 잠깐 이 제목이 됐다가 같은 곡으로 돌아와도
+                # 같은 곡을 두 번 기록하지 않게 하려는 것입니다.
+                if is_song_title(current_song_title) and current_song_title != last_song_title:
+                    first_song = not last_song_title
                     last_song_title = current_song_title
-                    # 곡이 없을 때의 창 제목('멜론 PC 플레이어' 등)은 '제목 - 가수' 형식이 아니므로 기록하지 않습니다.
-                    if is_song_title(current_song_title):
-                        start_play(current_song_title)
+                    start_play(current_song_title, first=first_song)
                 elif is_song_title(current_song_title) and restarted:
                     start_play(current_song_title, repeat=True)
 
@@ -631,6 +693,10 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    if "--smoke-test" in sys.argv:
+        # 빌드 확인용 자체 점검 (build.ps1이 실행). 실제 설정·데이터·멜론은 건드리지 않습니다.
+        from core.smoke_test import run as run_smoke_test
+        sys.exit(run_smoke_test(sys.argv))
     if "--apply-update" in sys.argv:
         # 업데이트로 받은 새 exe가 '적용 모드'로 실행된 경우: 화면 없이 교체만 하고 끝냅니다.
         from core.update_install import run_apply_mode

@@ -56,6 +56,10 @@ class SettingPage(QWidget):
     overlay_edit_requested = Signal()
     overlay_reset_requested = Signal()
     ui_font_changed = Signal(str)
+    melon_lyrics_toggled = Signal(bool)
+    melon_covers_toggled = Signal(bool)
+    covers_backfill_requested = Signal()
+    covers_clear_requested = Signal()
 
     def __init__(self, config_manager: OverlayConfigManager, app_config=None):
         super().__init__()
@@ -478,12 +482,57 @@ class SettingPage(QWidget):
         privacy = self._lbl(
             "감상 기록은 암호화되지 않은 파일로 저장돼요. 데이터 폴더가 '문서' 안에 있고 OneDrive의 "
             "문서 폴더 백업이 켜져 있으면 클라우드에도 동기화될 수 있어요. 원하지 않으면 데이터 경로를 "
-            "OneDrive 밖으로 바꾸거나 기록 저장을 끄세요. 이미 쌓인 기록은 '감상 기록' 메뉴에서 지우거나 내보낼 수 있어요.",
+            "OneDrive 밖으로 바꾸거나 기록 저장을 끄세요. 이미 쌓인 기록은 '감상 기록' 메뉴에서 지우거나 내보낼 수 있어요. "
+            "감상 기록 파일은 PC 밖으로 보내지 않지만, 아래 '멜론 연동' 기능을 켜 두면 곡 제목과 가수가 멜론으로 전송돼요.",
             UIConfig.FS_DESC, secondary=True,
         )
         privacy.setWordWrap(True)
         sys_l.addWidget(privacy)
         lay.addWidget(sys_card)
+
+        lay.addWidget(self._section_lbl("멜론 연동"))
+        melon_card = Card()
+        ml = QVBoxLayout(melon_card)
+        ml.setContentsMargins(22, 16, 22, 16)
+        ml.setSpacing(12)
+        ml.addLayout(self._toggle_row(
+            "멜론에서 가사 원문 가져오기",
+            "곡이 바뀌면 멜론 웹에서 그 곡의 가사를 찾아, 화면에서 읽은 가사의 오타를 바로잡는 데 씁니다. "
+            "이때 곡 제목과 가수가 멜론으로 전송되고, 가사는 파일로 저장하지 않아요. "
+            "끄면 멜론에 요청하지 않고 화면에서 읽은 글자를 그대로 보여 줘요.",
+            getattr(self.app_config, "melon_lyrics", True),
+            self.melon_lyrics_toggled.emit, "melon_lyrics_check",
+        ))
+        ml.addWidget(self._hline())
+        ml.addLayout(self._toggle_row(
+            "앨범 커버 받기",
+            "가사를 찾은 곡의 앨범 커버를 멜론 이미지 서버에서 받아 데이터 폴더의 covers에 저장해요. "
+            "끄면 새 커버를 받지 않고, 이미 받은 커버만 보여 줘요.",
+            getattr(self.app_config, "melon_covers", True),
+            self.melon_covers_toggled.emit, "melon_covers_check",
+        ))
+        cover_row = QHBoxLayout()
+        self.covers_status = self._lbl("", UIConfig.FS_DESC, secondary=True)
+        self.covers_status.setWordWrap(True)
+        cover_row.addWidget(self.covers_status, 1)
+        self.btn_backfill = QPushButton("예전 기록 커버 채우기")
+        self.btn_backfill.setToolTip(
+            "감상 기록 중 커버가 없는 곡을 멜론에서 하나씩 천천히 찾아요. 곡마다 제목·가수가 멜론으로 전송돼요."
+        )
+        self.btn_backfill.clicked.connect(self.covers_backfill_requested.emit)
+        self.btn_clear_covers = QPushButton("받은 커버 지우기")
+        self.btn_clear_covers.clicked.connect(self.covers_clear_requested.emit)
+        cover_row.addWidget(self.btn_backfill)
+        cover_row.addWidget(self.btn_clear_covers)
+        ml.addLayout(cover_row)
+        note = self._lbl(
+            "멜론과 제휴하지 않은 비공식 기능이에요. 멜론으로 보내는 요청은 앱 이름을 밝히고, 1초에 한 번 이하로 보내며, "
+            "멜론이 거절하면 30분 동안 멈춰요.",
+            UIConfig.FS_DESC, secondary=True,
+        )
+        note.setWordWrap(True)
+        ml.addWidget(note)
+        lay.addWidget(melon_card)
 
         lay.addWidget(self._section_lbl("화면"))
         font_card = Card()
@@ -736,6 +785,11 @@ class SettingPage(QWidget):
         self.config.show_media_controls = checked
         self.config.save_to_file()
         self.settings_changed.emit()
+
+    def set_covers_status(self, text: str, backfilling: bool = False) -> None:
+        self.covers_status.setText(text)
+        self.btn_backfill.setEnabled(not backfilling and self.melon_covers_check.isChecked())
+        self.btn_backfill.setText("커버 찾는 중…" if backfilling else "예전 기록 커버 채우기")
 
     def _on_record_history_toggled(self, checked: bool) -> None:
         if self.app_config:

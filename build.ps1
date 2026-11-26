@@ -18,6 +18,10 @@ if (-not (Test-Path $python)) {
     throw "venv가 없습니다. INSTALL.md의 설치 방법대로 venv를 만들고 requirements-build.txt를 설치하세요."
 }
 
+# 오픈소스 고지(THIRD_PARTY_NOTICES.txt)를 지금 설치된 패키지 기준으로 다시 만듭니다.
+& $python tools\make_notices.py
+if ($LASTEXITCODE -ne 0) { throw "오픈소스 고지 생성 실패" }
+
 # PyInstaller는 진행 로그를 stderr로 씁니다. Windows PowerShell 5.1은 출력을 리디렉션하면 이것을
 # 오류로 바꿔 'Stop'에서 멈추므로, 이 단계만 Continue로 두고 종료 코드로 성공 여부를 판단합니다.
 $ErrorActionPreference = "Continue"
@@ -27,6 +31,15 @@ $ErrorActionPreference = "Stop"
 if ($buildExit -ne 0) { throw "PyInstaller 빌드 실패 (종료 코드 $buildExit)" }
 
 $exe = Join-Path $PSScriptRoot "dist\LyricsOverlay.exe"
+
+# 자체 점검: 빌드한 exe가 창·글꼴·아이콘·고지 파일을 제대로 갖췄는지 (실제 설정·데이터는 건드리지 않음)
+$smokeReport = Join-Path $PSScriptRoot "dist\smoke-test.txt"
+$smoke = Start-Process -FilePath $exe -ArgumentList '--smoke-test', "`"$smokeReport`"" -PassThru -Wait
+Get-Content -Encoding UTF8 $smokeReport | ForEach-Object { Write-Host "  $_" }
+if ($smoke.ExitCode -ne 0) { throw "자체 점검 실패 (종료 코드 $($smoke.ExitCode))" }
+
+# 릴리스에 함께 올릴 고지 파일
+Copy-Item THIRD_PARTY_NOTICES.txt (Join-Path $PSScriptRoot "dist\THIRD_PARTY_NOTICES.txt") -Force
 
 if ($env:LYRICSOVERLAY_SIGN_THUMBPRINT) {
     $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue

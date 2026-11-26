@@ -5,7 +5,7 @@ import os
 import sys
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal  # type: ignore
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPainterPath, QPixmap  # type: ignore
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap  # type: ignore
 from PySide6.QtWidgets import (  # type: ignore
     QApplication,
     QHBoxLayout,
@@ -39,11 +39,13 @@ from core.version import APP_VERSION
 class BrandMark(QWidget):
     """사이드바 상단 로고 마크.
 
-    asset/brand_mark.png가 있으면 그 이미지를, 없으면 워드마크 색(남색·청록)으로 'LO' 모노그램을 그립니다.
+    asset/brand_mark.png(앱 아이콘)가 있으면 그 이미지를, 없으면 아이콘과 같은 색(남색 타일·라벤더)으로
+    'LO' 모노그램을 그립니다.
     """
 
-    NAVY = "#24165E"
-    TEAL = "#5BC4C2"
+    NAVY = "#24165E"         # 라이트 테마 워드마크 글자
+    TILE = ("#14172F", "#262153")  # 아이콘 타일 그라데이션
+    LAVENDER = "#9E90FD"     # 아이콘의 밝은 가사 줄
 
     def __init__(self, size: int = 38, parent=None):
         super().__init__(parent)
@@ -61,9 +63,13 @@ class BrandMark(QWidget):
             clip.addRoundedRect(r, 10, 10)
             p.setClipPath(clip)
             p.drawPixmap(self.rect(), self._image)
+            self._draw_outline(p, r)
             return
+        grad = QLinearGradient(r.topLeft(), r.bottomRight())
+        grad.setColorAt(0, QColor(self.TILE[0]))
+        grad.setColorAt(1, QColor(self.TILE[1]))
         p.setPen(Qt.NoPen)
-        p.setBrush(QColor(self.NAVY))
+        p.setBrush(grad)
         p.drawRoundedRect(r, 10, 10)
         f = QFont(typography.family())
         f.setPixelSize(int(self.height() * 0.42))
@@ -75,12 +81,23 @@ class BrandMark(QWidget):
         base = (self.height() + fm.ascent() - fm.descent()) / 2
         p.setPen(QColor("#FFFFFF"))
         p.drawText(QPointF(x, base), "L")
-        p.setPen(QColor(self.TEAL))
+        p.setPen(QColor(self.LAVENDER))
         p.drawText(QPointF(x + lw - 1, base), "O")
+        self._draw_outline(p, r)
+
+    @staticmethod
+    def _draw_outline(p: QPainter, r: QRectF) -> None:
+        """다크 사이드바에서 남색 타일 윤곽이 묻히지 않게 아주 옅은 테두리를 안쪽에 그립니다."""
+        if theme_mod.active()["name"] != "dark":
+            return
+        p.setClipping(False)
+        p.setBrush(Qt.NoBrush)
+        p.setPen(QPen(QColor(255, 255, 255, 30), 1))
+        p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), 9.5, 9.5)
 
 
 class Wordmark(QWidget):
-    """'LYRICS / OVERLAY' 두 줄 워드마크 (로고 이미지와 같은 색 배치)."""
+    """'LYRICS / OVERLAY' 두 줄 워드마크. OVERLAY는 앱 강조색(다크 #9D90FF, 라이트 #5B4BE0)."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -102,7 +119,7 @@ class Wordmark(QWidget):
         f2.setWeight(QFont.Black)
         f2.setLetterSpacing(QFont.AbsoluteSpacing, 2.6)
         p.setFont(f2)
-        p.setPen(QColor(BrandMark.TEAL if t["name"] == "dark" else "#2A9D9B"))
+        p.setPen(QColor(t["accent"]))  # 앱 강조색(보라)과 아이콘 라벤더에 맞춤
         p.drawText(QRectF(0, 21, self.width(), 14), Qt.AlignLeft | Qt.AlignTop, "OVERLAY")
 
 
@@ -237,7 +254,8 @@ class MainWindow(QMainWindow):
         brand = QHBoxLayout()
         brand.setSpacing(10)
         brand.setContentsMargins(8, 0, 0, 0)
-        brand.addWidget(BrandMark())
+        self.brand_mark = BrandMark()
+        brand.addWidget(self.brand_mark)
         brand.addWidget(Wordmark(), 0, Qt.AlignVCenter)
         brand.addStretch()
         sidebar_layout.addLayout(brand)

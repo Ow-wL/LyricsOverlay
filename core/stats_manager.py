@@ -59,13 +59,19 @@ def load_stats(data_dir: str) -> dict:
     return default_stats
 
 
+# 곡이 없을 때의 멜론 창 제목. 1.2.4까지는 곡이 바뀌는 순간 이 제목이 감상 기록에 남았습니다.
+NON_SONG_TITLES = {"멜론 PC 플레이어", "Melon", "멜론"}
+
+
 def _sanitize_entry(entry) -> dict | None:
-    """감상 기록 한 건을 검사합니다. 제목이 없으면 버리고, 나머지는 기본값으로 채웁니다."""
+    """감상 기록 한 건을 검사합니다. 제목이 없거나 곡이 아닌 기록은 버리고, 나머지는 기본값으로 채웁니다."""
     if not isinstance(entry, dict) or not isinstance(entry.get("title"), str):
         return None
     clean = dict(entry)
     if not isinstance(clean.get("artist"), str):
         clean["artist"] = "Unknown"
+    if clean["title"].strip() in NON_SONG_TITLES and clean["artist"] in ("Unknown", ""):
+        return None
     ts = clean.get("timestamp")
     try:
         time.strptime(ts, "%Y-%m-%d %H:%M:%S")
@@ -95,6 +101,23 @@ def _sanitize_stats(data, default_stats: dict) -> dict:
     if data.get("theme") not in ("light", "dark"):
         data["theme"] = default_stats["theme"]
     return data
+
+
+def resumable_entry(history: list, title: str, artist: str, now: float, max_gap_sec: float = 900):
+    """프로그램을 다시 켰을 때(업데이트 재시작 등) 듣던 곡이 이어지는 중이면 그 기록을 돌려줍니다.
+
+    맨 위 기록이 같은 곡이고 시작한 지 max_gap_sec(기본 15분) 안이면 새 기록을 만들지 않고 이어서 셉니다.
+    """
+    if not history:
+        return None
+    top = history[0]
+    if top.get("title") != title or top.get("artist") != artist:
+        return None
+    try:
+        started = time.mktime(time.strptime(top.get("timestamp", ""), "%Y-%m-%d %H:%M:%S"))
+    except (TypeError, ValueError):
+        return None
+    return top if 0 <= now - started <= max_gap_sec else None
 
 
 def save_stats(stats: dict, data_dir: str) -> bool:

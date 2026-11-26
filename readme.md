@@ -13,7 +13,7 @@
 </div>
 
 > [!IMPORTANT]
-> **멜론과 연동되는 공식 프로그램이 아닙니다.** 멜론 창에 보이는 가사를 화면 캡처와 Windows OCR로 읽고, 멜론 웹의 원본 가사와 비교해 오타를 바로잡는 방식입니다. 그래서 멜론 창에 가사가 표시되어 있어야 하고, 멜론 화면이나 웹 페이지 구조가 바뀌면 인식이나 보정이 동작하지 않을 수 있습니다. 가사는 화면에 표시할 때만 조회하며 파일로 저장하지 않습니다.
+> **멜론과 연동되는 공식 프로그램이 아닙니다.** 멜론 창에 보이는 가사를 화면 캡처와 Windows OCR로 읽고, 멜론 웹의 원본 가사와 비교해 오타를 바로잡는 방식입니다. 그래서 멜론 창에 가사가 표시되어 있어야 하고, 멜론 화면이나 웹 페이지 구조가 바뀌면 인식이나 보정이 동작하지 않을 수 있습니다. 가사는 화면에 표시할 때만 조회하며 파일로 저장하지 않습니다. 멜론 웹 조회는 **설정 → 시스템 → 멜론 연동**에서 끌 수 있습니다.
 
 ## 목차
 
@@ -105,7 +105,7 @@ Get-FileHash .\LyricsOverlay.exe -Algorithm SHA256
 | 이전 곡 | `Ctrl` + `Shift` + `←` |
 | 프로그램 종료 | `Ctrl` + `Alt` + `Q` |
 
-**설정 → 단축키**에서 바꿉니다. 다른 프로그램에서 타이핑할 때도 동작하는 전역 단축키라 `Q`, `Shift+Q`처럼 글자 하나로 된 조합과 다른 기능과 겹치는 조합은 받지 않습니다. 재생 관련 단축키는 키보드 미디어 키와 같은 신호를 보내므로, 브라우저에서 영상을 재생 중이면 그쪽이 반응할 수 있습니다.
+**설정 → 단축키**에서 바꿉니다. 다른 프로그램에서 타이핑할 때도 동작하는 전역 단축키라 `Q`, `Shift+Q`처럼 글자 하나로 된 조합과 다른 기능과 겹치는 조합은 받지 않습니다. 재생 관련 단축키와 버튼은 멜론 창에 직접 명령을 보내므로 다른 앱은 반응하지 않습니다. 단축키를 누르고 있어도 한 번만 실행됩니다.
 
 ## 🔒 데이터와 개인정보
 
@@ -114,14 +114,19 @@ Get-FileHash .\LyricsOverlay.exe -Algorithm SHA256
 | 감상 기록, 누적 통계 | `문서\LyricsOverlay\lyrics_stats.json` | 평문 JSON. **설정 → 시스템**에서 기록 저장을 끄거나, **감상 기록**에서 지우고 내보낼 수 있습니다 |
 | 오버레이·단축키 설정, 가사 인식 영역 | `overlay_settings.json` | |
 | 스타일 프리셋 | `overlay_styles.json` | |
-| 데이터 폴더 위치, 기록 저장·자동 업데이트 확인 여부 | Windows 레지스트리 (`HKCU\Software\Ow-wL\LyricsOverlay`) | |
+| 앨범 커버 | `covers\` (곡 ID별 jpg, `index.json`) | **설정 → 시스템 → 받은 커버 지우기** |
+| 데이터 폴더 위치, 기록 저장·멜론 연동·자동 업데이트 확인 여부, 앱 글꼴 | Windows 레지스트리 (`HKCU\Software\Ow-wL\LyricsOverlay`) | |
 
-밖으로 나가는 요청은 두 가지입니다.
+감상 기록 파일은 PC 밖으로 보내지 않습니다. 밖으로 나가는 요청은 아래와 같습니다.
 
 | 요청 | 보내는 정보 | 끄는 방법 |
 |---|---|---|
-| 멜론 웹 가사 검색 (`www.melon.com`) | 재생 중인 곡 제목과 가수 | 없음 (끊기면 OCR 결과만 표시) |
+| 멜론 웹 가사 검색 (`www.melon.com`) | 재생 중인 곡 제목과 가수 | **설정 → 시스템 → 멜론에서 가사 원문 가져오기** (끄면 OCR 결과만 표시) |
+| 앨범 커버 (`cdnimg.melon.co.kr`) | 커버 이미지 주소 | **설정 → 시스템 → 앨범 커버 받기** |
+| 예전 기록 커버 채우기 (`www.melon.com`) | 커버가 없는 예전 곡의 제목과 가수 | 버튼을 눌렀을 때만 실행 |
 | 새 버전 확인 (`api.github.com`) | IP 주소, `LyricsOverlay/<버전>` User-Agent | **정보 → 새 버전 자동 확인** |
+
+멜론으로 가는 요청은 `LyricsOverlay/<버전>` User-Agent로 앱 이름을 밝히고, 요청 사이에 1초 이상 간격을 두며, 멜론이 거절하면 30분 동안 보내지 않습니다.
 
 문서 폴더가 OneDrive로 백업되고 있다면 감상 기록도 클라우드에 동기화될 수 있습니다. 원하지 않으면 **설정 → 시스템 → 경로 변경**으로 OneDrive 밖으로 옮기세요.
 
@@ -236,8 +241,9 @@ asset/               아이콘, 앱 글꼴(Pretendard·나눔스퀘어 네오·W
 
 ## 📝 고지
 
-- 개인 학습과 포트폴리오 용도로 만든 비공식 도구이며, 멜론(카카오엔터테인먼트)과 관계가 없습니다.
-- 가사는 재생 중에 웹에서 조회해 화면에 표시하는 데만 쓰고, 저장소나 데이터 파일에 가사 본문을 남기지 않습니다.
-- 내장 글꼴 Pretendard와 Wanted Sans는 SIL Open Font License 1.1([Pretendard](./asset/Font/OFL-Pretendard.txt), [Wanted Sans](./asset/Font/WantedSans/OFL-WantedSans.txt))을, 나눔스퀘어 네오는 [네이버 나눔글꼴 라이선스](./asset/Font/NanumSquareNeo/LICENSE-NanumSquareNeo.txt)를 따릅니다.
+- 개인 학습과 포트폴리오 용도로 만든 비공식 도구이며, 멜론(카카오엔터테인먼트)과 제휴하지 않았습니다. 멜론(Melon)은 카카오엔터테인먼트의 상표입니다.
+- 가사는 재생 중에 웹에서 조회해 화면에 표시하는 데만 쓰고, 데이터 파일에 가사 본문을 남기지 않습니다. 저장소의 스크린샷은 예시 가사와 대체 커버로 만든 것입니다.
+- Lyrics Overlay는 [MIT 라이선스](LICENSE)로 공개합니다. 배포 exe에 포함된 Qt·PySide6(LGPL-3.0) 등 오픈소스 구성요소와 글꼴의 라이선스는 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)에 있으며, 앱의 **정보 → 오픈소스 라이선스**에서도 열 수 있습니다.
+- 내장 글꼴 Pretendard와 Wanted Sans는 SIL Open Font License 1.1([Pretendard](./asset/Font/OFL-Pretendard.txt), [Wanted Sans](./asset/Font/WantedSans/OFL-WantedSans.txt))을, 나눔스퀘어 네오는 NAVER의 [SIL Open Font License 1.1](./asset/Font/NanumSquareNeo/LICENSE-NanumSquareNeo.txt)을 따릅니다.
 
 만든 사람: 이주형 ([@Ow-wL](https://github.com/Ow-wL)) · 문의와 버그 제보는 [Issues](https://github.com/Ow-wL/LyricsOverlay/issues)로 남겨 주세요.

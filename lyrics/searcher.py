@@ -1,4 +1,6 @@
 import requests  # type: ignore
+
+from core import melon_http
 from bs4 import BeautifulSoup  # type: ignore
 from rapidfuzz import fuzz  # type: ignore
 import re
@@ -104,14 +106,10 @@ class LyricsSearcher:
         self.current_song = ""
         self.cached_lyrics: list[str] = []
         self.session = requests.Session()
-        self.headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/123.0.0.0 Safari/537.36"
-            ),
-            "Referer": "https://www.melon.com/index.htm",
-        }
+        # 앱 이름을 밝히는 헤더 (브라우저인 척하지 않음). 요청 간격·거절 시 멈춤은 core.melon_http가 맡습니다.
+        self.headers = dict(melon_http.HEADERS)
+        # 설정 '멜론에서 가사 원문 가져오기'. 끄면 멜론에 요청하지 않고 OCR 결과만 씁니다.
+        self.enabled = True
         # requests.Session은 이 작업 스레드 하나에서만 씁니다.
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="lyrics")
         self._future: Future | None = None
@@ -132,6 +130,14 @@ class LyricsSearcher:
         """
         display_name = query.replace("- Melon", "").strip()
         if " - " not in display_name:
+            return [], None
+        if not self.enabled:
+            if display_name != self.current_song:
+                self.current_song = display_name
+                self.cached_lyrics = []
+                if self._future is not None:
+                    self._future.cancel()
+                    self._future = None
             return [], None
 
         if display_name != self.current_song:
@@ -181,8 +187,10 @@ class LyricsSearcher:
         requests의 timeout은 '응답 전체' 상한이 아니라 연결·읽기 대기 시간이라,
         조금씩 계속 오는 응답이나 비정상적으로 큰 응답이 검색 스레드를 오래 붙잡을 수 있습니다.
         """
+        melon_http.wait_turn()  # 최소 간격, 거절당한 뒤엔 쉬는 중이면 MelonPaused
         start = time.monotonic()
         with self.session.get(url, headers=self.headers, timeout=(5, 5), stream=True) as res:
+            melon_http.report_status(res.status_code)
             res.raise_for_status()  # 차단·서버 오류는 재시도 대상으로
             chunks, size = [], 0
             for chunk in res.iter_content(64 * 1024):
@@ -245,5 +253,7 @@ class LyricsSearcher:
 
             return [], f"❌ 가사 데이터 없음 (ID:{song_id}): {display_name}", False
 
+        except melon_http.MelonPaused as e:
+            return [], f"⏸ {e}: {display_name}", True
         except Exception as e:
             return [], f"⚠️ 에러: {display_name} ({e})", True

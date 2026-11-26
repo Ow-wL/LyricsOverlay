@@ -1,5 +1,7 @@
 """프로그램 및 개발자 정보 페이지."""
 
+import os
+
 from PySide6.QtCore import Qt, Signal  # type: ignore
 from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QPushButton, QVBoxLayout, QWidget  # type: ignore
 
@@ -63,6 +65,20 @@ class InfoPage(QWidget):
             grid.addWidget(value, i, 1)
         grid.setColumnStretch(1, 1)
         info_vbox.addLayout(grid)
+        info_vbox.addWidget(divider())
+        legal = QHBoxLayout()
+        legal_text = label(
+            "Lyrics Overlay는 MIT 라이선스로 공개된 비공식 도구입니다. 멜론(Melon)은 카카오엔터테인먼트의 상표이며, "
+            "이 프로그램은 멜론과 제휴하지 않았습니다.",
+            "Secondary", "font-size: 12px;",
+        )
+        legal_text.setWordWrap(True)
+        legal.addWidget(legal_text, 1)
+        self.notices_btn = QPushButton("오픈소스 라이선스")
+        self.notices_btn.setToolTip("앱에 포함된 오픈소스 소프트웨어와 글꼴의 라이선스 전문을 엽니다")
+        self.notices_btn.clicked.connect(self._open_notices)
+        legal.addWidget(self.notices_btn, 0, Qt.AlignVCenter)
+        info_vbox.addLayout(legal)
 
         layout.addWidget(info_card)
 
@@ -111,6 +127,18 @@ class InfoPage(QWidget):
         uv.addLayout(row)
         layout.addWidget(upd_card)
         layout.addStretch()
+
+    @staticmethod
+    def _open_notices() -> None:
+        from PySide6.QtCore import QUrl  # type: ignore
+        from PySide6.QtGui import QDesktopServices  # type: ignore
+        from core.utils import resource_path
+
+        path = resource_path("THIRD_PARTY_NOTICES.txt")
+        if os.path.exists(path):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+        else:  # 소스 실행 등으로 파일이 없으면 저장소의 파일을 엽니다
+            QDesktopServices.openUrl(QUrl("https://github.com/Ow-wL/LyricsOverlay/blob/main/THIRD_PARTY_NOTICES.txt"))
 
     def set_update_status(self, text: str, checking: bool = False) -> None:
         self.update_status.setText(text)

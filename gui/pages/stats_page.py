@@ -22,8 +22,7 @@ from gui.widgets.rank_list import RankList
 
 # matplotlib 폰트 설정 제거됨
 
-# 곡이 아닌데 기록된 창 제목 (곡이 없을 때 멜론 창 제목). 순위에서 뺍니다.
-NON_SONG_TITLES = {"멜론 PC 플레이어", "Melon", "멜론"}
+from core.stats_manager import NON_SONG_TITLES  # noqa: E402  (곡이 아닌 창 제목은 순위에서 뺌)
 
 
 def _is_song(e: dict) -> bool:
