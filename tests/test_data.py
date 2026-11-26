@@ -34,6 +34,14 @@ class StatsTest(unittest.TestCase):
         self.assertEqual((entry["artist"], entry["play_time_sec"]), ("Unknown", 0))
         self.assertEqual((stats["total_lines"], stats["theme"]), (0, "light"))
 
+    def test_song_id_kept_only_when_numeric(self):
+        with tempfile.TemporaryDirectory() as d:
+            write_json(os.path.join(d, "lyrics_stats.json"), {"play_history": [
+                {"title": "a", "song_id": "30244931"}, {"title": "b", "song_id": "../x"}]})
+            hist = sm.load_stats(d)["play_history"]
+        self.assertEqual(hist[0]["song_id"], "30244931")
+        self.assertNotIn("song_id", hist[1])
+
     def test_corrupt_file_is_kept_aside(self):
         with tempfile.TemporaryDirectory() as d:
             write_json(os.path.join(d, "lyrics_stats.json"), [1, 2])
