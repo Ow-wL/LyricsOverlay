@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LyricsOverlay 앱 아이콘 (32px 이상). 16~24px는 icon_small.svg를 씁니다.
+     asset/LyricsOverlay_icon.png 시안을 벡터로 옮긴 것(밝은 줄이 음표 머리로 이어지는 배치). 색: 타일 #14172F→#231F4E, 흐린 줄 #444179, 밝은 줄 #9E90FD -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14172F"/>
+      <stop offset="0.6" stop-color="#171A38"/>
+      <stop offset="1" stop-color="#262153"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1024" height="1024" rx="226" ry="226" fill="url(#tile)"/>
+  <!-- 가사 줄 (시안처럼 밝은 가운데 줄이 음표 머리로 이어짐) -->
+  <rect x="150" y="369" width="514" height="84" rx="42" fill="#444179"/>
+  <rect x="149" y="506" width="610" height="80" rx="40" fill="#9E90FD"/>
+  <rect x="149" y="638" width="422" height="84" rx="42" fill="#444179"/>
+  <!-- 8분음표: 둥근 머리 + 굵은 기둥 + 깃발 -->
+  <g fill="#FDFDFD">
+    <circle cx="753" cy="540" r="52"/>
+    <rect x="782" y="334" width="23" height="208" rx="4"/>
+    <path d="M 782 338 C 822 350 876 372 870 432 C 864 408 832 398 805 396 L 805 338 Z"/>
+  </g>
+</svg>

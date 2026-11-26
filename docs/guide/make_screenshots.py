@@ -209,7 +209,7 @@ shot("dashboard_onboarding_light.png")
 
 # 일반 대시보드
 dash.finish_onboarding()
-dash.set_now_playing("Supernova", "aespa")
+window.set_now_playing("Supernova", "aespa")
 dash.set_status("ok", "가사를 인식하고 있어요")
 dash.curr_lyric.setText(SAMPLE_LYRIC)
 shot("dashboard_light.png", readme=True)
