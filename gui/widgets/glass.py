@@ -1,16 +1,16 @@
 """글래스모피즘 공통 위젯: 오로라 배경, 내비게이션 버튼, 토글 스위치, 세그먼트 컨트롤 등."""
 
 from PySide6.QtCore import (  # type: ignore
-    Property, QEasingCurve, QPointF, QPropertyAnimation, QRectF, QSize, Qt, Signal,
+    Property, QEasingCurve, QPoint, QPointF, QPropertyAnimation, QRect, QRectF, QSize, Qt, Signal,
 )
 from PySide6.QtGui import (  # type: ignore
     QBrush, QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient,
 )
 from PySide6.QtWidgets import (  # type: ignore
-    QAbstractButton, QCheckBox, QFrame, QHBoxLayout, QLabel, QPushButton, QWidget,
+    QAbstractButton, QAbstractScrollArea, QCheckBox, QFrame, QHBoxLayout, QLabel, QPushButton, QWidget,
 )
 
-from gui import theme
+from gui import theme, typography
 from gui.icons import icon_font
 
 
@@ -81,6 +81,46 @@ class GlassBackground(QWidget):
             grad.setColorAt(1.0, c3)
             p.fillRect(self.rect(), QBrush(grad))
 
+        self._paint_card_shadows(p, t)
+
+    # 카드 그림자: 같은 위치에 늘 같은 픽셀을 그리므로, 일부만 다시 그려도 경계가 생기지 않습니다.
+    _SHADOW_STEPS = ((14, 0.10), (10, 0.16), (7, 0.22), (4, 0.24), (2, 0.28))
+
+    def _paint_card_shadows(self, p: QPainter, t: dict) -> None:
+        r, g, b, a = t["shadow"]
+        p.setPen(Qt.NoPen)
+        for card in self.findChildren(QFrame):
+            if not getattr(card, "casts_shadow", False) or not card.isVisible():
+                continue
+            rect = QRectF(QRect(card.mapTo(self, QPoint(0, 0)), card.size()))
+            clip = self._visible_area(card)
+            if clip is None:
+                continue
+            radius = 22 if card.objectName() == "Sidebar" else 20
+            # 카드 안쪽은 비워 둡니다 (반투명 유리 밑에 그림자가 비치면 카드가 탁해 보임)
+            outside = QPainterPath()
+            outside.addRect(clip)
+            inner = QPainterPath()
+            inner.addRoundedRect(rect.adjusted(1, 1, -1, -1), radius, radius)
+            p.save()
+            p.setClipPath(outside.subtracted(inner))
+            for spread, weight in self._SHADOW_STEPS:
+                p.setBrush(QColor(r, g, b, int(a * weight)))
+                p.drawRoundedRect(rect.adjusted(-spread * 0.6, -spread * 0.2 + 6, spread * 0.6, spread + 4),
+                                  radius + spread * 0.5, radius + spread * 0.5)
+            p.restore()
+
+    def _visible_area(self, card: QWidget):
+        """카드가 스크롤 영역 안에 있으면 그 보이는 부분까지만 그림자를 그립니다."""
+        area = QRectF(self.rect())
+        w = card.parentWidget()
+        while w is not None and w is not self:
+            if isinstance(w, QAbstractScrollArea):
+                vp = w.viewport()
+                area = area.intersected(QRectF(QRect(vp.mapTo(self, QPoint(0, 0)), vp.size())))
+            w = w.parentWidget()
+        return None if area.isEmpty() else area
+
 
 # ------------------------------------------------------------------ #
 # 내비게이션 버튼 (아이콘 + 글자, 선택 시 강조 배경)
@@ -136,10 +176,7 @@ class NavButton(KeyboardFocusMixin, QAbstractButton):
         p.setFont(icon_font(16))
         p.drawText(QRectF(14, 0, 22, self.height()), Qt.AlignVCenter | Qt.AlignHCenter, self.glyph)
 
-        font = QFont(self.font())
-        font.setFamily("Pretendard")
-        font.setPixelSize(14)
-        font.setWeight(QFont.Bold if self.isChecked() else QFont.DemiBold)
+        font = typography.font(14, QFont.Bold if self.isChecked() else QFont.DemiBold)
         p.setFont(font)
         p.drawText(QRectF(46, 0, self.width() - 50, self.height()), Qt.AlignVCenter | Qt.AlignLeft, self.text())
         if self.hasFocus() and self._kbd_focus:
@@ -240,7 +277,7 @@ def label(text: str, object_name: str = "", style: str = "") -> QLabel:
     if object_name:
         lbl.setObjectName(object_name)
     if style:
-        lbl.setStyleSheet(style)
+        typography.apply_css(lbl, style)
     return lbl
 
 

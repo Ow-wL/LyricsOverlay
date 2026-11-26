@@ -28,7 +28,8 @@ if os.name == 'nt':
 import cv2
 from PySide6.QtWidgets import QApplication  # type: ignore
 
-from core.hotkey_manager import HotkeyManager
+from core import melon_control
+from core.hotkey_manager import HotkeyManager, send_next_track, send_play_pause, send_prev_track
 from core.ocr_engine import OCR_HELP, OCR_KOREAN, OCR_STATUS, ocr_available, windows_native_ocr_split
 from core.stats_manager import load_stats, make_session_stats, parse_song_info, save_stats
 from core.window_capture import (
@@ -194,10 +195,40 @@ async def main() -> None:
     config_manager = window.config_manager
     matcher = LyricMatcher()
 
+    # 재생 명령 (버튼·단축키 공통): 멜론 세션에 한 번만 보내고, 안 되면 미디어 키로 대신합니다.
+    media_labels = {"prev": "이전 곡", "play_pause": "재생/일시정지", "next": "다음 곡"}
+    media_fallback = {"prev": send_prev_track, "play_pause": send_play_pause, "next": send_next_track}
+    last_media_cmd = {"key": "", "at": 0.0}
+    media_tasks: set = set()  # 실행 중인 명령 작업 (참조를 잡아 두어 중간에 사라지지 않게)
+
+    def send_media_command(key: str) -> None:
+        now_ = time.monotonic()
+        # 더블 클릭·키 반복으로 같은 명령이 연달아 오면 한 번만 처리
+        if key == last_media_cmd["key"] and now_ - last_media_cmd["at"] < 0.35:
+            return
+        last_media_cmd.update(key=key, at=now_)
+
+        async def run() -> None:
+            # 1) 멜론 창에 직접 (멜론만, 한 번)  2) 미디어 세션  3) Windows 미디어 키
+            how = ""
+            if not melon_control.send_app_command(key):
+                if await media.control(key):
+                    how = " (미디어 세션)"
+                else:
+                    media_fallback[key]()
+                    how = " (미디어 키)"
+            add_log(f"미디어 제어: {media_labels.get(key, key)}{how}")
+
+        task = asyncio.get_running_loop().create_task(run())
+        media_tasks.add(task)
+        task.add_done_callback(media_tasks.discard)
+
     # 단축키 매니저
     hotkey_mgr = HotkeyManager(
         on_ghost_toggle=lambda: _pending_actions.put(_on_toggle_mode),
         on_quit=lambda: _pending_actions.put(_on_quit),
+        # 단축키는 별도 스레드에서 오므로 메인 루프로 넘겨서 처리합니다.
+        on_media=lambda action: _pending_actions.put(lambda: send_media_command(action)),
     )
 
     def refresh_hotkeys() -> None:
@@ -214,9 +245,8 @@ async def main() -> None:
     refresh_hotkeys()
 
     # 재생 버튼 (대시보드 / 오버레이)
-    media_labels = {"prev": "이전 곡", "play_pause": "재생/일시정지", "next": "다음 곡"}
     def on_media_action(key: str) -> None:
-        add_log(f"미디어 제어: {media_labels.get(key, key)}")
+        send_media_command(key)
     window.dashboard_page.media_controls.action_triggered.connect(on_media_action)
     overlay.media_controls.action_triggered.connect(on_media_action)
     
