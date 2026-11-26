@@ -4,7 +4,6 @@ from PySide6.QtCore import Qt, QRectF, Signal  # type: ignore
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QBrush  # type: ignore
 from PySide6.QtWidgets import (  # type: ignore
     QFrame,
-    QGraphicsDropShadowEffect,
     QGridLayout,
     QPushButton,
     QSizePolicy,
@@ -19,23 +18,20 @@ from overlay.outlined_label import OutlinedLabel
 
 
 class Card(QFrame):
-    """반투명 유리 카드. 색은 전역 스타일시트(QFrame#Card)에서 정합니다."""
+    """반투명 유리 카드. 색은 전역 스타일시트(QFrame#Card)에서 정합니다.
+
+    그림자는 QGraphicsDropShadowEffect 대신 배경(GlassBackground)이 카드 뒤에 직접 그립니다.
+    효과를 걸면 카드 안 버튼 하나가 다시 그려질 때 그 부분만 따로 합성돼 반투명 유리에
+    사각형 경계(잔상)가 남고, 가사가 바뀔 때마다 카드 전체를 다시 그려 느려지기 때문입니다.
+    """
 
     def __init__(self, parent=None, shadow: bool = True):
         super().__init__(parent)
         self.setObjectName("Card")
-        self._shadow = None
-        if shadow:
-            self._shadow = QGraphicsDropShadowEffect(self)
-            self._shadow.setBlurRadius(36)
-            self._shadow.setXOffset(0)
-            self._shadow.setYOffset(10)
-            self.setGraphicsEffect(self._shadow)
-        self.refresh_theme()
+        self.casts_shadow = shadow
 
     def refresh_theme(self) -> None:
-        if self._shadow is not None:
-            self._shadow.setColor(QColor(*theme.active()["shadow"]))
+        """예전 호환용 (그림자 색은 배경이 테마에서 직접 읽음)."""
 
 
 class PresetItem(QFrame):
