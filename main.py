@@ -26,9 +26,9 @@ if os.name == 'nt':
         pass
 
 import cv2
-from PySide6.QtWidgets import QApplication  # type: ignore
+from PySide6.QtWidgets import QApplication, QMessageBox  # type: ignore
 
-from core import covers, melon_control
+from core import covers, melon_control, melon_http
 from core.hotkey_manager import HotkeyManager, send_next_track, send_play_pause, send_prev_track
 from core.ocr_engine import OCR_HELP, OCR_KOREAN, OCR_STATUS, ocr_available, windows_native_ocr_split
 from core.stats_manager import load_stats, make_session_stats, parse_song_info, resumable_entry, save_stats
@@ -279,7 +279,54 @@ async def main() -> None:
 
     # 앨범 커버 (데이터 폴더/covers). 화면은 core.covers.store를 통해 커버를 찾습니다.
     covers.store = covers.CoverStore(_app_config.data_dir)
+    covers.store.enabled = _app_config.melon_covers
     _app_config.add_listener(covers.store.set_data_dir)
+    matcher.searcher.enabled = _app_config.melon_lyrics
+    sp = window.setting_page
+
+    def refresh_covers_status() -> None:
+        left = covers.store.backfill_left
+        paused = melon_http.paused_for()
+        if paused:
+            text = f"멜론이 요청을 거절해 {int(paused) // 60 + 1}분 동안 쉬는 중이에요."
+        elif left:
+            text = f"예전 기록 커버를 찾는 중이에요 (남은 곡 {left}개)."
+        else:
+            text = f"받아 둔 커버 {covers.store.file_count()}개"
+        sp.set_covers_status(text, backfilling=bool(left))
+
+    def on_melon_lyrics(on: bool) -> None:
+        _app_config.melon_lyrics = on
+        matcher.searcher.enabled = on
+        add_log(f"멜론 가사 가져오기: {'켬' if on else '끔'}")
+
+    def on_melon_covers(on: bool) -> None:
+        _app_config.melon_covers = on
+        covers.store.enabled = on
+        if not on:
+            covers.store.cancel_backfill()
+        add_log(f"앨범 커버 받기: {'켬' if on else '끔'}")
+        refresh_covers_status()
+
+    def on_backfill() -> None:
+        n = covers.store.backfill(persistent_stats.get("play_history", []))
+        add_log(f"예전 기록 커버 채우기: {n}곡 예약" if n else "예전 기록 커버 채우기: 찾을 곡이 없어요")
+        refresh_covers_status()
+
+    def on_clear_covers() -> None:
+        if QMessageBox.question(window, "받은 커버 지우기",
+                                "받아 둔 앨범 커버를 모두 지울까요? 감상 기록은 그대로예요.") != QMessageBox.Yes:
+            return
+        n = covers.store.clear()
+        window.refresh_covers()
+        add_log(f"받은 커버 지움 ({n}개 파일)")
+        refresh_covers_status()
+
+    sp.melon_lyrics_toggled.connect(on_melon_lyrics)
+    sp.melon_covers_toggled.connect(on_melon_covers)
+    sp.covers_backfill_requested.connect(on_backfill)
+    sp.covers_clear_requested.connect(on_clear_covers)
+    refresh_covers_status()
     if recovered:
         add_log(f"이전 실행에서 남은 창 상태 {recovered}개 복구")
 
@@ -447,6 +494,7 @@ async def main() -> None:
                 restarted = is_restart(prev_state, media_state, current_song_played)
                 if covers.store.take_updated():
                     window.refresh_covers()
+                    refresh_covers_status()
             dt = min(now - last_tick, 1.0)
             last_tick = now
             # 미디어 세션을 못 찾으면 예전처럼 '멜론 창이 보이면 재생 중'으로 봅니다.

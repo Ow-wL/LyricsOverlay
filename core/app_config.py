@@ -134,6 +134,35 @@ class AppConfig:
         self._auto_update_check = bool(on)
         self.settings.setValue("auto_update_check", bool(on))
 
+    def _bool_setting(self, key: str, default: bool) -> bool:
+        cache = "_cache_" + key
+        if not hasattr(self, cache):
+            value = self.settings.value(key, default)
+            setattr(self, cache, value not in (False, "false", "0", 0))
+        return getattr(self, cache)
+
+    def _set_bool_setting(self, key: str, on: bool) -> None:
+        setattr(self, "_cache_" + key, bool(on))
+        self.settings.setValue(key, bool(on))
+
+    @property
+    def melon_lyrics(self) -> bool:
+        """멜론 웹에서 가사 원문을 가져와 OCR 오타를 보정할지 (기본 켬). 끄면 OCR 결과만 씁니다."""
+        return self._bool_setting("melon_lyrics", True)
+
+    @melon_lyrics.setter
+    def melon_lyrics(self, on: bool) -> None:
+        self._set_bool_setting("melon_lyrics", on)
+
+    @property
+    def melon_covers(self) -> bool:
+        """멜론 이미지 서버에서 앨범 커버를 받아 저장할지 (기본 켬)."""
+        return self._bool_setting("melon_covers", True)
+
+    @melon_covers.setter
+    def melon_covers(self, on: bool) -> None:
+        self._set_bool_setting("melon_covers", on)
+
     @property
     def ui_font(self) -> str:
         """앱 화면 글꼴 (gui.typography.UI_FONTS의 키). 가사 오버레이 글꼴과는 따로입니다."""

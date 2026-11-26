@@ -53,16 +53,78 @@ class CoverStoreTest(unittest.TestCase):
             self.assertIsNone(s.path_for("곡", "Unknown"))  # 가수를 모르면 찾지 않음
             self.assertTrue(s._jobs.empty())
 
-    def test_backfill_queued_once_and_misses_wait(self):
+    def test_no_automatic_backfill(self):
         with tempfile.TemporaryDirectory() as d:
             s = self.make(d)
-            s.path_for("곡", "가수")
-            s.path_for("곡", "가수")
+            s.path_for("곡", "가수")  # 화면에 보이기만 해서는 멜론에 요청하지 않음
+            self.assertTrue(s._jobs.empty())
+
+    def test_backfill_only_on_request_once_per_song(self):
+        with tempfile.TemporaryDirectory() as d:
+            s = self.make(d)
+            history = [{"title": "곡", "artist": "가수"}, {"title": "곡", "artist": "가수"},
+                       {"title": "곡2", "artist": "가수"}, {"title": "멜론 PC 플레이어", "artist": "Unknown"}]
+            s._index[cv._key("곡2", "가수")] = {"miss": time.time()}  # 최근에 못 찾은 곡
+            self.assertEqual(s.backfill(history), 1)
             self.assertEqual(s._jobs.qsize(), 1)
-            s._queued.clear()
-            s._index[cv._key("곡2", "가수")] = {"miss": time.time()}
-            s.path_for("곡2", "가수")
-            self.assertEqual(s._jobs.qsize(), 1)  # 최근에 못 찾은 곡은 다시 찾지 않음
+            self.assertEqual(s.backfill(history), 0)  # 이미 예약됨
+            s._finish(cv._key("곡", "가수"), counted=True)  # 작업이 끝나면 예약 표시가 풀림
+            self.assertNotIn(cv._key("곡", "가수"), s._queued)
+            self.assertEqual(s.backfill_left, 0)
+
+    def test_disabled_store_does_nothing(self):
+        with tempfile.TemporaryDirectory() as d:
+            s = self.make(d)
+            s.enabled = False
+            s.remember("a", "b", "12345", "https://cdnimg.melon.co.kr/a.jpg")
+            self.assertEqual(s.backfill([{"title": "곡", "artist": "가수"}]), 0)
+            self.assertTrue(s._jobs.empty())
+
+    def test_clear_removes_files_and_queue(self):
+        with tempfile.TemporaryDirectory() as d:
+            s = self.make(d)
+            os.makedirs(s.dir)
+            open(os.path.join(s.dir, "12345.jpg"), "wb").close()
+            s.backfill([{"title": "곡", "artist": "가수"}])
+            self.assertEqual(s.clear(), 1)
+            self.assertEqual(s.file_count(), 0)
+            self.assertTrue(s._jobs.empty())
+
+
+class MelonHttpTest(unittest.TestCase):
+    def tearDown(self):
+        from core import melon_http
+        melon_http._reset_for_tests()
+
+    def test_honest_user_agent(self):
+        from core import melon_http
+        from lyrics.searcher import LyricsSearcher
+
+        s = LyricsSearcher()
+        s.shutdown()
+        self.assertTrue(s.headers["User-Agent"].startswith("LyricsOverlay/"))
+        self.assertNotIn("Mozilla", s.headers["User-Agent"])
+        self.assertNotIn("Referer", s.headers)
+        self.assertEqual(s.headers["User-Agent"], melon_http.USER_AGENT)
+
+    def test_refusal_pauses_all_requests(self):
+        from core import melon_http
+
+        melon_http.report_status(200)
+        melon_http.wait_turn()  # 정상
+        melon_http.report_status(429)
+        self.assertGreater(melon_http.paused_for(), 60)
+        with self.assertRaises(melon_http.MelonPaused):
+            melon_http.wait_turn()
+
+    def test_disabled_searcher_makes_no_request(self):
+        from lyrics.searcher import LyricsSearcher
+
+        s = LyricsSearcher()
+        s.shutdown()
+        s.enabled = False
+        with mock.patch.object(s, "_get_text", side_effect=AssertionError("요청하면 안 됨")):
+            self.assertEqual(s.search_lyrics("곡 - 가수"), ([], None))
 
 
 class SongTitleTest(unittest.TestCase):
