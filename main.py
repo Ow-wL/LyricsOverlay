@@ -372,6 +372,7 @@ async def main() -> None:
                         add_log(f"새 버전 {payload.version} 있음")
                 elif kind == "latest":
                     window.info_page.set_update_status(f"최신 버전을 쓰고 있어요 ({APP_VERSION})")
+                    window.info_page.hide_install()
                 elif manual:
                     window.info_page.set_update_status(f"확인하지 못했어요. 인터넷 연결을 확인해 주세요. ({payload[:80]})")
                 else:
@@ -517,6 +518,12 @@ async def main() -> None:
                     fixed_lines, statuses = matcher.match_lines(lines, target_win.title)
                     for status in statuses:
                         add_log(status)
+
+                    # 가사를 찾았으면 멜론 곡 ID를 기록에 남겨, 감상 기록에서 바로 곡 페이지를 열 수 있게 합니다.
+                    if current_song_info is not None and "song_id" not in current_song_info:
+                        sid = matcher.searcher.song_id_for(target_win.title)
+                        if sid and parse_song_info(target_win.title.replace(" - Melon", "").strip()) == (current_song_info["title"], current_song_info["artist"]):
+                            current_song_info["song_id"] = sid
 
                     curr = fixed_lines[0] if len(fixed_lines) > 0 else "..."
                     nxt = fixed_lines[1] if len(fixed_lines) > 1 else ""

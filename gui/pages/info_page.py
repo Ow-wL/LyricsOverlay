@@ -14,6 +14,7 @@ class InfoPage(QWidget):
 
     check_update_requested = Signal()
     auto_check_toggled = Signal(bool)
+    install_requested = Signal()
 
     def __init__(self, auto_check: bool = True):
         super().__init__()
@@ -79,6 +80,12 @@ class InfoPage(QWidget):
         self.update_status.setWordWrap(True)
         top_text.addWidget(self.update_status)
         top.addLayout(top_text, 1)
+        # 새 버전이 있을 때만 보이는 버튼 (대시보드 알림을 닫아도 여기서 업데이트 가능)
+        self.install_btn = QPushButton("업데이트")
+        self.install_btn.setObjectName("PrimaryButton")
+        self.install_btn.clicked.connect(self.install_requested.emit)
+        self.install_btn.hide()
+        top.addWidget(self.install_btn, 0, Qt.AlignVCenter)
         self.check_btn = QPushButton("지금 확인")
         self.check_btn.clicked.connect(self.check_update_requested.emit)
         top.addWidget(self.check_btn, 0, Qt.AlignVCenter)
@@ -109,3 +116,10 @@ class InfoPage(QWidget):
         self.update_status.setText(text)
         self.check_btn.setEnabled(not checking)
         self.check_btn.setText("확인 중…" if checking else "지금 확인")
+
+    def show_install(self, can_install: bool) -> None:
+        self.install_btn.setText("업데이트" if can_install else "다운로드 페이지 열기")
+        self.install_btn.show()
+
+    def hide_install(self) -> None:
+        self.install_btn.hide()
