@@ -60,6 +60,8 @@ def run(argv: list[str]) -> int:
             app.processEvents()
             time.sleep(0.02)
         check("메인 창 생성", window.isVisible())
+        for key, _label, _family in typography.UI_FONTS:  # 선택형 글꼴도 exe에 들어 있는지 확인
+            typography.ensure_loaded(key)
         families = set(QFontDatabase.families())
         for key, label, family in typography.UI_FONTS:
             check(f"글꼴 {label}", family in families, family)
