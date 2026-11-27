@@ -104,20 +104,6 @@ class MelonWindowCommandTest(unittest.TestCase):
             self.assertFalse(mc.send_app_command("next"))
 
 
-class HotkeyRepeatTest(unittest.TestCase):
-    def test_held_key_runs_once_until_released(self):
-        from core.hotkey_manager import _OncePerPress
-
-        calls = []
-        once = _OncePerPress(lambda: calls.append(1))
-        for _ in range(13):  # 키를 누르고 있는 동안 들어오는 자동 반복
-            once()
-        self.assertEqual(len(calls), 1)
-        once.rearm()  # 키를 뗌
-        once()
-        self.assertEqual(len(calls), 2)
-
-
 class ButtonTest(unittest.TestCase):
     def test_buttons_emit_without_sending_keys(self):
         from PySide6.QtWidgets import QApplication, QPushButton  # type: ignore

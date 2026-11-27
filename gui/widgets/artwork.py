@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+from collections import OrderedDict
 
 from PySide6.QtCore import QRectF, Qt  # type: ignore
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPixmap  # type: ignore
@@ -16,7 +17,26 @@ _PALETTE = [
     ("#EECDA3", "#EF629F"), ("#4B79A1", "#283E51"),
 ]
 
-_cache: dict[tuple, QPixmap] = {}
+# 그린 커버 캐시. 곡을 많이 들어도 메모리가 계속 늘지 않게 가장 오래 안 쓴 것부터 버립니다(LRU).
+# 목록용 작은 커버(44~112px)는 개당 수십 KB라 넉넉히, 흐린 배경(240px)은 지금 곡 것만 있으면 되므로 몇 개만.
+_CACHE_MAX = 300
+_BLUR_MAX = 3
+_cache: "OrderedDict[tuple, QPixmap]" = OrderedDict()
+_blur_cache: "OrderedDict[tuple, QPixmap]" = OrderedDict()
+
+
+def _get(cache: OrderedDict, key):
+    pm = cache.get(key)
+    if pm is not None:
+        cache.move_to_end(key)
+    return pm
+
+
+def _put(cache: OrderedDict, key, pm: QPixmap, limit: int) -> None:
+    cache[key] = pm
+    cache.move_to_end(key)
+    while len(cache) > limit:
+        cache.popitem(last=False)
 
 
 def _load(path: str, px: int) -> QPixmap | None:
@@ -24,15 +44,13 @@ def _load(path: str, px: int) -> QPixmap | None:
         key = (path, px, os.path.getmtime(path))
     except OSError:
         return None
-    pm = _cache.get(key)
+    pm = _get(_cache, key)
     if pm is None:
         src = QPixmap(path)
         if src.isNull():
             return None
         pm = src.scaled(px, px, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-        if len(_cache) > 400:
-            _cache.clear()
-        _cache[key] = pm
+        _put(_cache, key, pm, _CACHE_MAX)
     return pm
 
 
@@ -90,12 +108,12 @@ def blurred_backdrop(title: str, artist: str, song_id=None) -> QPixmap | None:
         key = key + (os.path.getmtime(path),)
     except OSError:
         return None
-    pm = _cache.get(key)
+    pm = _get(_blur_cache, key)
     if pm is None:
         src = QPixmap(path)
         if src.isNull():
             return None
         tiny = src.scaled(6, 6, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
         pm = tiny.scaled(240, 240, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
-        _cache[key] = pm
+        _put(_blur_cache, key, pm, _BLUR_MAX)
     return pm

@@ -28,7 +28,6 @@ PACKAGES = [
     ("beautifulsoup4", "Beautiful Soup", "MIT", ""),
     ("soupsieve", "Soup Sieve", "MIT", ""),
     ("rapidfuzz", "RapidFuzz", "MIT", ""),
-    ("keyboard", "keyboard", "MIT", ""),
     ("winsdk", "Python/WinRT (winsdk)", "MIT", ""),
     ("pywin32", "pywin32", "PSF-2.0 등 (구성별)", ""),
     ("pyinstaller", "PyInstaller (부트로더)", "GPL-2.0-or-later + 부트로더 예외", "예외 조항에 따라 앱 라이선스에 영향 없음"),
