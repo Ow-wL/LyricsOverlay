@@ -24,19 +24,35 @@ UI_FONTS = [
 DEFAULT_KEY = "pretendard"
 
 _family = "Pretendard"
-_loaded = False
+_font_dir = ""
+_loaded_dirs: set[str] = set()
+
+# 선택형 글꼴이 들어 있는 asset/Font 하위 폴더. 글꼴 파일은 등록하면 통째로 메모리에 올라가므로,
+# 기본 글꼴(Pretendard, asset/Font 바로 아래)만 늘 올리고 이 글꼴들은 고른 경우에만 올립니다.
+_OPTIONAL_DIRS = {"nanum_square_neo": "NanumSquareNeo", "wanted_sans": "WantedSans"}
+
+
+def _register_dir(path: str) -> None:
+    if path in _loaded_dirs or not os.path.isdir(path):
+        return
+    for name in sorted(os.listdir(path)):
+        if name.lower().endswith((".ttf", ".otf")):
+            QFontDatabase.addApplicationFont(os.path.join(path, name))
+    _loaded_dirs.add(path)
 
 
 def load_fonts(font_dir: str) -> None:
-    """asset/Font 아래 글꼴 파일(.ttf/.otf, 하위 폴더 포함)을 앱에 등록합니다."""
-    global _loaded
-    if _loaded or not os.path.isdir(font_dir):
-        return
-    for root, _dirs, files in os.walk(font_dir):
-        for name in sorted(files):
-            if name.lower().endswith((".ttf", ".otf")):
-                QFontDatabase.addApplicationFont(os.path.join(root, name))
-    _loaded = True
+    """기본 글꼴(asset/Font 바로 아래 파일)을 앱에 등록합니다. 선택형 글꼴은 ensure_loaded()가 필요할 때 올립니다."""
+    global _font_dir
+    _font_dir = font_dir
+    _register_dir(font_dir)
+
+
+def ensure_loaded(key: str) -> None:
+    """고른 앱 글꼴의 파일이 아직 등록되지 않았으면 등록합니다."""
+    sub = _OPTIONAL_DIRS.get(key)
+    if sub and _font_dir:
+        _register_dir(os.path.join(_font_dir, sub))
 
 
 def font_key_valid(key) -> bool:
@@ -47,6 +63,7 @@ def set_font_key(key: str) -> None:
     global _family
     for k, _label, family in UI_FONTS:
         if k == key:
+            ensure_loaded(k)
             _family = family
             return
     _family = UI_FONTS[0][2]

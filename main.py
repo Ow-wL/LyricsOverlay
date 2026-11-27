@@ -25,10 +25,17 @@ if os.name == 'nt':
     except Exception:
         pass
 
+# 이 앱은 작은 이미지(가사 영역)만 다룹니다. numpy(OpenBLAS)·OpenCV가 CPU 코어 수만큼 스레드와
+# 메모리를 미리 잡지 않게 1개로 묶습니다. (16코어 PC에서 numpy만으로 약 490MB·15스레드를 잡던 것이 13MB로)
+# numpy·cv2를 import하기 전에 설정해야 효과가 있습니다.
+for _var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ.setdefault(_var, "1")
+
 import cv2
+cv2.setNumThreads(1)
 from PySide6.QtWidgets import QApplication, QMessageBox  # type: ignore
 
-from core import covers, melon_control, melon_http
+from core import autostart, covers, melon_control, melon_http
 from core.hotkey_manager import HotkeyManager, send_next_track, send_play_pause, send_prev_track
 from core.ocr_engine import OCR_HELP, OCR_KOREAN, OCR_STATUS, ocr_available, windows_native_ocr_split
 from core.stats_manager import load_stats, make_session_stats, parse_song_info, resumable_entry, save_stats
@@ -142,6 +149,15 @@ def _on_quit() -> None:
 # 메인 루프
 # ------------------------------------------------------------------ #
 
+def roi_unchanged(prev, cur, tolerance: float = 0.6) -> bool:
+    """가사 영역 그림이 지난번과 (거의) 같은지. 같으면 OCR을 다시 할 필요가 없습니다."""
+    if prev is None or prev.shape != cur.shape:
+        return False
+    if (prev == cur).all():
+        return True
+    return float(cv2.absdiff(prev, cur).mean()) < tolerance  # 압축·안티앨리어싱 잡음 정도는 같은 것으로
+
+
 def is_song_title(title: str) -> bool:
     """멜론 창 제목이 곡('제목 - 가수')인지. 곡이 없을 때는 '멜론 PC 플레이어' 같은 제목이 됩니다."""
     title = (title or "").strip()
@@ -198,7 +214,12 @@ async def main() -> None:
     # 히스토리 목록 초기화
     window.music_page.set_history(persistent_stats.get("play_history", []))
 
-    window.show()
+    # Windows 시작 시 자동 실행이면 창 없이 트레이로 시작합니다 (트레이가 없으면 창을 띄움).
+    autostart.sync_path()
+    if autostart.launched_by_autostart(sys.argv) and window.tray is not None:
+        window.hide()
+    else:
+        window.show()
 
     overlay = window.overlay
     config_manager = window.config_manager
@@ -418,6 +439,10 @@ async def main() -> None:
     last_shown: tuple = ()
     last_stats_ui = 0.0
     capture_future = None  # 아직 끝나지 않은 캡처 (멜론이 응답하지 않을 때)
+    # 가사 영역 화면이 지난번과 같으면 확대·OCR을 건너뛰고 지난 결과를 씁니다.
+    # 가사는 몇 초에 한 번 바뀌므로 0.2초마다 하던 OCR 대부분이 같은 그림이었습니다 (CPU 절약).
+    last_roi = None
+    last_ocr_lines: list[str] = []
 
     async def capture_pumped(hwnd_):
         """캡처를 작업 스레드에서 돌리는 동안 화면과 단축키 처리를 계속합니다."""
@@ -608,9 +633,12 @@ async def main() -> None:
                     else:
                         roi = full_img[y0:y1, x0:x1]
                 if roi is not None:
-                    scaled = cv2.resize(roi, None, fx=5, fy=5, interpolation=cv2.INTER_LANCZOS4)
-
-                    lines = await windows_native_ocr_split(scaled)
+                    if roi_unchanged(last_roi, roi):
+                        lines = last_ocr_lines
+                    else:
+                        scaled = cv2.resize(roi, None, fx=5, fy=5, interpolation=cv2.INTER_LANCZOS4)
+                        lines = await windows_native_ocr_split(scaled)
+                        last_roi, last_ocr_lines = roi.copy(), lines
                     if lines:
                         last_text_seen = now
                         set_status("ok", "가사를 인식하고 있어요", "" if OCR_KOREAN else OCR_STATUS)

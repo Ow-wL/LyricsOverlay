@@ -566,6 +566,19 @@ class SettingPage(QWidget):
             "완전히 끄려면 트레이 아이콘 메뉴의 '종료'나 종료 단축키를 쓰세요.",
             self.config.close_to_tray, self._on_close_to_tray_toggled, "close_to_tray_check",
         ))
+        wl.addWidget(self._hline())
+        from core import autostart
+        auto_desc = (
+            "로그인하면 Lyrics Overlay가 창 없이 트레이로 조용히 시작해 오버레이를 띄워요. "
+            "현재 사용자 계정의 시작 프로그램에만 등록돼요."
+            if autostart.supported() else
+            "exe로 실행할 때만 쓸 수 있어요 (지금은 소스에서 실행 중)."
+        )
+        wl.addLayout(self._toggle_row(
+            "Windows를 켤 때 자동 실행", auto_desc, autostart.is_enabled(),
+            self._on_autostart_toggled, "autostart_check",
+        ))
+        self.autostart_check.setEnabled(autostart.supported())
         lay.addWidget(win_card)
 
         lay.addStretch()
@@ -790,6 +803,15 @@ class SettingPage(QWidget):
         self.covers_status.setText(text)
         self.btn_backfill.setEnabled(not backfilling and self.melon_covers_check.isChecked())
         self.btn_backfill.setText("커버 찾는 중…" if backfilling else "예전 기록 커버 채우기")
+
+    def _on_autostart_toggled(self, checked: bool) -> None:
+        from core import autostart
+
+        if not autostart.set_enabled(checked):
+            self.autostart_check.blockSignals(True)
+            self.autostart_check.setChecked(autostart.is_enabled())
+            self.autostart_check.blockSignals(False)
+            QMessageBox.warning(self, "자동 실행", "시작 프로그램 등록을 바꾸지 못했어요.")
 
     def _on_record_history_toggled(self, checked: bool) -> None:
         if self.app_config:

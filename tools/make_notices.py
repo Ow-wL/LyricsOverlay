@@ -28,7 +28,6 @@ PACKAGES = [
     ("beautifulsoup4", "Beautiful Soup", "MIT", ""),
     ("soupsieve", "Soup Sieve", "MIT", ""),
     ("rapidfuzz", "RapidFuzz", "MIT", ""),
-    ("keyboard", "keyboard", "MIT", ""),
     ("winsdk", "Python/WinRT (winsdk)", "MIT", ""),
     ("pywin32", "pywin32", "PSF-2.0 등 (구성별)", ""),
     ("pyinstaller", "PyInstaller (부트로더)", "GPL-2.0-or-later + 부트로더 예외", "예외 조항에 따라 앱 라이선스에 영향 없음"),
@@ -138,7 +137,8 @@ def main() -> int:
         if os.path.exists(path):
             parts.append(section(title, read(path)))
 
-    with open(OUT, "w", encoding="utf-8", newline="\n") as f:
+    # 줄바꿈은 운영체제 기본값(Windows CRLF)으로: 저장소 체크아웃과 같아서 빌드 후 '변경됨'으로 뜨지 않음
+    with open(OUT, "w", encoding="utf-8") as f:
         f.write("\n".join(parts))
     print(f"{OUT} 생성 ({os.path.getsize(OUT) // 1024}KB)")
     return 0
