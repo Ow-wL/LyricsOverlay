@@ -138,7 +138,8 @@ def main() -> int:
         if os.path.exists(path):
             parts.append(section(title, read(path)))
 
-    with open(OUT, "w", encoding="utf-8", newline="\n") as f:
+    # 줄바꿈은 운영체제 기본값(Windows CRLF)으로: 저장소 체크아웃과 같아서 빌드 후 '변경됨'으로 뜨지 않음
+    with open(OUT, "w", encoding="utf-8") as f:
         f.write("\n".join(parts))
     print(f"{OUT} 생성 ({os.path.getsize(OUT) // 1024}KB)")
     return 0
