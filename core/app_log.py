@@ -30,6 +30,7 @@ _logger: logging.Logger | None = None
 _should_log: Callable[[], bool] = lambda: True
 _real_stdout = None
 _path: str | None = None
+_busy = threading.local()
 
 
 def log_path(directory: str | None = None) -> str:
@@ -52,6 +53,8 @@ def start(should_log: Callable[[], bool] | None = None, directory: str | None = 
         handler = logging.handlers.RotatingFileHandler(
             path, maxBytes=MAX_BYTES, backupCount=BACKUPS, encoding="utf-8", delay=True
         )
+        # 파일에 쓰지 못할 때 logging이 stderr로 내는 안내는 다시 이 로그로 돌아오므로 끕니다.
+        handler.handleError = lambda record: None
         handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%Y-%m-%d %H:%M:%S"))
         logger = logging.getLogger("lyricsoverlay.diagnostic")
         logger.setLevel(logging.INFO)
@@ -90,8 +93,9 @@ def stop() -> None:
 def write(message: str) -> None:
     """한 줄을 남깁니다. 가사 문장은 넘기지 마세요."""
     logger = _logger
-    if logger is None:
+    if logger is None or getattr(_busy, "on", False):
         return
+    _busy.on = True  # 로그를 쓰는 도중에 생긴 출력이 다시 로그로 들어오지 않게
     try:
         if not _should_log():
             return
@@ -100,6 +104,39 @@ def write(message: str) -> None:
                 logger.info(line.rstrip())
     except Exception:
         pass  # 로그 때문에 앱이 멈추면 안 됩니다
+    finally:
+        _busy.on = False
+
+
+def enabled() -> bool:
+    """지금 로그를 남기는 상태인지."""
+    try:
+        return _logger is not None and bool(_should_log())
+    except Exception:
+        return False
+
+
+def clear() -> int:
+    """남아 있는 로그 파일을 지웁니다 (로그를 끌 때). 지운 파일 수."""
+    if _logger is None or _path is None:
+        return 0
+    removed = 0
+    for handler in _logger.handlers:
+        try:
+            handler.acquire()
+            try:
+                handler.close()  # delay=True라 다음에 쓸 때 다시 엽니다
+            finally:
+                handler.release()
+        except Exception:
+            pass
+    for name in [_path] + [f"{_path}.{i}" for i in range(1, BACKUPS + 1)]:
+        try:
+            os.remove(name)
+            removed += 1
+        except OSError:
+            pass
+    return removed
 
 
 def console(*args) -> None:
@@ -129,6 +166,9 @@ class _Tee:
                 self.inner.write(text)
             except Exception:
                 pass
+        if not enabled():
+            self._buf = ""  # 꺼져 있는 동안 찍힌 내용이 나중에 켠 뒤 함께 남지 않게
+            return len(text)
         with self._lock:
             self._buf += text
             *lines, self._buf = self._buf.split("\n")

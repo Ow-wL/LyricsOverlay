@@ -539,7 +539,7 @@ class SettingPage(QWidget):
         ml.addLayout(cover_row)
         note = self._lbl(
             "멜론과 제휴하지 않은 비공식 기능이에요. 멜론으로 보내는 요청은 앱 이름을 밝히고, 1초에 한 번 이하로 보내며, "
-            "멜론이 거절하면 30분, 요청이 연달아 실패하면 10분 동안 멈춰요. 이미 들은 곡은 검색을 건너뛰어 요청을 줄여요.",
+            "멜론이 거절하면 30분, 요청이 여러 번 실패하면 10분 동안 멈춰요. 이미 들은 곡은 검색을 건너뛰어 요청을 줄여요.",
             UIConfig.FS_DESC, secondary=True,
         )
         note.setWordWrap(True)

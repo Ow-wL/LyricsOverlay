@@ -146,12 +146,12 @@ class LyricsSearcher:
         if " - " not in display_name:
             return [], None
         if not self.enabled:
-            if display_name != self.current_song:
-                self.current_song = display_name
-                self.cached_lyrics = []
-                if self._future is not None:
-                    self._future.cancel()
-                    self._future = None
+            # 지금 곡을 '아직 찾지 않은 곡'으로 둡니다. 그래야 같은 곡을 듣는 중에 다시 켜도 바로 찾습니다.
+            self.current_song = ""
+            self.cached_lyrics = []
+            if self._future is not None:
+                self._future.cancel()
+                self._future = None
             return [], None
 
         if display_name != self.current_song:
@@ -162,10 +162,10 @@ class LyricsSearcher:
             self._retry_at = None
             remembered = self._cached(display_name)
             if remembered is not None:
-                # 이번 실행에서 이미 받은 곡: 멜론에 다시 묻지 않습니다.
+                # 이번 실행에서 이미 받은 곡(가사가 없다는 결과 포함): 멜론에 다시 묻지 않습니다.
                 self._future = None
                 self.cached_lyrics = remembered
-                return self.cached_lyrics, f"✅ 다시 듣는 곡 (요청 없음): {display_name} ({len(remembered)}줄)"
+                return self.cached_lyrics, self._replay_status(display_name, remembered)
             self.cached_lyrics = []
             self._future = self._executor.submit(self._fetch, display_name, display_name)
             return [], f"🔎 가사 검색 중: {display_name}"
@@ -234,7 +234,7 @@ class LyricsSearcher:
         start = time.monotonic()
         try:
             with self.session.get(url, headers=self.headers, timeout=(5, 5), stream=True) as res:
-                melon_http.report_status(res.status_code)  # 거절이면 쉬고, 다른 오류 응답은 연속 실패로 셈
+                melon_http.report_status(res.status_code)  # 거절이면 쉬고, 다른 오류 응답은 실패로 셈
                 res.raise_for_status()  # 차단·서버 오류는 재시도 대상으로
                 chunks, size = [], 0
                 for chunk in res.iter_content(64 * 1024):
@@ -245,13 +245,15 @@ class LyricsSearcher:
                         raise TimeoutError(f"응답이 {_MAX_RESPONSE_SEC:.0f}초 안에 끝나지 않았습니다")
                     chunks.append(chunk)
                 encoding = res.encoding or res.apparent_encoding or "utf-8"
-        except (requests.ConnectionError, requests.Timeout, TimeoutError):
-            melon_http.report_error()  # 응답을 못 받은 실패도 연속 실패로 셈
+        except requests.HTTPError:
+            raise  # 응답 코드는 위의 report_status가 이미 셌습니다
+        except Exception:
+            melon_http.report_error()  # 연결 실패, 시간 초과, 비정상적으로 큰 응답도 실패로 셉니다
             raise
         return b"".join(chunks).decode(encoding, errors="replace")
 
-    def _load_detail(self, display_name: str, song_id: str) -> list[str]:
-        """곡 페이지 한 번으로 가사와 커버 주소를 받습니다. 가사가 없으면 빈 목록."""
+    def _load_detail(self, song_id: str) -> dict:
+        """곡 페이지 한 번으로 가사·커버 주소·페이지에 적힌 제목과 가수를 받습니다 (아직 아무 데도 기록하지 않음)."""
         soup = BeautifulSoup(self._get_text(f"https://www.melon.com/song/detail.htm?songId={song_id}"), "html.parser")
         lines: list[str] = []
         lyric_div = soup.select_one("#d_video_summary") or soup.select_one(".lyric_area")
@@ -260,50 +262,83 @@ class LyricsSearcher:
             found = [line.strip() for line in text_raw.split("\n") if line.strip()]
             if len(found) > 2:
                 lines = found
-        cover = cover_url_from_detail(soup)
+        og_title = soup.select_one('meta[property="og:title"]')  # '제목 - 가수'
+        title, artist = split_title((og_title.get("content") or "").strip()) if og_title else ("", "")
+        return {"lines": lines, "cover": cover_url_from_detail(soup), "title": title, "artist": artist}
+
+    @staticmethod
+    def _page_matches(page: dict, want_title: str, want_artist: str) -> bool:
+        """받은 곡 페이지가 찾는 곡이 맞는지. 페이지에서 제목을 읽지 못하면 확인할 수 없으므로 False."""
+        if not page.get("title"):
+            return False
+        return score_row(want_title, want_artist, page["title"], page.get("artist", "")) >= _MIN_ROW_SCORE
+
+    def _finish_song(self, display_name: str, song_id: str, page: dict, note: str = "") -> tuple[list[str], str, bool]:
+        """확인된 곡 페이지의 결과를 기록하고 돌려줍니다. 가사가 없다는 결과도 기억해 다시 묻지 않습니다."""
         # 커버 주소를 먼저, 곡 ID를 나중에 적습니다 (곡 ID가 보이면 커버 주소도 이미 있도록).
-        if cover:
+        if page.get("cover"):
             if len(self.song_covers) > 500:
                 self.song_covers.clear()
-            self.song_covers[display_name] = cover
+            self.song_covers[display_name] = page["cover"]
         if len(self.song_ids) > 500:
             self.song_ids.clear()
         self.song_ids[display_name] = str(song_id)
-        return lines
+        lines = page.get("lines") or []
+        self._remember(display_name, lines)
+        if lines:
+            extra = f", {note}" if note else ""
+            return lines, f"✅ 로드 성공: {display_name} ({len(lines)}줄{extra})", False
+        return [], f"❌ 가사 데이터 없음 (ID:{song_id}): {display_name}", False
+
+    @staticmethod
+    def _replay_status(display_name: str, lines: list[str]) -> str:
+        if lines:
+            return f"✅ 다시 듣는 곡 (요청 없음): {display_name} ({len(lines)}줄)"
+        return f"❌ 가사 없는 곡 (요청 없음): {display_name}"
 
     def _fetch(self, query: str, display_name: str) -> tuple[list[str], str, bool]:
         """(백그라운드 스레드) 멜론에서 가사를 가져옵니다.
 
         Returns (lines, status_message, retryable)
         """
+        # 이 작업이 차례를 기다리는 사이에 같은 곡을 이미 받았을 수 있습니다 (A → B → A로 빨리 넘긴 경우).
+        cached = self._cached(display_name)
+        if cached is not None:
+            return cached, self._replay_status(display_name, cached), False
+
         want_title, want_artist = split_title(query)
         search_query = search_query_for(want_title, want_artist)
 
         try:
             # 1) 예전에 알아 둔 곡 ID가 있으면 검색을 건너뛰고 곡 페이지만 받습니다 (요청 2번 → 1번).
+            #    받은 페이지의 제목·가수가 찾는 곡과 맞을 때만 씁니다 (잘못 기록된 ID로 다른 곡 가사를 쓰지 않도록).
             known = self._known_id(display_name)
+            page, known_failed = None, False
             if known:
                 try:
-                    lines = self._load_detail(display_name, known)
+                    page = self._load_detail(known)
                 except melon_http.MelonPaused:
                     raise
                 except Exception as e:
+                    known_failed = True
                     print(f"[DEBUG] 알고 있던 곡 ID({known})로 받지 못해 검색합니다: {e}")
-                    lines = []
-                if lines:
-                    self._remember(display_name, lines)
-                    return lines, f"✅ 로드 성공: {display_name} ({len(lines)}줄, 검색 생략)", False
+                if page is not None and self._page_matches(page, want_title, want_artist):
+                    return self._finish_song(display_name, known, page, "검색 생략")
+                if page is not None:
+                    print(f"[DEBUG] 알고 있던 곡 ID({known})의 페이지가 찾는 곡과 달라 검색합니다")
 
             # 2) 멜론에서 곡을 검색합니다.
             search_url = f"https://www.melon.com/search/song/index.htm?q={quote(search_query)}"
             rows = parse_search_rows(self._get_text(search_url))
             if not rows:
                 print(f"[DEBUG] 검색 결과 없음: {search_query}")
+                self._remember(display_name, [])
                 return [], f"❌ 검색 결과 없음: {display_name}", False
 
             best, score = pick_best_row(rows, want_title, want_artist)
             if best is None:
                 # 첫 결과를 그냥 쓰면 다른 곡의 가사로 '보정'해 버리므로 OCR 원문을 그대로 씁니다.
+                self._remember(display_name, [])
                 return [], f"❌ 같은 곡을 찾지 못함 (가장 비슷한 결과 {score:.0f}점): {display_name}", False
             song_id = str(best[0])
             print(f"[DEBUG] 찾은 곡 ID: {song_id} ({best[1]} - {best[2]}, {score:.0f}점)")
@@ -311,14 +346,13 @@ class LyricsSearcher:
             if not song_id or len(song_id) < 5:
                 return [], f"❌ 올바른 곡 ID를 찾지 못함: {display_name}", False
             if song_id == known:
-                # 방금 그 곡 페이지에서 가사를 못 찾았습니다. 같은 페이지를 다시 받지 않습니다.
-                return [], f"❌ 가사 데이터 없음 (ID:{song_id}): {display_name}", False
+                if known_failed or page is None:
+                    # 방금 그 곡 페이지를 받지 못했습니다. 같은 요청을 바로 되풀이하지 않고 잠시 뒤 다시 시도합니다.
+                    return [], f"⚠️ 에러: {display_name} (곡 페이지를 받지 못함)", True
+                # 검색도 같은 곡이라고 확인했습니다. 이미 받은 페이지를 그대로 씁니다 (다시 받지 않음).
+                return self._finish_song(display_name, song_id, page)
 
-            lines = self._load_detail(display_name, song_id)
-            if lines:
-                self._remember(display_name, lines)
-                return lines, f"✅ 로드 성공: {display_name} ({len(lines)}줄)", False
-            return [], f"❌ 가사 데이터 없음 (ID:{song_id}): {display_name}", False
+            return self._finish_song(display_name, song_id, self._load_detail(song_id))
 
         except melon_http.MelonPaused as e:
             return [], f"⏸ {e}: {display_name}", True

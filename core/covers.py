@@ -159,8 +159,6 @@ class CoverStore:
                 n += 1
         if n and not auto:
             self._backfill_started = time.monotonic()
-        with self._lock:
-            self.backfill_left += n
         return n, left_over
 
     def _backfill_wanted(self, title: str, artist: str) -> bool:
@@ -181,6 +179,8 @@ class CoverStore:
         with self._lock:
             info = self._index.get(key)
             self._queued.add(key)
+            # 작업을 넘기기 전에 셉니다 (작업이 먼저 끝나 버리면 수가 줄지 않은 채 남습니다).
+            self.backfill_left += 1
         if info and info.get("song_id") and valid_cover_url(info.get("url")):
             self._jobs.put(("download", key, info["song_id"], info["url"], True))  # 채우기에서 온 작업
         else:
@@ -301,7 +301,7 @@ class CoverStore:
             try:
                 res = fetcher.session.get(url + _RESIZE, headers=fetcher.headers, timeout=(5, 10), stream=True)
             except (requests.ConnectionError, requests.Timeout):
-                melon_http.report_error()  # 응답을 못 받은 실패도 연속 실패로 셈
+                melon_http.report_error()  # 응답을 못 받은 실패도 셈
                 raise
             melon_http.report_status(res.status_code)
             res.raise_for_status()

@@ -315,6 +315,10 @@ class WindowStyleGuard:
             except Exception as e:  # 한 창에서 실패해도 나머지 창은 복구합니다
                 print(f"[⚠️] 창 상태 복구 실패 (hwnd={hwnd}): {e}")
 
+    def pending_count(self) -> int:
+        """아직 원래대로 되돌리지 못한 창 수."""
+        return len(self._originals)
+
     def recover_from_file(self) -> int:
         """지난 실행이 비정상 종료돼 남은 창 상태를 복구합니다. 복구한 창 수를 반환.
 

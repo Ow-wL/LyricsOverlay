@@ -507,6 +507,9 @@ class MainWindow(QMainWindow):
     def _set_diagnostic_log(self, on: bool) -> None:
         if hasattr(self.app_config, "diagnostic_log"):
             self.app_config.diagnostic_log = on
+        if not on:
+            from core import app_log
+            app_log.clear()  # 끄면 남아 있던 로그도 지웁니다
 
     def _set_auto_update_check(self, on: bool) -> None:
         if hasattr(self.app_config, "auto_update_check"):

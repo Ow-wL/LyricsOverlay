@@ -34,8 +34,13 @@ $exe = Join-Path $PSScriptRoot "dist\LyricsOverlay.exe"
 
 # 자체 점검: 빌드한 exe가 창·글꼴·아이콘·고지 파일을 제대로 갖췄는지 (실제 설정·데이터는 건드리지 않음)
 $smokeReport = Join-Path $PSScriptRoot "dist\smoke-test.txt"
+if (Test-Path $smokeReport) { Remove-Item $smokeReport -Force }  # 지난 빌드의 보고서를 이번 결과로 착각하지 않게
 $smoke = Start-Process -FilePath $exe -ArgumentList '--smoke-test', "`"$smokeReport`"" -PassThru -Wait
-Get-Content -Encoding UTF8 $smokeReport | ForEach-Object { Write-Host "  $_" }
+if (Test-Path $smokeReport) {
+    Get-Content -Encoding UTF8 $smokeReport | ForEach-Object { Write-Host "  $_" }
+} else {
+    throw "자체 점검이 보고서를 남기지 못하고 끝났습니다 (종료 코드 $($smoke.ExitCode)). exe가 시작하다 멈췄을 수 있습니다."
+}
 if ($smoke.ExitCode -ne 0) { throw "자체 점검 실패 (종료 코드 $($smoke.ExitCode))" }
 
 # 릴리스에 함께 올릴 고지 파일

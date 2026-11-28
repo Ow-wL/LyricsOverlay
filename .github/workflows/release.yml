@@ -36,6 +36,8 @@ jobs:
       PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 태그가 main에 들어간 커밋인지 확인하려면 기록이 필요합니다
 
       - uses: actions/setup-python@v5
         with:
@@ -43,13 +45,20 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-build.txt
 
-      - name: 태그와 앱 버전이 같은지 확인
+      - name: 태그가 main의 커밋이고 앱 버전과 같은지 확인
         if: github.ref_type == 'tag'
         shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor $env:GITHUB_SHA origin/main
+          if ($LASTEXITCODE -ne 0) {
+            throw "태그 $env:TAG 가 가리키는 커밋이 main에 없습니다. main에 머지된 커밋에만 릴리스 태그를 붙여 주세요."
+          }
           $version = python -c "from core.version import APP_VERSION; print(APP_VERSION)"
-          if ($version -ne "${{ github.ref_name }}") {
-            throw "태그(${{ github.ref_name }})와 core/version.py의 APP_VERSION($version)이 다릅니다."
+          if ($version -ne $env:TAG) {
+            throw "태그($env:TAG)와 core/version.py의 APP_VERSION($version)이 다릅니다."
           }
 
       - name: 빌드 환경 만들기 (venv)
@@ -119,12 +128,25 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$TAG" --draft --verify-tag \
-            --title "Lyrics Overlay $TAG" \
-            --notes-file release/notes.md \
-            release/LyricsOverlay.exe \
-            release/LyricsOverlay.exe.sha256.txt \
-            "release/LyricsOverlay_Guide_v$TAG.html" \
-            "release/LyricsOverlay_Guide_v$TAG.pdf" \
+          files=(
+            release/LyricsOverlay.exe
+            release/LyricsOverlay.exe.sha256.txt
+            "release/LyricsOverlay_Guide_v$TAG.html"
+            "release/LyricsOverlay_Guide_v$TAG.pdf"
             release/THIRD_PARTY_NOTICES.txt
-          echo "초안을 만들었습니다. 변경 내용을 적고 게시해 주세요: https://github.com/$GH_REPO/releases"
+          )
+          # 다시 실행한 경우: 초안이 이미 있으면 파일만 새로 올립니다. 이미 게시된 릴리스는 건드리지 않습니다.
+          if state=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$state" != "true" ]; then
+              echo "::error::$TAG 릴리스가 이미 게시돼 있습니다. 게시된 릴리스의 파일은 바꾸지 않습니다."
+              exit 1
+            fi
+            gh release upload "$TAG" "${files[@]}" --clobber
+            echo "기존 초안의 파일을 새로 올렸습니다 (적어 둔 변경 내용은 그대로입니다)."
+          else
+            gh release create "$TAG" --draft --verify-tag \
+              --title "Lyrics Overlay $TAG" \
+              --notes-file release/notes.md \
+              "${files[@]}"
+          fi
+          echo "초안: https://github.com/$GH_REPO/releases 에서 exe를 받아 확인하고, 변경 내용을 적은 뒤 게시해 주세요."

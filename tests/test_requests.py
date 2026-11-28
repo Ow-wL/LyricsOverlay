@@ -17,8 +17,10 @@ SEARCH = "https://www.melon.com/search/song/index.htm"
 DETAIL = "https://www.melon.com/song/detail.htm?songId="
 
 
-def detail_page(lines=("첫 줄", "둘째 줄", "셋째 줄", "넷째 줄"), cover=COVER) -> str:
+def detail_page(lines=("첫 줄", "둘째 줄", "셋째 줄", "넷째 줄"), cover=COVER, title="곡 - 가수") -> str:
     meta = f'<meta property="og:image" content="{cover}">' if cover else ""
+    if title:
+        meta += f'<meta property="og:title" content="{title}">'
     body = "<br>".join(lines)
     return f'<html><head>{meta}</head><body><div id="d_video_summary">{body}</div></body></html>'
 
@@ -87,15 +89,67 @@ class SkipSearchTest(unittest.TestCase):
         self.assertEqual(len(lines), 4)
         self.assertEqual(s.song_id_for("곡 - 가수"), "1234567")
 
-    def test_song_without_lyrics_is_not_fetched_twice(self):
+    def test_song_without_lyrics_is_asked_once(self):
         pages = Pages({"1234567": detail_page(lines=())}, search_page())
         s = make_searcher(pages)
         s.id_lookup = lambda name: "1234567"
         lines, status, retry = s._fetch("곡 - 가수", "곡 - 가수")
-        self.assertEqual(pages.kinds(), ["detail:1234567", "search"])  # 같은 곡 페이지를 다시 받지 않음
+        self.assertEqual(pages.kinds(), ["detail:1234567"])  # 맞는 곡이고 가사가 없을 뿐: 검색하지 않음
         self.assertEqual(lines, [])
         self.assertFalse(retry)
         self.assertIn("가사 데이터 없음", status)
+
+        lines, status, _retry = s._fetch("곡 - 가수", "곡 - 가수")  # 다른 곡을 듣고 돌아와도
+        self.assertEqual(len(pages.calls), 1)  # 다시 묻지 않음
+        self.assertIn("요청 없음", status)
+
+    def test_wrong_known_id_is_not_trusted(self):
+        """알고 있던 ID의 페이지가 다른 곡이면 그 가사를 쓰지 않고, 검색으로 맞는 곡을 찾습니다."""
+        pages = Pages({"1111111": detail_page(lines=("다른", "곡의", "가사", "입니다"), title="전혀 다른 노래 - 남"),
+                       "1234567": detail_page()}, search_page())
+        s = make_searcher(pages)
+        s.id_lookup = lambda name: "1111111"
+        lines, _status, _retry = s._fetch("곡 - 가수", "곡 - 가수")
+        self.assertEqual(pages.kinds(), ["detail:1111111", "search", "detail:1234567"])
+        self.assertEqual(lines[0], "첫 줄")
+        self.assertEqual(s.song_id_for("곡 - 가수"), "1234567")  # 틀린 ID는 남기지 않음
+
+    def test_unverifiable_page_is_confirmed_by_search_without_refetch(self):
+        """페이지에서 제목을 읽지 못하면 검색으로 확인하되, 같은 곡이면 받은 페이지를 그대로 씁니다."""
+        pages = Pages({"1234567": detail_page(title="")}, search_page())
+        s = make_searcher(pages)
+        s.id_lookup = lambda name: "1234567"
+        lines, _status, _retry = s._fetch("곡 - 가수", "곡 - 가수")
+        self.assertEqual(pages.kinds(), ["detail:1234567", "search"])
+        self.assertEqual(len(lines), 4)
+
+    def test_failed_page_is_retried_later_not_marked_empty(self):
+        pages = Pages({"1234567": RuntimeError("timeout")}, search_page())
+        s = make_searcher(pages)
+        s.id_lookup = lambda name: "1234567"
+        lines, status, retry = s._fetch("곡 - 가수", "곡 - 가수")
+        self.assertEqual(pages.kinds(), ["detail:1234567", "search"])
+        self.assertTrue(retry)  # '가사 없음'으로 확정하지 않고 잠시 뒤 다시 시도
+        self.assertIsNone(s._cached("곡 - 가수"))
+
+    def test_job_started_late_uses_what_is_already_known(self):
+        pages = Pages({"1234567": detail_page()}, search_page())
+        s = make_searcher(pages)
+        s._remember("곡 - 가수", ["a", "b", "c"])
+        lines, status, _retry = s._fetch("곡 - 가수", "곡 - 가수")
+        self.assertEqual(pages.calls, [])
+        self.assertEqual(lines, ["a", "b", "c"])
+
+    def test_turning_lyrics_back_on_searches_current_song(self):
+        s = make_searcher(Pages({}))
+        submitted = []
+        s._executor = mock.Mock(submit=lambda *a, **k: submitted.append(a))
+        s.enabled = False
+        s.search_lyrics("곡 - 가수")
+        self.assertEqual(submitted, [])
+        s.enabled = True
+        s.search_lyrics("곡 - 가수")  # 같은 곡을 듣는 중에 다시 켬
+        self.assertEqual(len(submitted), 1)
 
     def test_bad_lookup_value_is_ignored(self):
         pages = Pages({"1234567": detail_page()}, search_page())
@@ -151,16 +205,37 @@ class FailurePauseTest(unittest.TestCase):
         melon_http.report_error()  # 응답 없음도 실패로 셈
         self.assertGreater(melon_http.paused_for(), melon_http.FAIL_PAUSE_SEC - 5)
         self.assertEqual(melon_http.pause_reason(), melon_http.ERRORS)
-        self.assertIn("계속 실패", melon_http.pause_text())
+        self.assertIn("여러 번 실패", melon_http.pause_text())
         with self.assertRaises(melon_http.MelonPaused):
             melon_http.wait_turn()
 
-    def test_success_resets_the_streak(self):
-        for _ in range(melon_http.FAIL_LIMIT - 1):
+    def test_successes_in_between_do_not_hide_failures(self):
+        """검색은 되는데 곡 페이지만 계속 실패하는 경우에도 멈춰야 합니다."""
+        for _ in range(melon_http.FAIL_LIMIT):
+            melon_http.report_status(200)
+            melon_http.report_status(500)
+        self.assertGreater(melon_http.paused_for(), 0)
+
+    def test_old_failures_are_forgotten(self):
+        real = time.monotonic()
+        with mock.patch.object(melon_http.time, "monotonic", return_value=real):
+            for _ in range(melon_http.FAIL_LIMIT - 1):
+                melon_http.report_status(500)
+        with mock.patch.object(melon_http.time, "monotonic", return_value=real + melon_http.FAIL_WINDOW_SEC + 1):
+            melon_http.report_status(500)
+            self.assertEqual(melon_http.paused_for(), 0)
+
+    def test_missing_song_page_is_not_a_failure(self):
+        for _ in range(melon_http.FAIL_LIMIT + 2):
             melon_http.report_status(404)
-        melon_http.report_status(200)
-        melon_http.report_status(404)
         self.assertEqual(melon_http.paused_for(), 0)
+
+    def test_short_pause_does_not_shorten_a_long_one(self):
+        melon_http.report_status(429)  # 30분
+        for _ in range(melon_http.FAIL_LIMIT):
+            melon_http.report_error()  # 10분짜리 멈춤이 뒤늦게 걸려도
+        self.assertGreater(melon_http.paused_for(), melon_http.FAIL_PAUSE_SEC + 60)
+        self.assertEqual(melon_http.pause_reason(), melon_http.REFUSED)
 
     def test_refusal_reason_and_text(self):
         melon_http.report_status(429)
@@ -211,6 +286,7 @@ class AutoBackfillTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             s = self.make(d)
             self.assertEqual(s.backfill(self.history, limit=1, auto=True), (1, 3))
+            self.assertEqual(s.backfill_left, 1)
             self.assertEqual(s.backfill_wait(), 0)  # 자동 채우기는 버튼의 대기 시간을 시작하지 않음
             self.assertEqual(s.backfill(self.history, limit=1, auto=True), (0, 0))  # 앞의 것이 끝날 때까지 기다림
             self.done(s, "곡0")
@@ -269,7 +345,29 @@ class AppLogTest(unittest.TestCase):
         self.enabled = False
         app_log.write("새로운 곡 감지: 비밀 곡 - 가수")
         print("[DEBUG] 찾은 곡 ID: 1 (비밀 곡 - 가수)")
-        self.assertNotIn("비밀 곡", self.read())
+        print("[DEBUG] 줄바꿈 없이 끝난 비밀 조각", end="")
+        self.enabled = True
+        print(" 그리고 다시 켠 뒤 이어진 줄")
+        text = self.read()
+        self.assertNotIn("비밀", text)  # 꺼져 있던 동안의 조각이 나중에 함께 남지 않음
+        self.assertIn("다시 켠 뒤 이어진 줄", text)
+
+    def test_clear_removes_existing_files(self):
+        app_log.write("남아 있던 줄")
+        self.assertIn("남아 있던 줄", self.read())
+        self.assertGreaterEqual(app_log.clear(), 1)
+        self.assertFalse(os.path.exists(self.path))
+        app_log.write("지운 뒤 새로 쓴 줄")  # 다시 켜면 새 파일로 이어 씀
+        self.assertIn("지운 뒤 새로 쓴 줄", self.read())
+        self.assertNotIn("남아 있던 줄", self.read())
+
+    def test_write_failure_does_not_loop_back(self):
+        """파일에 쓰지 못해도 그 오류가 다시 로그로 들어와 되풀이되지 않아야 합니다."""
+        handler = app_log._logger.handlers[0]
+        with mock.patch.object(handler, "emit", side_effect=lambda record: print("쓰는 중에 생긴 출력")):
+            app_log.write("한 줄")  # 재귀 없이 끝나야 함
+        app_log.write("그 뒤의 줄")
+        self.assertIn("그 뒤의 줄", self.read())
 
     def test_stop_restores_streams(self):
         self.assertIsInstance(sys.stdout, app_log._Tee)

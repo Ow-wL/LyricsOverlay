@@ -171,7 +171,7 @@ def is_song_title(title: str) -> bool:
 def link_song(song_info: dict, searcher, window_title: str) -> tuple[bool, str | None]:
     """가사 검색이 알아낸 멜론 곡 ID를 기록에 붙이고, 커버 주소를 알게 됐으면 돌려줍니다.
 
-    Returns (곡 ID를 이번에 붙였는지, 커버 주소 또는 None)
+    Returns (곡 ID를 이번에 붙이거나 바로잡았는지, 커버 주소 또는 None)
 
     곡 ID는 검색이 끝나면 바로 알지만, 커버 주소는 그 뒤 곡 페이지를 받아야(요청 간격 때문에 1초 이상 뒤)
     알게 됩니다. 그래서 곡 ID를 붙인 뒤에도 커버 주소가 올 때까지 계속 불러야 합니다.
@@ -182,7 +182,8 @@ def link_song(song_info: dict, searcher, window_title: str) -> tuple[bool, str |
     playing = parse_song_info(window_title.replace(" - Melon", "").strip())
     if playing != (song_info["title"], song_info["artist"]):
         return False, None  # 창 제목이 이미 다음 곡으로 바뀜
-    added = "song_id" not in song_info
+    # 이어 듣는 기록에 예전 곡 ID가 있어도, 이번에 확인한 곡 ID와 다르면 바로잡습니다.
+    added = song_info.get("song_id") != sid
     if added:
         song_info["song_id"] = sid
     return added, searcher.cover_for(window_title)
@@ -416,9 +417,13 @@ async def main() -> None:
         healed = style_guard.heal_orphans()
         if config_manager.hide_melon_window:
             config_manager.hide_melon_window = False
-            config_manager.save_to_file()
+            config_manager.save_now()  # 바로 저장: 직후에 꺼져도 다음 실행에서 다시 숨기지 않게
             window.sync_controls()
-        add_log("멜론 창을 원래대로 되돌렸어요 ('멜론 창 숨기기' 끔)" + (f", 남아 있던 창 {healed}개 복구" if healed else ""))
+        left = style_guard.pending_count()
+        if left:
+            add_log(f"멜론 창 {left}개를 아직 되돌리지 못했어요. 잠시 뒤 다시 눌러 주세요 ('멜론 창 숨기기'는 껐어요)")
+        else:
+            add_log("멜론 창을 원래대로 되돌렸어요 ('멜론 창 숨기기' 끔)" + (f", 남아 있던 창 {healed}개 복구" if healed else ""))
 
     window.melon_restore_requested.connect(on_restore_melon)
     sp.covers_clear_requested.connect(on_clear_covers)
@@ -823,6 +828,8 @@ async def main() -> None:
         if window.tray is not None:
             window.tray.hide()
         config_manager.save_now()
+        # 멜론 요청을 쉬는 중이면 그 상태를 남깁니다 (1초마다 저장하지만, 그 사이에 꺼질 수 있으므로).
+        _app_config.set_melon_pause(melon_http.paused_until_epoch(), melon_http.pause_reason())
         if _app_config:
             save_stats(persistent_stats, _app_config.data_dir)
         matcher.searcher.shutdown()
