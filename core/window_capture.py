@@ -289,6 +289,8 @@ class WindowStyleGuard:
         ]
         # hwnd -> {"pid", "exe", "created", "exstyle", "layered": [key, alpha, flags] | None, "topmost"}
         self._originals: dict[int, dict] = {}
+        # 고정 폴더의 기록을 읽지 못한 동안에는, 기록할 것이 없다는 이유로 그 파일을 지우지 않습니다.
+        self._keep_state_file = False
 
     # -- 공개 API ------------------------------------------------------ #
 
@@ -309,7 +311,10 @@ class WindowStyleGuard:
 
     def restore_all(self) -> None:
         for hwnd in list(self._originals):
-            self.restore(hwnd)
+            try:
+                self.restore(hwnd)
+            except Exception as e:  # 한 창에서 실패해도 나머지 창은 복구합니다
+                print(f"[⚠️] 창 상태 복구 실패 (hwnd={hwnd}): {e}")
 
     def recover_from_file(self) -> int:
         """지난 실행이 비정상 종료돼 남은 창 상태를 복구합니다. 복구한 창 수를 반환.
@@ -317,23 +322,32 @@ class WindowStyleGuard:
         기록이 없어도 고스트 상태로 남아 있는 멜론 창은 함께 되돌립니다 (`heal_orphans`).
         """
         saved: dict[int, dict] = {}
+        unreadable: set[str] = set()  # 있는데 지금 읽지 못한 기록 (지우지 않고 다음 실행에서 다시 읽음)
         for path in [*self._legacy_paths, self._state_path]:  # 고정 폴더의 기록이 우선
-            saved.update(self._load(path))
+            records = self._load(path)
+            if records is None:
+                unreadable.add(path)
+            else:
+                saved.update(records)
+        self._keep_state_file = self._state_path in unreadable
 
         recovered = 0
         for hwnd, original in saved.items():
-            original = _sanitize_original(original)
-            status = self._window_status(hwnd, original)
-            if status == "gone":
-                continue  # 창이 이미 닫혔거나 다른 프로세스의 창 (복구 불필요)
-            if status == "same" and self._restore_one(hwnd, original):
-                recovered += 1
-            else:
-                self._originals[hwnd] = original  # 다음 기회에 다시 시도
+            try:
+                original = _sanitize_original(original)
+                status = self._window_status(hwnd, original)
+                if status == "gone":
+                    continue  # 창이 이미 닫혔거나 다른 프로세스의 창 (복구 불필요)
+                if status == "same" and self._restore_one(hwnd, original):
+                    recovered += 1
+                    continue
+            except Exception as e:  # 한 기록에서 실패해도 나머지 기록과 창은 계속 처리합니다
+                print(f"[⚠️] 창 상태 복구 실패 (hwnd={hwnd}): {e}")
+            self._originals[hwnd] = original  # 다음 기회에 다시 시도
         if self._persist():
             for path in self._legacy_paths:  # 남은 기록은 고정 폴더로 옮겨졌습니다
                 try:
-                    if os.path.exists(path):
+                    if path not in unreadable and os.path.exists(path):
                         os.remove(path)
                 except OSError:
                     pass
@@ -343,13 +357,18 @@ class WindowStyleGuard:
         """기록 없이 고스트 상태로 남은 멜론 창을 찾아 되돌립니다. 되돌린 창 수를 반환.
 
         기록이 다른 곳에 남았거나 지워진 채 투명한 창만 남은 경우를 위한 안전망입니다.
+        이 앱이 고스트를 거는 창은 보이고 제목이 있는 창뿐이므로, 그런 창만 대상으로 삼습니다
+        (멜론이 스스로 쓰는 숨은 보조 창은 건드리지 않습니다).
         """
         suspects: list[int] = []
 
         def _collect(hwnd, _):
             try:
-                if hwnd not in self._originals and (
-                    win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE) & _GHOST_BITS == _GHOST_BITS
+                if (
+                    hwnd not in self._originals
+                    and win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE) & _GHOST_BITS == _GHOST_BITS
+                    and win32gui.IsWindowVisible(hwnd)
+                    and win32gui.GetWindowText(hwnd)
                 ):
                     suspects.append(hwnd)
             except Exception:
@@ -379,21 +398,38 @@ class WindowStyleGuard:
     # -- 내부 ---------------------------------------------------------- #
 
     @staticmethod
-    def _load(path: str) -> dict[int, dict]:
+    def _read_text(path: str) -> str:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    @classmethod
+    def _load(cls, path: str) -> dict[int, dict] | None:
+        """기록을 읽습니다. 파일은 있는데 지금 열 수 없으면(잠김 등) None.
+
+        None이면 그 파일을 지우지 않습니다: 잠깐 못 읽은 것을 "기록 없음"으로 보면 멀쩡한 기록을 잃습니다.
+        내용이 깨진 파일은 다시 읽어도 쓸 수 없으므로 빈 기록으로 봅니다.
+        """
         if not os.path.exists(path):
             return {}
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                return {
-                    int(k): v for k, v in json.load(f).items()
-                    if isinstance(v, dict) and isinstance(v.get("exstyle"), int)
-                    and (v.get("layered") is None or (
-                        isinstance(v.get("layered"), list) and len(v["layered"]) == 3
-                        and all(isinstance(x, int) for x in v["layered"])
-                    ))
-                }
+            text = cls._read_text(path)
+        except OSError as e:
+            print(f"[⚠️] 창 상태 기록을 지금 읽을 수 없습니다 (남겨 둠): {e}")
+            return None
+        except ValueError as e:  # UTF-8이 아닌 내용 (깨진 파일)
+            print(f"[⚠️] 창 상태 기록이 깨져 있어 쓰지 않습니다: {e}")
+            return {}
+        try:
+            return {
+                int(k): v for k, v in json.loads(text).items()
+                if isinstance(v, dict) and isinstance(v.get("exstyle"), int)
+                and (v.get("layered") is None or (
+                    isinstance(v.get("layered"), list) and len(v["layered"]) == 3
+                    and all(isinstance(x, int) for x in v["layered"])
+                ))
+            }
         except Exception as e:
-            print(f"[⚠️] 창 상태 기록을 읽지 못했습니다: {e}")
+            print(f"[⚠️] 창 상태 기록이 깨져 있어 쓰지 않습니다: {e}")
             return {}
 
     @staticmethod
@@ -407,7 +443,10 @@ class WindowStyleGuard:
                 return "gone"
         except Exception:
             return "gone"
-        ident = get_window_identity(hwnd)
+        try:
+            ident = get_window_identity(hwnd)
+        except Exception:
+            ident = None
         if ident is None:
             return "unknown"
         if (
@@ -462,7 +501,9 @@ class WindowStyleGuard:
             if not _is_ghost_state(exstyle, layered):
                 return True
             ident = get_window_identity(hwnd)
-            if ident is None or not ident.is_melon:
+            if ident is None:
+                return False  # 창은 있는데 프로세스 확인에 실패: 다음에 다시 시도
+            if not ident.is_melon:
                 return True  # 멜론이 아닌 창은 건드리지 않습니다
             return self._restore_one(hwnd, _sanitize_original({
                 "pid": ident.pid,
@@ -521,12 +562,26 @@ class WindowStyleGuard:
 
     def _persist(self) -> bool:
         try:
+            if self._originals and self._keep_state_file:
+                # 아까 읽지 못한 기록 위에 덮어쓰기 전에 한 번 더 읽어, 거기 있던 창도 함께 기록합니다.
+                # 여전히 읽을 수 없으면 쓰지 않습니다 (기록을 못 남기면 고스트도 적용하지 않습니다).
+                pending = self._load(self._state_path)
+                if pending is None:
+                    return False
+                for hwnd, original in pending.items():
+                    mine = self._originals.get(hwnd)
+                    same_window = mine is not None and all(
+                        mine.get(k) == original.get(k) for k in ("pid", "exe", "created")
+                    )
+                    if mine is None or same_window:  # 같은 창이면 먼저 적힌 쪽이 진짜 원래 상태
+                        self._originals[hwnd] = _sanitize_original(original)
             if self._originals:
                 os.makedirs(self._state_dir, exist_ok=True)
                 atomic_write_json(
                     self._state_path, {str(k): v for k, v in self._originals.items()}
                 )
-            elif os.path.exists(self._state_path):
+                self._keep_state_file = False  # 새 기록으로 바꿨으므로 보존할 옛 파일은 더 없습니다
+            elif os.path.exists(self._state_path) and not self._keep_state_file:
                 os.remove(self._state_path)
             return True
         except Exception as e:

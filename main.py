@@ -185,7 +185,11 @@ async def main() -> None:
     # (이후 단계에서 무엇이 실패해도 멜론 창은 원래대로 돌아오게)
     # 복구 기록은 데이터 폴더와 무관한 고정 폴더에 둡니다. 예전 버전은 데이터 폴더에 적었으므로 거기도 읽습니다.
     style_guard = WindowStyleGuard(legacy_dirs=(_app_config.data_dir,))
-    recovered = style_guard.recover_from_file()
+    try:
+        recovered = style_guard.recover_from_file()
+    except Exception as e:  # 복구가 실패해도 앱 시작은 막지 않습니다
+        print(f"[⚠️] 이전 실행의 창 상태 복구 실패: {e}")
+        recovered = 0
 
     persistent_stats = load_stats(_app_config.data_dir)
     session_stats = make_session_stats(persistent_stats)
