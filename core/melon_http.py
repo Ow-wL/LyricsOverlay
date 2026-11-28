@@ -108,22 +108,28 @@ def _note_failure(what: str) -> None:
     with _lock:
         _fail_times[:] = [t for t in _fail_times if now - t < FAIL_WINDOW_SEC] + [now]
         tripped = len(_fail_times) >= FAIL_LIMIT
+        if tripped:
+            _apply_pause(FAIL_PAUSE_SEC, ERRORS)  # 같은 잠금 안에서: 그 사이에 다른 요청이 끼어들지 않게
     if tripped:
-        _pause(FAIL_PAUSE_SEC, ERRORS)
         print(f"[⚠️] 멜론 요청이 {FAIL_WINDOW_SEC // 60}분 안에 {FAIL_LIMIT}번 실패했습니다 ({what}). "
               f"{FAIL_PAUSE_SEC // 60}분 동안 요청하지 않습니다.")
 
 
 def _pause(seconds: float, reason: str) -> None:
-    global _blocked_until, _blocked_until_epoch, _reason
     with _lock:
-        _fail_times.clear()
-        until = time.monotonic() + seconds
-        if until <= _blocked_until:
-            return  # 이미 더 오래 쉬는 중입니다 (짧은 멈춤이 긴 멈춤을 줄이지 않게)
-        _blocked_until = until
-        _blocked_until_epoch = time.time() + seconds
-        _reason = reason
+        _apply_pause(seconds, reason)
+
+
+def _apply_pause(seconds: float, reason: str) -> None:
+    """(_lock을 잡은 상태에서 부릅니다)"""
+    global _blocked_until, _blocked_until_epoch, _reason
+    _fail_times.clear()
+    until = time.monotonic() + seconds
+    if until <= _blocked_until:
+        return  # 이미 더 오래 쉬는 중입니다 (짧은 멈춤이 긴 멈춤을 줄이지 않게)
+    _blocked_until = until
+    _blocked_until_epoch = time.time() + seconds
+    _reason = reason
 
 
 def _reset_for_tests() -> None:

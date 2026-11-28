@@ -21,6 +21,9 @@ _MAX_RESPONSE_SEC = 15.0
 # 이번 실행에서 가사를 받은 곡을 이만큼 기억합니다 (메모리에만, 파일로 저장하지 않음).
 # 같은 곡을 다시 들을 때 멜론에 다시 묻지 않기 위한 것입니다.
 _CACHE_SONGS = 50
+# '가사를 찾지 못했다'는 결과는 이만큼만 기억합니다. 멜론이 잠깐 비정상 페이지를 준 것일 수 있어서,
+# 실행이 끝날 때까지 굳혀 두지 않습니다.
+_NEGATIVE_TTL_SEC = 10 * 60
 
 _SONG_ID = re.compile(r"^\d{5,12}$")
 
@@ -129,7 +132,8 @@ class LyricsSearcher:
         # 예전에 알아 둔 곡 ID를 찾는 함수 ('제목 - 가수' → 곡 ID 또는 None). 알면 검색을 건너뛰고 곡 페이지만 받습니다.
         # 검색 작업 스레드에서 부르므로, 읽기만 하는 가벼운 함수여야 합니다.
         self.id_lookup: Callable[[str], str | None] | None = None
-        self._cache: "OrderedDict[str, list[str]]" = OrderedDict()  # 이번 실행에서 받은 가사 (메모리에만)
+        # 이번 실행에서 받은 가사 (메모리에만): '제목 - 가수' → (가사 줄, 기억한 시각)
+        self._cache: "OrderedDict[str, tuple[list[str], float]]" = OrderedDict()
         self._cache_lock = threading.Lock()
 
     def search_lyrics(self, query: str) -> tuple[list[str], str | None]:
@@ -203,14 +207,19 @@ class LyricsSearcher:
 
     def _cached(self, display_name: str) -> list[str] | None:
         with self._cache_lock:
-            lines = self._cache.get(display_name)
-            if lines is not None:
-                self._cache.move_to_end(display_name)
+            item = self._cache.get(display_name)
+            if item is None:
+                return None
+            lines, at = item
+            if not lines and time.monotonic() - at > _NEGATIVE_TTL_SEC:
+                del self._cache[display_name]  # '없음'은 오래 믿지 않고 다시 확인합니다
+                return None
+            self._cache.move_to_end(display_name)
             return lines
 
     def _remember(self, display_name: str, lines: list[str]) -> None:
         with self._cache_lock:
-            self._cache[display_name] = lines
+            self._cache[display_name] = (lines, time.monotonic())
             self._cache.move_to_end(display_name)
             while len(self._cache) > _CACHE_SONGS:
                 self._cache.popitem(last=False)
@@ -332,13 +341,15 @@ class LyricsSearcher:
             rows = parse_search_rows(self._get_text(search_url))
             if not rows:
                 print(f"[DEBUG] 검색 결과 없음: {search_query}")
-                self._remember(display_name, [])
+                if not known:  # 예전에 찾았던 곡인데 지금만 안 나온 것이면 기억하지 않습니다
+                    self._remember(display_name, [])
                 return [], f"❌ 검색 결과 없음: {display_name}", False
 
             best, score = pick_best_row(rows, want_title, want_artist)
             if best is None:
                 # 첫 결과를 그냥 쓰면 다른 곡의 가사로 '보정'해 버리므로 OCR 원문을 그대로 씁니다.
-                self._remember(display_name, [])
+                if not known:
+                    self._remember(display_name, [])
                 return [], f"❌ 같은 곡을 찾지 못함 (가장 비슷한 결과 {score:.0f}점): {display_name}", False
             song_id = str(best[0])
             print(f"[DEBUG] 찾은 곡 ID: {song_id} ({best[1]} - {best[2]}, {score:.0f}점)")

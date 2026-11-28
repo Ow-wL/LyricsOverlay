@@ -132,6 +132,42 @@ class SkipSearchTest(unittest.TestCase):
         self.assertTrue(retry)  # '가사 없음'으로 확정하지 않고 잠시 뒤 다시 시도
         self.assertIsNone(s._cached("곡 - 가수"))
 
+    def test_no_lyrics_result_is_only_remembered_for_a_while(self):
+        """멜론이 잠깐 비정상 페이지를 준 것일 수 있으므로 '가사 없음'은 오래 믿지 않습니다."""
+        from lyrics import searcher as mod
+        pages = Pages({"1234567": detail_page(lines=())}, search_page())
+        s = make_searcher(pages)
+        s._fetch("곡 - 가수", "곡 - 가수")
+        self.assertEqual(s._cached("곡 - 가수"), [])
+        later = time.monotonic() + mod._NEGATIVE_TTL_SEC + 1
+        with mock.patch.object(mod.time, "monotonic", return_value=later):
+            self.assertIsNone(s._cached("곡 - 가수"))  # 시간이 지나면 다시 확인
+
+    def test_lyrics_stay_remembered(self):
+        from lyrics import searcher as mod
+        s = make_searcher(Pages({}))
+        s._remember("곡 - 가수", ["a", "b", "c"])
+        later = time.monotonic() + mod._NEGATIVE_TTL_SEC * 10
+        with mock.patch.object(mod.time, "monotonic", return_value=later):
+            self.assertEqual(s._cached("곡 - 가수"), ["a", "b", "c"])
+
+    def test_empty_search_for_a_known_song_is_not_remembered(self):
+        """예전에 찾았던 곡이 지금만 검색에 안 나오면(일시적일 수 있음) '없음'으로 기억하지 않습니다."""
+        pages = Pages({"1234567": RuntimeError("timeout")}, search="<html></html>")
+        s = make_searcher(pages)
+        s.id_lookup = lambda name: "1234567"
+        lines, status, _retry = s._fetch("곡 - 가수", "곡 - 가수")
+        self.assertEqual(lines, [])
+        self.assertIsNone(s._cached("곡 - 가수"))
+
+    def test_empty_search_for_an_unknown_song_is_remembered(self):
+        pages = Pages({}, search="<html></html>")
+        s = make_searcher(pages)
+        s._fetch("곡 - 가수", "곡 - 가수")
+        self.assertEqual(s._cached("곡 - 가수"), [])
+        s._fetch("곡 - 가수", "곡 - 가수")
+        self.assertEqual(len(pages.calls), 1)
+
     def test_job_started_late_uses_what_is_already_known(self):
         pages = Pages({"1234567": detail_page()}, search_page())
         s = make_searcher(pages)
@@ -360,6 +396,23 @@ class AppLogTest(unittest.TestCase):
         app_log.write("지운 뒤 새로 쓴 줄")  # 다시 켜면 새 파일로 이어 씀
         self.assertIn("지운 뒤 새로 쓴 줄", self.read())
         self.assertNotIn("남아 있던 줄", self.read())
+
+    def test_clear_drops_unfinished_output(self):
+        print("[DEBUG] 줄이 끝나지 않은 조각", end="")
+        app_log.clear()
+        print(" 그리고 이어진 줄")
+        text = self.read()
+        self.assertNotIn("끝나지 않은 조각", text)
+        self.assertIn("이어진 줄", text)
+
+    def test_clear_then_off_leaves_no_file(self):
+        """끄면서 지운 뒤에는, 다른 스레드가 쓰려 해도 파일이 다시 생기지 않아야 합니다."""
+        app_log.write("남아 있던 줄")
+        self.enabled = False  # 설정을 먼저 끄고
+        app_log.clear()       # 남은 파일을 지움
+        app_log.write("꺼진 뒤에 온 줄")
+        print("[DEBUG] 꺼진 뒤에 찍힌 줄")
+        self.assertFalse(os.path.exists(self.path))
 
     def test_write_failure_does_not_loop_back(self):
         """파일에 쓰지 못해도 그 오류가 다시 로그로 들어와 되풀이되지 않아야 합니다."""

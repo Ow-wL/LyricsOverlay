@@ -319,6 +319,33 @@ class WindowStyleGuard:
         """아직 원래대로 되돌리지 못한 창 수."""
         return len(self._originals)
 
+    @staticmethod
+    def ghosted_count() -> int:
+        """지금도 고스트 상태(투명 + 클릭 통과)로 보이는 멜론 창 수. 되돌린 뒤 남은 것이 있는지 볼 때 씁니다."""
+        found: list[int] = []
+
+        def _collect(hwnd, _):
+            try:
+                exstyle = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+                if (
+                    exstyle & _GHOST_BITS == _GHOST_BITS
+                    and win32gui.IsWindowVisible(hwnd)
+                    and win32gui.GetWindowText(hwnd)
+                    and _is_ghost_state(exstyle, _read_layered(hwnd))
+                ):
+                    ident = get_window_identity(hwnd)
+                    if ident is not None and ident.is_melon:
+                        found.append(hwnd)
+            except Exception:
+                pass
+            return True
+
+        try:
+            win32gui.EnumWindows(_collect, None)
+        except Exception:
+            pass
+        return len(found)
+
     def recover_from_file(self) -> int:
         """지난 실행이 비정상 종료돼 남은 창 상태를 복구합니다. 복구한 창 수를 반환.
 

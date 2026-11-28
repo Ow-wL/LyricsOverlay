@@ -285,6 +285,13 @@ class WindowStyleGuardTest(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertEqual(sum(is_ghosted(h) for h in (self.hwnd, other)), 1)  # 실패한 창만 남음
 
+    def test_ghosted_count_sees_leftover_windows(self):
+        self.assertEqual(WindowStyleGuard.ghosted_count(), 0)
+        leave_ghosted(self.hwnd)
+        self.assertEqual(WindowStyleGuard.ghosted_count(), 1)
+        self.assertTrue(self.guard().set_ghost(self.hwnd, False))
+        self.assertEqual(WindowStyleGuard.ghosted_count(), 0)
+
     def test_closed_window_needs_no_restore(self):
         g = self.guard()
         self.assertTrue(g.set_ghost(self.hwnd, True))

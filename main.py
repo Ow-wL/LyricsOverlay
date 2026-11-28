@@ -419,7 +419,8 @@ async def main() -> None:
             config_manager.hide_melon_window = False
             config_manager.save_now()  # 바로 저장: 직후에 꺼져도 다음 실행에서 다시 숨기지 않게
             window.sync_controls()
-        left = style_guard.pending_count()
+        # 기록이 있는 창과 기록 없이 남은 창 모두, 아직 투명한 것이 있는지 봅니다.
+        left = max(style_guard.pending_count(), style_guard.ghosted_count())
         if left:
             add_log(f"멜론 창 {left}개를 아직 되돌리지 못했어요. 잠시 뒤 다시 눌러 주세요 ('멜론 창 숨기기'는 껐어요)")
         else:
