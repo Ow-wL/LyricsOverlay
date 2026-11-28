@@ -170,6 +170,7 @@ class MainWindow(QMainWindow):
     theme_changed = Signal(str)
     window_closed = Signal()
     quit_requested = Signal()  # 트레이 메뉴의 '종료'
+    melon_restore_requested = Signal()  # 트레이 메뉴의 '멜론 창 되돌리기'
 
     def __init__(self, stats: dict, app_config, initial_theme: str = "light"):
         super().__init__()
@@ -297,7 +298,10 @@ class MainWindow(QMainWindow):
         self.music_page = MusicListPage()
         self.stats_page = StatsPage()
         self.setting_page = SettingPage(self.config_manager, self.app_config)
-        self.info_page = InfoPage(auto_check=getattr(self.app_config, "auto_update_check", True))
+        self.info_page = InfoPage(
+            auto_check=getattr(self.app_config, "auto_update_check", True),
+            diagnostic_log=getattr(self.app_config, "diagnostic_log", False),
+        )
         self.pending_update = None  # core.updater.ReleaseInfo
 
         self.setting_page.settings_changed.connect(self.update_overlay)
@@ -313,6 +317,7 @@ class MainWindow(QMainWindow):
         dp.update_skip_requested.connect(self._skip_update)
         dp.update_install_requested.connect(self._install_update)
         self.info_page.auto_check_toggled.connect(self._set_auto_update_check)
+        self.info_page.diagnostic_log_toggled.connect(self._set_diagnostic_log)
         self.info_page.install_requested.connect(self._install_update)
         self.setting_page.ui_font_changed.connect(self.set_ui_font)
         self.music_page.delete_requested.connect(self.delete_history)
@@ -356,6 +361,8 @@ class MainWindow(QMainWindow):
         self.tray_overlay_action.setCheckable(True)
         self.tray_ghost_action = menu.addAction("고스트 모드 (클릭 통과)", self._tray_toggle_ghost)
         self.tray_ghost_action.setCheckable(True)
+        # 멜론 창이 투명한 채로 남았을 때 누르는 탈출구 (앱을 다시 시작하지 않아도 됨)
+        menu.addAction("멜론 창 되돌리기", self.melon_restore_requested.emit)
         menu.addSeparator()
         menu.addAction("종료", self.request_quit)
         menu.aboutToShow.connect(self._sync_tray_menu)
@@ -496,6 +503,13 @@ class MainWindow(QMainWindow):
                 f"새 버전 {info.version}이 나왔어요. 눌러서 열고 대시보드에서 업데이트하세요.",
                 QSystemTrayIcon.Information, 6000,
             )
+
+    def _set_diagnostic_log(self, on: bool) -> None:
+        if hasattr(self.app_config, "diagnostic_log"):
+            self.app_config.diagnostic_log = on
+        if not on:
+            from core import app_log
+            app_log.clear()  # 끄면 남아 있던 로그도 지웁니다
 
     def _set_auto_update_check(self, on: bool) -> None:
         if hasattr(self.app_config, "auto_update_check"):

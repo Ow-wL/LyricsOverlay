@@ -1,0 +1,164 @@
+name: release
+
+# 버전 태그(예: 1.4.0)를 올리면 테스트 → exe 빌드 → 자체 점검 → 사용 가이드 생성까지 한 뒤,
+# 파일을 첨부한 릴리스를 "초안"으로 만듭니다. 초안은 앱의 업데이트 알림에 잡히지 않습니다.
+# 변경 내용을 적고 '게시'를 누르는 것은 사람이 합니다.
+#
+# 빌드 관련 파일을 고친 PR에서는 릴리스 없이 빌드만 해 봅니다 (결과물은 실행 화면의 Artifacts에서 받을 수 있음).
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "build.ps1"
+      - "main.spec"
+      - "requirements.txt"
+      - "requirements-build.txt"
+      - "tools/make_notices.py"
+      - "docs/guide/build_guide.py"
+      - "docs/release_notes_template.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 태그가 main에 들어간 커밋인지 확인하려면 기록이 필요합니다
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: requirements-build.txt
+
+      - name: 태그가 main의 커밋이고 앱 버전과 같은지 확인
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor $env:GITHUB_SHA origin/main
+          if ($LASTEXITCODE -ne 0) {
+            throw "태그 $env:TAG 가 가리키는 커밋이 main에 없습니다. main에 머지된 커밋에만 릴리스 태그를 붙여 주세요."
+          }
+          $version = python -c "from core.version import APP_VERSION; print(APP_VERSION)"
+          if ($version -ne $env:TAG) {
+            throw "태그($env:TAG)와 core/version.py의 APP_VERSION($version)이 다릅니다."
+          }
+
+      - name: 빌드 환경 만들기 (venv)
+        shell: pwsh
+        run: |
+          python -m venv venv
+          .\venv\Scripts\python.exe -m pip install --upgrade pip
+          .\venv\Scripts\python.exe -m pip install -r requirements-build.txt
+
+      - name: 단위 테스트
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: .\venv\Scripts\python.exe -m unittest discover -s tests -t .
+
+      - name: exe 빌드와 자체 점검
+        shell: pwsh
+        run: .\build.ps1
+
+      - name: 사용 가이드 만들기
+        shell: pwsh
+        run: .\venv\Scripts\python.exe docs\guide\build_guide.py
+
+      - name: 가이드 PDF에 한글 글꼴이 들어갔는지 확인
+        shell: pwsh
+        run: |
+          # 가이드는 웹 글꼴(Pretendard)을 받아 씁니다. 받지 못하면 한글이 깨진 PDF가 만들어질 수 있습니다.
+          $version = python -c "from core.version import APP_VERSION; print(APP_VERSION)"
+          $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes("dist\LyricsOverlay_Guide_v$version.pdf"))
+          $fonts = [regex]::Matches($text, '/FontName\s*/([A-Za-z0-9+_-]+)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+          Write-Host "PDF 글꼴: $($fonts -join ', ')"
+          if (-not ($fonts | Where-Object { $_ -match 'Pretendard|Malgun' })) {
+            throw "가이드 PDF에 한글 글꼴(Pretendard 또는 맑은 고딕)이 없습니다."
+          }
+
+      - name: 릴리스 파일 모으기
+        shell: pwsh
+        run: |
+          $version = python -c "from core.version import APP_VERSION; print(APP_VERSION)"
+          New-Item -ItemType Directory -Force release | Out-Null
+          $files = @(
+            "dist\LyricsOverlay.exe",
+            "dist\LyricsOverlay.exe.sha256.txt",
+            "dist\LyricsOverlay_Guide_v$version.html",
+            "dist\LyricsOverlay_Guide_v$version.pdf",
+            "dist\THIRD_PARTY_NOTICES.txt"
+          )
+          foreach ($f in $files) {
+            if (-not (Test-Path $f)) { throw "릴리스 파일이 없습니다: $f" }
+            Copy-Item $f release\
+          }
+          (Get-Content -Raw -Encoding UTF8 docs\release_notes_template.md).Replace("{{VERSION}}", $version) |
+            Out-File -Encoding utf8 release\notes.md
+          Get-ChildItem release | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LyricsOverlay-release
+          path: release/
+          if-no-files-found: error
+          retention-days: 14
+
+  draft-release:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write   # 릴리스 초안을 만드는 데만 씁니다
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: LyricsOverlay-release
+          path: release
+
+      - name: 릴리스 초안 만들기
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          files=(
+            release/LyricsOverlay.exe
+            release/LyricsOverlay.exe.sha256.txt
+            "release/LyricsOverlay_Guide_v$TAG.html"
+            "release/LyricsOverlay_Guide_v$TAG.pdf"
+            release/THIRD_PARTY_NOTICES.txt
+          )
+          # 다시 실행한 경우: 초안이 이미 있으면 파일만 새로 올립니다. 이미 게시된 릴리스는 건드리지 않습니다.
+          if state=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$state" != "true" ]; then
+              echo "::error::$TAG 릴리스가 이미 게시돼 있습니다. 게시된 릴리스의 파일은 바꾸지 않습니다."
+              exit 1
+            fi
+            gh release upload "$TAG" "${files[@]}" --clobber
+            echo "기존 초안의 파일을 새로 올렸습니다 (적어 둔 변경 내용은 그대로입니다)."
+          else
+            gh release create "$TAG" --draft --verify-tag \
+              --title "Lyrics Overlay $TAG" \
+              --notes-file release/notes.md \
+              "${files[@]}"
+          fi
+          echo "초안: https://github.com/$GH_REPO/releases 에서 exe를 받아 확인하고, 변경 내용을 적은 뒤 게시해 주세요."

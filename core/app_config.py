@@ -164,6 +164,37 @@ class AppConfig:
         self._set_bool_setting("melon_covers", on)
 
     @property
+    def auto_backfill(self) -> bool:
+        """예전 기록의 커버를 듣는 동안 조금씩 자동으로 채울지 (기본 끔: 멜론으로 가는 요청이 늘어납니다)."""
+        return self._bool_setting("auto_backfill", False)
+
+    @auto_backfill.setter
+    def auto_backfill(self, on: bool) -> None:
+        self._set_bool_setting("auto_backfill", on)
+
+    @property
+    def diagnostic_log(self) -> bool:
+        """진단 로그 파일을 남길지 (기본 켬). 감상 기록 저장을 끄면 로그도 남기지 않습니다."""
+        return self._bool_setting("diagnostic_log", True)
+
+    @diagnostic_log.setter
+    def diagnostic_log(self, on: bool) -> None:
+        self._set_bool_setting("diagnostic_log", on)
+
+    @property
+    def melon_pause(self) -> tuple[float, str]:
+        """멜론 요청을 쉬는 중이던 상태 (끝나는 시각 time.time 기준, 이유). 앱을 다시 켜도 이어 가기 위한 것."""
+        try:
+            until = float(self.settings.value("melon_paused_until", 0) or 0)
+        except (TypeError, ValueError):
+            until = 0.0
+        return until, str(self.settings.value("melon_pause_reason", "") or "")
+
+    def set_melon_pause(self, until_epoch: float, reason: str) -> None:
+        self.settings.setValue("melon_paused_until", float(until_epoch))
+        self.settings.setValue("melon_pause_reason", reason or "")
+
+    @property
     def ui_font(self) -> str:
         """앱 화면 글꼴 (gui.typography.UI_FONTS의 키). 가사 오버레이 글꼴과는 따로입니다."""
         return str(self.settings.value("ui_font", "pretendard") or "pretendard")

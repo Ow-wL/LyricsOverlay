@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (  # type: ignore
     QWidget,
 )
 
-from core.covers import BACKFILL_COOLDOWN_SEC, BACKFILL_MAX_PER_RUN
+from core.covers import AUTO_BACKFILL_INTERVAL_SEC, BACKFILL_COOLDOWN_SEC, BACKFILL_MAX_PER_RUN
 from gui import icons, typography
 from gui.theme import UIConfig
 from gui.widgets.card import Card, PresetFlow, PresetItem, StylePreview
@@ -60,6 +60,7 @@ class SettingPage(QWidget):
     melon_lyrics_toggled = Signal(bool)
     melon_covers_toggled = Signal(bool)
     covers_backfill_requested = Signal()
+    auto_backfill_toggled = Signal(bool)
     covers_clear_requested = Signal()
 
     def __init__(self, config_manager: OverlayConfigManager, app_config=None):
@@ -512,6 +513,15 @@ class SettingPage(QWidget):
             getattr(self.app_config, "melon_covers", True),
             self.melon_covers_toggled.emit, "melon_covers_check",
         ))
+        ml.addWidget(self._hline())
+        ml.addLayout(self._toggle_row(
+            "예전 기록 커버를 조금씩 자동으로 채우기",
+            f"멜론에서 곡을 듣는 동안, 커버가 없는 예전 곡을 {AUTO_BACKFILL_INTERVAL_SEC // 60}분에 한 곡씩 찾아요. "
+            "버튼을 여러 번 누르지 않아도 되지만, 그만큼 멜론으로 가는 요청이 늘어요 (한 곡에 최대 3번). "
+            "'앨범 커버 받기'가 꺼져 있으면 동작하지 않아요.",
+            getattr(self.app_config, "auto_backfill", False),
+            self.auto_backfill_toggled.emit, "auto_backfill_check",
+        ))
         cover_row = QHBoxLayout()
         self.covers_status = self._lbl("", UIConfig.FS_DESC, secondary=True)
         self.covers_status.setWordWrap(True)
@@ -529,7 +539,7 @@ class SettingPage(QWidget):
         ml.addLayout(cover_row)
         note = self._lbl(
             "멜론과 제휴하지 않은 비공식 기능이에요. 멜론으로 보내는 요청은 앱 이름을 밝히고, 1초에 한 번 이하로 보내며, "
-            "멜론이 거절하면 30분 동안 멈춰요.",
+            "멜론이 거절하면 30분, 요청이 여러 번 실패하면 10분 동안 멈춰요. 이미 들은 곡은 검색을 건너뛰어 요청을 줄여요.",
             UIConfig.FS_DESC, secondary=True,
         )
         note.setWordWrap(True)

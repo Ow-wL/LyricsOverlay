@@ -50,6 +50,7 @@
 | 🎨 | **오버레이 꾸미기** | 글꼴, 글씨·외곽선·배경 색, 불투명도, 크기. 프리셋 저장·가져오기·내보내기 |
 | 🔄 | **새 버전 알림·업데이트** | GitHub 릴리스를 하루 한 번 확인하고, 받은 파일을 SHA-256으로 검증한 뒤 교체·재시작합니다 |
 | 🧭 | **편의** | 트레이 최소화, 중복 실행 방지, 첫 실행 3단계 안내, 라이트·다크 테마, 창 크기 조절, 키보드 조작 |
+| 🧰 | **문제 대비** | 트레이의 **멜론 창 되돌리기**, 원인을 찾기 위한 진단 로그(가사는 남기지 않음), 멜론 요청이 거절되거나 계속 실패하면 스스로 멈춤 |
 
 ## ⚙️ 동작 방식
 
@@ -93,7 +94,7 @@ Get-FileHash .\LyricsOverlay.exe -Algorithm SHA256
 4. **위치·크기 조정**으로 오버레이를 원하는 곳에 두고 **완료**를 누릅니다.
 5. 창의 X를 누르면 트레이로 숨고 오버레이는 계속 동작합니다. 완전히 끄려면 트레이 메뉴의 **종료**를 누릅니다.
 
-자세한 사용법은 릴리스에 첨부된 **사용 가이드**(`LyricsOverlay_Guide_v1.2.0.pdf` · `.html`)에 있습니다.
+자세한 사용법은 릴리스에 첨부된 **사용 가이드**(`LyricsOverlay_Guide_v<버전>.pdf` · `.html`)에 있습니다.
 
 ## ⌨️ 단축키
 
@@ -115,7 +116,8 @@ Get-FileHash .\LyricsOverlay.exe -Algorithm SHA256
 | 오버레이·단축키 설정, 가사 인식 영역 | `overlay_settings.json` | |
 | 스타일 프리셋 | `overlay_styles.json` | |
 | 앨범 커버 | `covers\` (곡 ID별 jpg, `index.json`) | **설정 → 시스템 → 받은 커버 지우기** |
-| 데이터 폴더 위치, 기록 저장·멜론 연동·자동 업데이트 확인 여부, 앱 글꼴 | Windows 레지스트리 (`HKCU\Software\Ow-wL\LyricsOverlay`) | |
+| 데이터 폴더 위치, 기록 저장·멜론 연동·커버 자동 채우기·진단 로그·자동 업데이트 확인 여부, 앱 글꼴, 멜론 요청을 쉬는 중인 시각 | Windows 레지스트리 (`HKCU\Software\Ow-wL\LyricsOverlay`) | |
+| 진단 로그, 멜론 창 복구 기록 | `%LOCALAPPDATA%\LyricsOverlay\` (`LyricsOverlay.log`, `window_restore.json`) | 로그에는 곡 제목·가수와 오류가 들어가고 가사는 들어가지 않습니다. 최대 약 1.5MB. **정보 → 진단 로그 남기기**로 끄면 남은 로그도 지우며, 기록 저장을 끄면 함께 멈춥니다 |
 
 감상 기록 파일은 PC 밖으로 보내지 않습니다. 밖으로 나가는 요청은 아래와 같습니다.
 
@@ -123,10 +125,10 @@ Get-FileHash .\LyricsOverlay.exe -Algorithm SHA256
 |---|---|---|
 | 멜론 웹 가사 검색 (`www.melon.com`) | 재생 중인 곡 제목과 가수 | **설정 → 시스템 → 멜론에서 가사 원문 가져오기** (끄면 OCR 결과만 표시) |
 | 앨범 커버 (`cdnimg.melon.co.kr`) | 커버 이미지 주소 | **설정 → 시스템 → 앨범 커버 받기** |
-| 예전 기록 커버 채우기 (`www.melon.com`) | 커버가 없는 예전 곡의 제목과 가수 | 버튼을 눌렀을 때만 실행 |
+| 예전 기록 커버 채우기 (`www.melon.com`) | 커버가 없는 예전 곡의 제목과 가수 | 버튼을 눌렀을 때(한 번에 20곡, 10분 간격) 또는 **조금씩 자동으로 채우기**를 켰을 때(듣는 동안 5분에 한 곡, 기본 꺼짐) |
 | 새 버전 확인 (`api.github.com`) | IP 주소, `LyricsOverlay/<버전>` User-Agent | **정보 → 새 버전 자동 확인** |
 
-멜론으로 가는 요청은 `LyricsOverlay/<버전>` User-Agent로 앱 이름을 밝히고, 요청 사이에 1초 이상 간격을 두며, 멜론이 거절하면 30분 동안 보내지 않습니다.
+멜론으로 가는 요청은 `LyricsOverlay/<버전>` User-Agent로 앱 이름을 밝히고, 요청 사이에 1초 이상 간격을 둡니다. 멜론이 거절하면 30분, 10분 안에 세 번 실패하면 10분 동안 보내지 않고, 이 시간은 앱을 다시 켜도 이어집니다. 한 번 들은 곡은 검색을 건너뛰어 곡 페이지만 요청하고(받은 페이지의 제목·가수가 맞을 때만 씀), 같은 실행 중에 다시 듣는 곡은 요청하지 않습니다(가사는 메모리에만 두고 파일로 저장하지 않습니다).
 
 문서 폴더가 OneDrive로 백업되고 있다면 감상 기록도 클라우드에 동기화될 수 있습니다. 원하지 않으면 **설정 → 시스템 → 경로 변경**으로 OneDrive 밖으로 옮기세요.
 
@@ -156,9 +158,11 @@ python -m venv venv
 <details>
 <summary><b>새 버전 배포 순서</b></summary>
 
-1. `core/version.py`의 `APP_VERSION`을 올립니다.
-2. `.\build.ps1`로 빌드하고, `venv\Scripts\python.exe docs\guide\build_guide.py`로 사용 가이드를 만듭니다.
-3. GitHub 릴리스를 만듭니다. 태그는 버전 숫자(예: `1.2.0`), 첨부 파일은 `LyricsOverlay.exe`(이름 그대로)와 `.sha256.txt`, 가이드 PDF·HTML입니다. 사전 릴리스로 표시하면 업데이트 알림이 뜨지 않습니다.
+1. `core/version.py`의 `APP_VERSION`을 올려 `main`에 머지합니다.
+2. 그 커밋에 버전 숫자 태그(예: `1.4.0`)를 만들어 올립니다. `release` 워크플로가 테스트, exe 빌드와 자체 점검, 사용 가이드 생성을 한 뒤 파일 5개를 첨부한 릴리스 **초안**을 만듭니다. 태그와 `APP_VERSION`이 다르면 멈춥니다.
+3. 초안의 exe를 받아 직접 실행해 확인하고, 변경 내용을 적은 뒤 게시합니다. 초안과 사전 릴리스는 업데이트 알림에 잡히지 않습니다.
+
+손으로 할 때는 `.\build.ps1`과 `venv\Scripts\python.exe docs\guide\build_guide.py`를 실행하고, `dist`의 `LyricsOverlay.exe`(이름 그대로)·`.sha256.txt`·가이드 PDF·HTML·`THIRD_PARTY_NOTICES.txt`를 첨부합니다.
 
 앱은 릴리스 자산에 대해 GitHub가 계산한 SHA-256(`digest`)과 받은 파일을 비교한 뒤에만 교체합니다. 자세한 내용은 [INSTALL.md](INSTALL.md)에 있습니다.
 
@@ -175,6 +179,9 @@ core/
   media_session.py   Windows 미디어 세션에서 재생 상태 읽기
   hotkey_manager.py  전역 단축키, 미디어 키 전송
   stats_manager.py   감상 기록 저장·검증
+  melon_http.py      멜론 요청 간격, 거절·연속 실패 시 멈춤
+  covers.py          앨범 커버 받기·저장, 예전 기록 채우기
+  app_log.py         진단 로그 파일
   app_config.py      데이터 폴더, 앱 설정 (QSettings)
   single_instance.py 중복 실행 방지
   updater.py         새 버전 확인 (GitHub Releases)
@@ -198,7 +205,7 @@ asset/               아이콘, 앱 글꼴(Pretendard·나눔스퀘어 네오·W
 
 ## ✅ 확인한 환경
 
-화면·네트워크 없이 확인할 수 있는 핵심 로직은 단위 테스트(`tests/`, 40개)로 고정해 두었고, push와 PR마다 GitHub Actions(Windows, Python 3.10)에서 실행합니다.
+화면·네트워크 없이 확인할 수 있는 핵심 로직은 단위 테스트(`tests/`)로 고정해 두었고, push와 PR마다 GitHub Actions(Windows, Python 3.10)에서 실행합니다.
 
 ```powershell
 .\venv\Scripts\python.exe -m unittest discover -s tests -t .
@@ -209,6 +216,8 @@ asset/               아이콘, 앱 글꼴(Pretendard·나눔스퀘어 네오·W
 | `test_lyrics.py` | 검색 결과에서 제목·가수가 맞는 곡만 고르기, OCR 오타 보정, 비슷한 줄은 지금 위치에 가까운 줄 선택 |
 | `test_updater.py` | 버전 비교, 사전 릴리스·검증값 없음·중복 자산·다른 저장소 주소 거부, 허용 밖 호스트 차단, 다른 파일 교체 거부 |
 | `test_data.py` | 손상된 설정·통계 파일 처리, 데이터 경로 변경 확인·백업, 반복 재생·일시정지 판정, 단축키 규칙 |
+| `test_window_guard.py` | 멜론 창 숨기기·복구: 강제 종료 뒤 복구, 남은 투명 창 되돌리기, 멜론이 아닌 창은 건드리지 않기 (실제 Win32 창 사용) |
+| `test_covers.py` · `test_requests.py` | 커버 저장과 채우기 제한, 이미 아는 곡의 검색 생략, 연속 실패 시 멈춤과 재시작 뒤 유지, 진단 로그에 가사가 남지 않는지 |
 
 화면과 멜론이 필요한 동작은 기능을 바꿀 때마다 실제 실행으로 확인했습니다.
 
@@ -227,7 +236,7 @@ asset/               아이콘, 앱 글꼴(Pretendard·나눔스퀘어 네오·W
 
 - 멜론 창을 **최소화**하면 가사를 읽을 수 없습니다.
 - 가사 보정은 멜론 웹 페이지 구조에 의존합니다. 구조가 바뀌면 OCR 결과가 그대로 표시됩니다.
-- 재생 버튼과 미디어 단축키는 특정 앱이 아니라 Windows 미디어 키를 보냅니다.
+- 재생 버튼과 미디어 단축키는 멜론 창에 직접 명령을 보냅니다. 멜론 창을 찾지 못하면 Windows 미디어 키로 대신 보내는데, 이때는 다른 앱이 반응할 수 있습니다.
 - 관리자 권한으로 실행된 게임 안에서는 전역 단축키가 동작하지 않을 수 있습니다.
 - 실행 파일에 코드 서명이 없어 처음 실행할 때 SmartScreen 경고가 뜹니다.
 

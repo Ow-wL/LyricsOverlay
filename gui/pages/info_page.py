@@ -3,7 +3,9 @@
 import os
 
 from PySide6.QtCore import Qt, Signal  # type: ignore
-from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QPushButton, QVBoxLayout, QWidget  # type: ignore
+from PySide6.QtWidgets import (  # type: ignore
+    QFrame, QGridLayout, QHBoxLayout, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+)
 
 from core.version import APP_VERSION
 from gui import icons
@@ -16,15 +18,28 @@ class InfoPage(QWidget):
 
     check_update_requested = Signal()
     auto_check_toggled = Signal(bool)
+    diagnostic_log_toggled = Signal(bool)
     install_requested = Signal()
 
-    def __init__(self, auto_check: bool = True):
+    def __init__(self, auto_check: bool = True, diagnostic_log: bool = True):
         super().__init__()
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 14, 28, 6)
-        layout.setSpacing(22)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(28, 14, 12, 6)
+        outer.setSpacing(22)
+        outer.addWidget(page_header("정보", "프로그램과 개발자 정보"))
 
-        layout.addWidget(page_header("정보", "프로그램과 개발자 정보"))
+        # 카드가 창 높이보다 길어지면 눌려서 글자가 잘리므로, 카드 영역은 스크롤합니다.
+        inner = QWidget()
+        layout = QVBoxLayout(inner)
+        layout.setContentsMargins(0, 0, 16, 16)
+        layout.setSpacing(22)
+        scroll = QScrollArea()
+        scroll.setWidget(inner)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        outer.addWidget(scroll, 1)
 
         info_card = Card()
         info_vbox = QVBoxLayout(info_card)
@@ -126,7 +141,44 @@ class InfoPage(QWidget):
         row.addWidget(self.auto_switch, 0, Qt.AlignVCenter)
         uv.addLayout(row)
         layout.addWidget(upd_card)
+
+        # 진단 로그: 문제가 생겼을 때 원인을 찾기 위한 기록
+        log_card = Card()
+        lv = QHBoxLayout(log_card)
+        lv.setContentsMargins(30, 22, 30, 22)
+        lv.setSpacing(14)
+        log_text = QVBoxLayout()
+        log_text.setSpacing(2)
+        log_text.addWidget(label("진단 로그 남기기", "", "font-weight: 600;"))
+        log_note = label(
+            "앱이 한 일과 오류를 이 PC의 파일에 남겨요 (최대 약 1.5MB, 오래된 것부터 지움). "
+            "곡 제목과 가수는 들어가고 가사는 들어가지 않으며, 어디로도 보내지 않아요. "
+            "끄면 남아 있던 로그도 지우고, '감상 기록 저장'을 끄면 로그도 남기지 않아요. 문제를 제보할 때 이 파일을 함께 보내면 원인을 찾기 쉬워요.",
+            "Secondary", "font-size: 12px;",
+        )
+        log_note.setWordWrap(True)
+        log_text.addWidget(log_note)
+        lv.addLayout(log_text, 1)
+        self.open_log_btn = QPushButton("로그 폴더 열기")
+        self.open_log_btn.clicked.connect(self._open_log_folder)
+        lv.addWidget(self.open_log_btn, 0, Qt.AlignVCenter)
+        self.log_switch = ToggleSwitch()
+        self.log_switch.setAccessibleName("진단 로그 남기기")
+        self.log_switch.setChecked(diagnostic_log)
+        self.log_switch.toggled.connect(self.diagnostic_log_toggled.emit)
+        lv.addWidget(self.log_switch, 0, Qt.AlignVCenter)
+        layout.addWidget(log_card)
         layout.addStretch()
+
+    @staticmethod
+    def _open_log_folder() -> None:
+        from PySide6.QtCore import QUrl  # type: ignore
+        from PySide6.QtGui import QDesktopServices  # type: ignore
+        from core.utils import state_dir
+
+        folder = state_dir()
+        os.makedirs(folder, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
 
     @staticmethod
     def _open_notices() -> None:

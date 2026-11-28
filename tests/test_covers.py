@@ -218,6 +218,14 @@ class LinkSongTest(unittest.TestCase):
         s.covers["감사 - 김동률"] = url  # 곡 페이지까지 받음
         self.assertEqual(link_song(info, s, "감사 - 김동률"), (False, url))  # 곡 ID를 붙인 뒤에도 커버를 돌려줌
 
+    def test_resumed_entry_gets_its_id_corrected(self):
+        """이어 듣는 기록에 예전(틀린) 곡 ID가 있으면, 이번에 확인한 곡 ID로 바로잡습니다."""
+        s, info = self.Searcher(), {"title": "감사", "artist": "김동률", "song_id": "1111111"}
+        s.ids["감사 - 김동률"] = "3897927"
+        self.assertEqual(link_song(info, s, "감사 - 김동률"), (True, None))
+        self.assertEqual(info["song_id"], "3897927")
+        self.assertEqual(link_song(info, s, "감사 - 김동률"), (False, None))
+
     def test_ignores_result_for_another_song(self):
         s, info = self.Searcher(), {"title": "감사", "artist": "김동률"}
         s.ids["취중진담 - 김동률"] = "1590160"

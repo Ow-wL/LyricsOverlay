@@ -23,6 +23,8 @@ class _TempConfig:
         self.ui_font = "pretendard"
         self.melon_lyrics = True
         self.melon_covers = True
+        self.auto_backfill = False
+        self.diagnostic_log = False
 
     def add_listener(self, fn) -> None:
         pass
