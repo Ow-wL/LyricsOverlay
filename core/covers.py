@@ -24,7 +24,9 @@ from core import melon_http
 _COVER_PREFIX = "https://cdnimg.melon.co.kr/"
 _RESIZE = "/melon/resize/300/quality/85/optimize"
 _MAX_BYTES = 2 * 1024 * 1024
-_BACKFILL_GAP_SEC = 1.5          # 예전 기록 채우기: 요청 사이 간격
+_BACKFILL_GAP_SEC = 4.0          # 예전 기록 채우기: 요청 사이 간격 (곡 하나에 요청 3번, 약 10초)
+BACKFILL_MAX_PER_RUN = 20        # 한 번 누를 때 찾는 곡 수 상한 (멜론에 요청이 몰리지 않게)
+BACKFILL_COOLDOWN_SEC = 10 * 60  # 한 번 채운 뒤 다음 채우기까지 기다리는 시간
 _MISS_RETRY_SEC = 7 * 24 * 3600  # 못 찾은 곡은 일주일 뒤 다시 시도
 _SONG_ID = re.compile(r"^\d{5,12}$")
 
@@ -47,6 +49,7 @@ class CoverStore:
         self._stop = threading.Event()
         self.enabled = True
         self.backfill_left = 0  # 채우기 작업 중 남은 곡 수 (화면 표시용)
+        self._backfill_started = None  # 마지막으로 채우기를 시작한 시각 (time.monotonic)
         self.set_data_dir(data_dir)
         self._thread = threading.Thread(target=self._worker, name="covers", daemon=True)
         self._thread.start()
@@ -112,11 +115,23 @@ class CoverStore:
             self._queued.add(key)
         self._jobs.put(("download", key, song_id, url))
 
-    def backfill(self, entries) -> int:
-        """예전 감상 기록 중 커버가 없는 곡을 찾기 예약합니다 (사용자가 버튼을 눌렀을 때만). 예약한 곡 수."""
+    def backfill_wait(self) -> float:
+        """다음 채우기를 시작할 수 있을 때까지 남은 초 (바로 할 수 있으면 0)."""
+        if self._backfill_started is None:
+            return 0.0
+        return max(0.0, self._backfill_started + BACKFILL_COOLDOWN_SEC - time.monotonic())
+
+    def backfill(self, entries, limit: int = BACKFILL_MAX_PER_RUN) -> tuple[int, int]:
+        """예전 감상 기록 중 커버가 없는 곡을 찾기 예약합니다 (사용자가 버튼을 눌렀을 때만).
+
+        한 번에 `limit`곡까지만, 목록의 앞쪽(최근에 들은 곡)부터 예약합니다. 직전 채우기에서
+        `BACKFILL_COOLDOWN_SEC`가 지나지 않았으면 예약하지 않습니다 (`backfill_wait()` 참고).
+        Returns (예약한 곡 수, 이번에 예약하지 못하고 남은 곡 수)
+        """
         if not self.enabled:
-            return 0
-        n = 0
+            return 0, 0
+        cooling = self.backfill_wait() > 0
+        n = left_over = 0
         seen = set()
         for e in entries:
             title, artist = e.get("title", ""), e.get("artist", "")
@@ -124,13 +139,20 @@ class CoverStore:
             if key in seen:
                 continue
             seen.add(key)
-            if self.path_for(title, artist, e.get("song_id")) is None and self._request_backfill(title, artist):
+            if self.path_for(title, artist, e.get("song_id")) is not None:
+                continue
+            if cooling or n >= limit:
+                left_over += self._backfill_wanted(title, artist)
+            elif self._request_backfill(title, artist):
                 n += 1
+        if n:
+            self._backfill_started = time.monotonic()
         with self._lock:
             self.backfill_left += n
-        return n
+        return n, left_over
 
-    def _request_backfill(self, title: str, artist: str) -> bool:
+    def _backfill_wanted(self, title: str, artist: str) -> bool:
+        """채우기 대상인지 (가수를 알고, 이미 예약되지 않았고, 최근에 못 찾은 곡이 아님)."""
         if not title or (artist or "").strip() in ("", "Unknown"):
             return False
         key = _key(title, artist)
@@ -138,8 +160,14 @@ class CoverStore:
             info = self._index.get(key)
             if key in self._queued:
                 return False
-            if info and info.get("miss") and time.time() - info["miss"] < _MISS_RETRY_SEC:
-                return False
+            return not (info and info.get("miss") and time.time() - info["miss"] < _MISS_RETRY_SEC)
+
+    def _request_backfill(self, title: str, artist: str) -> bool:
+        if not self._backfill_wanted(title, artist):
+            return False
+        key = _key(title, artist)
+        with self._lock:
+            info = self._index.get(key)
             self._queued.add(key)
         if info and info.get("song_id") and valid_cover_url(info.get("url")):
             self._jobs.put(("download", key, info["song_id"], info["url"]))
