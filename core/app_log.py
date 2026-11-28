@@ -31,6 +31,8 @@ _should_log: Callable[[], bool] = lambda: True
 _real_stdout = None
 _path: str | None = None
 _busy = threading.local()
+_io_lock = threading.RLock()  # '켜져 있는지 확인 → 쓰기'와 '지우기'가 엇갈리지 않게
+_tees: list = []
 
 
 def log_path(directory: str | None = None) -> str:
@@ -70,6 +72,7 @@ def start(should_log: Callable[[], bool] | None = None, directory: str | None = 
     _real_stdout = sys.stdout
     sys.stdout = _Tee(sys.stdout)
     sys.stderr = _Tee(sys.stderr, prefix="[stderr] ")
+    _tees[:] = [sys.stdout, sys.stderr]
     write(f"=== 시작: Lyrics Overlay {APP_VERSION} ({'exe' if getattr(sys, 'frozen', False) else '소스'}), "
           f"{platform.platform()} ===")
     return path
@@ -87,6 +90,7 @@ def stop() -> None:
     for handler in list(_logger.handlers):
         handler.close()
         _logger.removeHandler(handler)
+    _tees.clear()
     _logger, _should_log, _real_stdout, _path = None, (lambda: True), None, None
 
 
@@ -97,11 +101,12 @@ def write(message: str) -> None:
         return
     _busy.on = True  # 로그를 쓰는 도중에 생긴 출력이 다시 로그로 들어오지 않게
     try:
-        if not _should_log():
-            return
-        for line in str(message).splitlines():
-            if line.strip():
-                logger.info(line.rstrip())
+        with _io_lock:  # 확인과 쓰기 사이에 clear()가 끼어들면 지운 파일이 다시 생깁니다
+            if not _should_log():
+                return
+            for line in str(message).splitlines():
+                if line.strip():
+                    logger.info(line.rstrip())
     except Exception:
         pass  # 로그 때문에 앱이 멈추면 안 됩니다
     finally:
@@ -121,21 +126,26 @@ def clear() -> int:
     if _logger is None or _path is None:
         return 0
     removed = 0
-    for handler in _logger.handlers:
-        try:
-            handler.acquire()
+    with _io_lock:
+        for tee in _tees:
+            tee.drop_pending()  # 줄이 끝나지 않아 아직 안 쓴 조각도 버립니다
+        for handler in _logger.handlers:
             try:
-                handler.close()  # delay=True라 다음에 쓸 때 다시 엽니다
-            finally:
-                handler.release()
-        except Exception:
-            pass
-    for name in [_path] + [f"{_path}.{i}" for i in range(1, BACKUPS + 1)]:
-        try:
-            os.remove(name)
-            removed += 1
-        except OSError:
-            pass
+                handler.acquire()
+                try:
+                    handler.close()  # delay=True라 다음에 쓸 때 다시 엽니다
+                finally:
+                    handler.release()
+            except Exception:
+                pass
+        for name in [_path] + [f"{_path}.{i}" for i in range(1, BACKUPS + 1)]:
+            try:
+                os.remove(name)
+                removed += 1
+            except FileNotFoundError:
+                pass
+            except OSError as e:
+                print(f"[⚠️] 로그 파일을 지우지 못했습니다 ({os.path.basename(name)}): {e}")
     return removed
 
 
@@ -179,6 +189,10 @@ class _Tee:
             if line.strip():
                 write(self._prefix + line)
         return len(text)
+
+    def drop_pending(self) -> None:
+        with self._lock:
+            self._buf = ""
 
     def flush(self) -> None:
         if self.inner is not None:
