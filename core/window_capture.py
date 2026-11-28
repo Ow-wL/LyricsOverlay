@@ -219,6 +219,53 @@ def capture_covered_window(hwnd) -> np.ndarray | None:
 # ------------------------------------------------------------------ #
 
 _GHOST_BITS = win32con.WS_EX_LAYERED | win32con.WS_EX_TRANSPARENT
+_GHOST_ALPHA = 1  # 고스트 모드에서 거는 불투명도
+_STATE_FILE = "window_restore.json"
+
+
+def default_state_dir() -> str:
+    r"""복구 기록을 두는 사용자별 고정 폴더 (%LOCALAPPDATA%\LyricsOverlay).
+
+    데이터 폴더는 설정이나 환경 변수로 바뀔 수 있습니다. 기록을 거기에 두면, 다른 데이터 폴더로
+    띄운 실행이 강제 종료됐을 때 다음 실행이 기록을 찾지 못해 멜론 창이 투명한 채로 남습니다.
+    """
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    return os.path.join(base, "LyricsOverlay")
+
+
+def _read_layered(hwnd) -> list[int] | None:
+    try:
+        key, alpha, flags = win32gui.GetLayeredWindowAttributes(hwnd)
+        return [int(key), int(alpha), int(flags)]
+    except Exception:
+        return None  # 레이어드가 아니거나 UpdateLayeredWindow 방식의 창
+
+
+def _is_ghost_state(exstyle: int, layered) -> bool:
+    """이 앱이 건 고스트 상태(레이어드 + 클릭통과 + 불투명도 1)로 보이는지."""
+    return (
+        exstyle & _GHOST_BITS == _GHOST_BITS
+        and layered is not None
+        and layered[1] == _GHOST_ALPHA
+        and bool(layered[2] & win32con.LWA_ALPHA)
+    )
+
+
+def _sanitize_original(original: dict) -> dict:
+    """기록하려는 "원래 상태"가 사실은 고스트 상태라면 고스트를 걷어낸 상태로 바꿉니다.
+
+    다른 실행이 복구하지 못하고 남긴 고스트 상태를 원래 상태로 기억하면, 복구가
+    투명한 상태로 되돌리고 성공으로 끝나 버립니다. 진짜 원래 값은 알 수 없으므로
+    항상 위는 끕니다 (투명한 채로 남는 것보다 낫습니다).
+    """
+    if not _is_ghost_state(original["exstyle"], original.get("layered")):
+        return original
+    return {
+        **original,
+        "exstyle": original["exstyle"] & ~_GHOST_BITS & ~win32con.WS_EX_TOPMOST,
+        "layered": None,
+        "topmost": False,
+    }
 
 
 class WindowStyleGuard:
@@ -228,24 +275,22 @@ class WindowStyleGuard:
     원래 상태는 창을 바꾸기 *전에* 파일에 적어 두므로, 프로그램이 강제 종료돼도
     다음 실행 때 `recover_from_file()`로 되돌릴 수 있습니다.
     복구에 실패한 창은 기록에서 지우지 않습니다.
+
+    기록은 데이터 폴더가 아니라 사용자별 고정 폴더에 둡니다 (`default_state_dir()` 참고).
+    `legacy_dirs`는 예전 버전이 기록을 남겼을 수 있는 폴더(데이터 폴더)입니다.
     """
 
-    def __init__(self, data_dir: str):
-        self._state_path = os.path.join(data_dir, "window_restore.json")
+    def __init__(self, state_dir: str | None = None, legacy_dirs: tuple[str, ...] = ()):
+        self._state_dir = state_dir or default_state_dir()
+        self._state_path = os.path.join(self._state_dir, _STATE_FILE)
+        self._legacy_paths = [
+            path for path in (os.path.join(d, _STATE_FILE) for d in legacy_dirs if d)
+            if os.path.normcase(os.path.abspath(path)) != os.path.normcase(os.path.abspath(self._state_path))
+        ]
         # hwnd -> {"pid", "exe", "created", "exstyle", "layered": [key, alpha, flags] | None, "topmost"}
         self._originals: dict[int, dict] = {}
 
     # -- 공개 API ------------------------------------------------------ #
-
-    def set_data_dir(self, data_dir: str) -> None:
-        """복구 기록 파일을 새 데이터 경로로 옮깁니다 (강제 종료 후 다음 실행이 찾을 수 있게)."""
-        old_path = self._state_path
-        self._state_path = os.path.join(data_dir, "window_restore.json")
-        if self._persist() and os.path.exists(old_path) and old_path != self._state_path:
-            try:
-                os.remove(old_path)
-            except OSError:
-                pass
 
     def set_ghost(self, hwnd: int, ghost: bool) -> bool:
         """성공하면 True. 실패하면 다음 루프에서 다시 시도하도록 False."""
@@ -254,7 +299,8 @@ class WindowStyleGuard:
     def restore(self, hwnd: int) -> bool:
         original = self._originals.get(hwnd)
         if original is None:
-            return True
+            # 기록은 없는데 고스트 상태로 남아 있는 멜론 창이면 걷어냅니다.
+            return self._heal_orphan(hwnd)
         ok = self._restore_one(hwnd, original)
         if ok:
             del self._originals[hwnd]
@@ -266,12 +312,79 @@ class WindowStyleGuard:
             self.restore(hwnd)
 
     def recover_from_file(self) -> int:
-        """지난 실행이 비정상 종료돼 남은 창 상태를 복구합니다. 복구한 창 수를 반환."""
-        if not os.path.exists(self._state_path):
-            return 0
+        """지난 실행이 비정상 종료돼 남은 창 상태를 복구합니다. 복구한 창 수를 반환.
+
+        기록이 없어도 고스트 상태로 남아 있는 멜론 창은 함께 되돌립니다 (`heal_orphans`).
+        """
+        saved: dict[int, dict] = {}
+        for path in [*self._legacy_paths, self._state_path]:  # 고정 폴더의 기록이 우선
+            saved.update(self._load(path))
+
+        recovered = 0
+        for hwnd, original in saved.items():
+            original = _sanitize_original(original)
+            status = self._window_status(hwnd, original)
+            if status == "gone":
+                continue  # 창이 이미 닫혔거나 다른 프로세스의 창 (복구 불필요)
+            if status == "same" and self._restore_one(hwnd, original):
+                recovered += 1
+            else:
+                self._originals[hwnd] = original  # 다음 기회에 다시 시도
+        if self._persist():
+            for path in self._legacy_paths:  # 남은 기록은 고정 폴더로 옮겨졌습니다
+                try:
+                    if os.path.exists(path):
+                        os.remove(path)
+                except OSError:
+                    pass
+        return recovered + self.heal_orphans()
+
+    def heal_orphans(self) -> int:
+        """기록 없이 고스트 상태로 남은 멜론 창을 찾아 되돌립니다. 되돌린 창 수를 반환.
+
+        기록이 다른 곳에 남았거나 지워진 채 투명한 창만 남은 경우를 위한 안전망입니다.
+        """
+        suspects: list[int] = []
+
+        def _collect(hwnd, _):
+            try:
+                if hwnd not in self._originals and (
+                    win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE) & _GHOST_BITS == _GHOST_BITS
+                ):
+                    suspects.append(hwnd)
+            except Exception:
+                pass
+            return True
+
         try:
-            with open(self._state_path, "r", encoding="utf-8") as f:
-                saved = {
+            win32gui.EnumWindows(_collect, None)
+        except Exception:
+            pass
+
+        healed = 0
+        for hwnd in suspects:
+            try:
+                if not _is_ghost_state(
+                    win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE), _read_layered(hwnd)
+                ):
+                    continue
+                if self._heal_orphan(hwnd) and not _is_ghost_state(
+                    win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE), _read_layered(hwnd)
+                ):
+                    healed += 1
+            except Exception:
+                pass
+        return healed
+
+    # -- 내부 ---------------------------------------------------------- #
+
+    @staticmethod
+    def _load(path: str) -> dict[int, dict]:
+        if not os.path.exists(path):
+            return {}
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return {
                     int(k): v for k, v in json.load(f).items()
                     if isinstance(v, dict) and isinstance(v.get("exstyle"), int)
                     and (v.get("layered") is None or (
@@ -281,31 +394,30 @@ class WindowStyleGuard:
                 }
         except Exception as e:
             print(f"[⚠️] 창 상태 기록을 읽지 못했습니다: {e}")
-            return 0
-
-        recovered = 0
-        for hwnd, original in saved.items():
-            if not self._is_same_window(hwnd, original):
-                continue  # 창이 이미 닫혔거나 다른 프로세스의 창 (복구 불필요)
-            if self._restore_one(hwnd, original):
-                recovered += 1
-            else:
-                self._originals[hwnd] = original  # 다음 기회에 다시 시도
-        self._persist()
-        return recovered
-
-    # -- 내부 ---------------------------------------------------------- #
+            return {}
 
     @staticmethod
-    def _is_same_window(hwnd: int, original: dict) -> bool:
+    def _window_status(hwnd: int, original: dict) -> str:
+        """"same": 기록한 그 창 / "gone": 닫혔거나 다른 창 / "unknown": 창은 있는데 확인 실패.
+
+        확인에 잠깐 실패한 것을 사라진 것으로 보면 복구도 안 하고 기록까지 지우게 됩니다.
+        """
+        try:
+            if not win32gui.IsWindow(hwnd):
+                return "gone"
+        except Exception:
+            return "gone"
         ident = get_window_identity(hwnd)
-        return (
-            ident is not None
-            and ident.is_melon  # 기록 파일이 바뀌어도 멜론이 아닌 창은 절대 건드리지 않습니다
+        if ident is None:
+            return "unknown"
+        if (
+            ident.is_melon  # 기록 파일이 바뀌어도 멜론이 아닌 창은 절대 건드리지 않습니다
             and ident.pid == original.get("pid")
             and ident.created == original.get("created")
             and ident.exe == original.get("exe")
-        )
+        ):
+            return "same"
+        return "gone"
 
     def _apply_ghost(self, hwnd: int) -> bool:
         try:
@@ -315,21 +427,16 @@ class WindowStyleGuard:
 
             if hwnd not in self._originals:
                 exstyle = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
-                layered = None
-                if exstyle & win32con.WS_EX_LAYERED:
-                    try:
-                        key, alpha, flags = win32gui.GetLayeredWindowAttributes(hwnd)
-                        layered = [int(key), int(alpha), int(flags)]
-                    except Exception:
-                        layered = None  # UpdateLayeredWindow 방식의 창
-                self._originals[hwnd] = {
+                layered = _read_layered(hwnd) if exstyle & win32con.WS_EX_LAYERED else None
+                # 이미 고스트 상태인 창(다른 실행이 남긴 것)은 그 상태를 원래 상태로 삼지 않습니다.
+                self._originals[hwnd] = _sanitize_original({
                     "pid": ident.pid,
                     "exe": ident.exe,
                     "created": ident.created,
                     "exstyle": exstyle,
                     "layered": layered,
                     "topmost": bool(exstyle & win32con.WS_EX_TOPMOST),
-                }
+                })
                 if not self._persist():
                     # 기록이 없으면 강제 종료 시 되돌릴 수 없으니 적용하지 않습니다.
                     del self._originals[hwnd]
@@ -337,7 +444,7 @@ class WindowStyleGuard:
 
             style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
             win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, style | _GHOST_BITS)
-            win32gui.SetLayeredWindowAttributes(hwnd, 0, 1, win32con.LWA_ALPHA)
+            win32gui.SetLayeredWindowAttributes(hwnd, 0, _GHOST_ALPHA, win32con.LWA_ALPHA)
             win32gui.SetWindowPos(
                 hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
                 win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE,
@@ -347,10 +454,34 @@ class WindowStyleGuard:
             print(f"[⚠️] 고스트 모드 적용 실패: {e}")
             return False
 
+    def _heal_orphan(self, hwnd: int) -> bool:
+        """기록 없이 고스트 상태로 남은 멜론 창이면 고스트를 걷어냅니다. 할 일이 없으면 True."""
+        try:
+            exstyle = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+            layered = _read_layered(hwnd) if exstyle & win32con.WS_EX_LAYERED else None
+            if not _is_ghost_state(exstyle, layered):
+                return True
+            ident = get_window_identity(hwnd)
+            if ident is None or not ident.is_melon:
+                return True  # 멜론이 아닌 창은 건드리지 않습니다
+            return self._restore_one(hwnd, _sanitize_original({
+                "pid": ident.pid,
+                "exe": ident.exe,
+                "created": ident.created,
+                "exstyle": exstyle,
+                "layered": layered,
+                "topmost": True,
+            }))
+        except Exception:
+            return True  # 창이 그사이 닫힘
+
     def _restore_one(self, hwnd: int, original: dict) -> bool:
         """원래 상태로 되돌립니다. 창이 이미 사라졌으면 복구할 것이 없으므로 True."""
-        if not self._is_same_window(hwnd, original):
+        status = self._window_status(hwnd, original)
+        if status == "gone":
             return True
+        if status == "unknown":
+            return False  # 기록을 남겨 두고 다음에 다시 시도
         target = original["exstyle"]
         layered = original.get("layered")
         try:
@@ -381,7 +512,9 @@ class WindowStyleGuard:
                 win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE
                 | win32con.SWP_FRAMECHANGED,
             )
-            return win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE) == target
+            # 스타일이 원래 값과 같고, 고스트 상태도 실제로 풀렸는지까지 확인합니다.
+            after = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+            return after == target and not _is_ghost_state(after, _read_layered(hwnd))
         except Exception as e:
             print(f"[⚠️] 창 상태 복구 실패 (hwnd={hwnd}): {e}")
             return False
@@ -389,6 +522,7 @@ class WindowStyleGuard:
     def _persist(self) -> bool:
         try:
             if self._originals:
+                os.makedirs(self._state_dir, exist_ok=True)
                 atomic_write_json(
                     self._state_path, {str(k): v for k, v in self._originals.items()}
                 )

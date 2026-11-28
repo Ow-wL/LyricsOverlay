@@ -183,7 +183,8 @@ async def main() -> None:
 
     # 지난번 강제 종료로 투명하게 남은 멜론 창이 있으면 가장 먼저 복구합니다.
     # (이후 단계에서 무엇이 실패해도 멜론 창은 원래대로 돌아오게)
-    style_guard = WindowStyleGuard(_app_config.data_dir)
+    # 복구 기록은 데이터 폴더와 무관한 고정 폴더에 둡니다. 예전 버전은 데이터 폴더에 적었으므로 거기도 읽습니다.
+    style_guard = WindowStyleGuard(legacy_dirs=(_app_config.data_dir,))
     recovered = style_guard.recover_from_file()
 
     persistent_stats = load_stats(_app_config.data_dir)
@@ -295,7 +296,6 @@ async def main() -> None:
         add_log(f"데이터 경로 변경: {new_dir}")
 
     _app_config.add_listener(config_manager.set_data_dir)
-    _app_config.add_listener(style_guard.set_data_dir)
     _app_config.add_listener(on_data_dir_changed)
 
     # 앨범 커버 (데이터 폴더/covers). 화면은 core.covers.store를 통해 커버를 찾습니다.
@@ -706,12 +706,16 @@ async def main() -> None:
             await asyncio.sleep(0.05)
 
     finally:
+        # 멜론 창 복구를 가장 먼저 합니다. 뒤의 정리 단계가 실패해도 창은 원래대로 돌아와야 합니다.
+        try:
+            print("\n[🧹] 멜론 창 상태 원복 중...")
+            style_guard.restore_all()
+        except Exception as e:
+            print(f"[⚠️] 멜론 창 상태 원복 실패: {e}")
         hotkey_mgr.unhook_all()
         if window.tray is not None:
             window.tray.hide()
         config_manager.save_now()
-        print("\n[🧹] 멜론 창 상태 원복 중...")
-        style_guard.restore_all()
         if _app_config:
             save_stats(persistent_stats, _app_config.data_dir)
         matcher.searcher.shutdown()
