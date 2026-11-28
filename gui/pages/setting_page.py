@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (  # type: ignore
     QWidget,
 )
 
+from core.covers import BACKFILL_COOLDOWN_SEC, BACKFILL_MAX_PER_RUN
 from gui import icons, typography
 from gui.theme import UIConfig
 from gui.widgets.card import Card, PresetFlow, PresetItem, StylePreview
@@ -517,7 +518,8 @@ class SettingPage(QWidget):
         cover_row.addWidget(self.covers_status, 1)
         self.btn_backfill = QPushButton("예전 기록 커버 채우기")
         self.btn_backfill.setToolTip(
-            "감상 기록 중 커버가 없는 곡을 멜론에서 하나씩 천천히 찾아요. 곡마다 제목·가수가 멜론으로 전송돼요."
+            f"감상 기록 중 커버가 없는 곡을 최근 곡부터 한 번에 {BACKFILL_MAX_PER_RUN}곡까지, 멜론에서 하나씩 천천히 찾아요. "
+            f"남은 곡은 {BACKFILL_COOLDOWN_SEC // 60}분 뒤에 다시 눌러 이어서 받아요. 곡마다 제목·가수가 멜론으로 전송돼요."
         )
         self.btn_backfill.clicked.connect(self.covers_backfill_requested.emit)
         self.btn_clear_covers = QPushButton("받은 커버 지우기")

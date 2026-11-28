@@ -10,7 +10,7 @@ from tests import _qt  # noqa: F401
 import core.covers as cv
 from gui.pages.stats_page import _artist_rows, _song_rows
 from lyrics.searcher import cover_url_from_detail
-from main import is_song_title
+from main import is_song_title, link_song
 
 
 class FakeSoup:
@@ -65,19 +65,84 @@ class CoverStoreTest(unittest.TestCase):
             history = [{"title": "곡", "artist": "가수"}, {"title": "곡", "artist": "가수"},
                        {"title": "곡2", "artist": "가수"}, {"title": "멜론 PC 플레이어", "artist": "Unknown"}]
             s._index[cv._key("곡2", "가수")] = {"miss": time.time()}  # 최근에 못 찾은 곡
-            self.assertEqual(s.backfill(history), 1)
+            self.assertEqual(s.backfill(history), (1, 0))
             self.assertEqual(s._jobs.qsize(), 1)
-            self.assertEqual(s.backfill(history), 0)  # 이미 예약됨
+            self.assertEqual(s.backfill(history), (0, 0))  # 이미 예약됨
             s._finish(cv._key("곡", "가수"), counted=True)  # 작업이 끝나면 예약 표시가 풀림
             self.assertNotIn(cv._key("곡", "가수"), s._queued)
             self.assertEqual(s.backfill_left, 0)
+
+    def test_backfill_is_capped_and_starts_with_recent_songs(self):
+        """한 번에 정해진 곡 수까지만, 목록 앞쪽(최근 곡)부터 예약합니다. 남은 곡 수를 알려 줍니다."""
+        with tempfile.TemporaryDirectory() as d:
+            s = self.make(d)
+            history = [{"title": f"곡{i}", "artist": "가수"} for i in range(cv.BACKFILL_MAX_PER_RUN + 7)]
+            self.assertEqual(s.backfill(history), (cv.BACKFILL_MAX_PER_RUN, 7))
+            queued = [s._jobs.get_nowait()[2] for _ in range(s._jobs.qsize())]
+            self.assertEqual(queued, [f"곡{i}" for i in range(cv.BACKFILL_MAX_PER_RUN)])
+            self.assertEqual(s.backfill_left, cv.BACKFILL_MAX_PER_RUN)
+
+    def test_backfill_waits_between_runs(self):
+        """연달아 눌러도 대기 시간이 지나기 전에는 더 예약하지 않습니다 (요청이 몰리지 않게)."""
+        with tempfile.TemporaryDirectory() as d:
+            s = self.make(d)
+            history = [{"title": f"곡{i}", "artist": "가수"} for i in range(5)]
+            self.assertEqual(s.backfill_wait(), 0)
+            self.assertEqual(s.backfill(history, limit=2), (2, 3))
+            self.assertGreater(s.backfill_wait(), cv.BACKFILL_COOLDOWN_SEC - 5)
+            self.assertEqual(s.backfill(history, limit=2), (0, 3))  # 아직 대기 중
+            self.assertEqual(s._jobs.qsize(), 2)
+
+            with mock.patch.object(cv.time, "monotonic", return_value=time.monotonic() + cv.BACKFILL_COOLDOWN_SEC + 1):
+                self.assertEqual(s.backfill_wait(), 0)
+                self.assertEqual(s.backfill(history, limit=2), (2, 1))
+
+    def test_backfill_with_nothing_to_do_does_not_start_cooldown(self):
+        with tempfile.TemporaryDirectory() as d:
+            s = self.make(d)
+            self.assertEqual(s.backfill([{"title": "멜론 PC 플레이어", "artist": "Unknown"}]), (0, 0))
+            self.assertEqual(s.backfill_wait(), 0)
+
+    def test_backfill_download_job_counts_down(self):
+        """주소는 아는데 파일만 없는 곡도 채우기 대상이고, 끝나면 남은 곡 수에서 빠져야 버튼이 다시 켜집니다."""
+        with tempfile.TemporaryDirectory() as d:
+            s = self.make(d)
+            key = cv._key("곡", "가수")
+            s._index[key] = {"song_id": "12345", "url": "https://cdnimg.melon.co.kr/a_500.jpg"}
+            self.assertEqual(s.backfill([{"title": "곡", "artist": "가수"}]), (1, 0))
+            self.assertEqual(s.backfill_left, 1)
+            s._jobs.put(None)
+            with mock.patch.object(s, "_download"):  # 실제로 받지는 않음
+                s._worker()
+            self.assertEqual(s.backfill_left, 0)
+
+    def test_new_song_download_does_not_touch_backfill_count(self):
+        with tempfile.TemporaryDirectory() as d:
+            s = self.make(d)
+            s.backfill_left = 3
+            s.remember("곡", "가수", "12345", "https://cdnimg.melon.co.kr/a_500.jpg")
+            s._jobs.put(None)
+            with mock.patch.object(s, "_download"):
+                s._worker()
+            self.assertEqual(s.backfill_left, 3)
+
+    def test_backfill_does_nothing_while_melon_paused(self):
+        """멜론이 거절해 쉬는 동안 누르면 예약하지 않고, 10분 대기도 시작하지 않습니다."""
+        from core import melon_http
+        self.addCleanup(melon_http._reset_for_tests)
+        with tempfile.TemporaryDirectory() as d:
+            s = self.make(d)
+            melon_http.report_status(429)
+            self.assertEqual(s.backfill([{"title": "곡", "artist": "가수"}]), (0, 1))
+            self.assertTrue(s._jobs.empty())
+            self.assertEqual(s.backfill_wait(), 0)
 
     def test_disabled_store_does_nothing(self):
         with tempfile.TemporaryDirectory() as d:
             s = self.make(d)
             s.enabled = False
             s.remember("a", "b", "12345", "https://cdnimg.melon.co.kr/a.jpg")
-            self.assertEqual(s.backfill([{"title": "곡", "artist": "가수"}]), 0)
+            self.assertEqual(s.backfill([{"title": "곡", "artist": "가수"}]), (0, 0))
             self.assertTrue(s._jobs.empty())
 
     def test_clear_removes_files_and_queue(self):
@@ -125,6 +190,40 @@ class MelonHttpTest(unittest.TestCase):
         s.enabled = False
         with mock.patch.object(s, "_get_text", side_effect=AssertionError("요청하면 안 됨")):
             self.assertEqual(s.search_lyrics("곡 - 가수"), ([], None))
+
+
+class LinkSongTest(unittest.TestCase):
+    """곡 ID는 먼저, 커버 주소는 조금 뒤에 알게 됩니다. 커버 주소가 올 때까지 계속 확인해야 합니다."""
+
+    class Searcher:
+        def __init__(self):
+            self.ids, self.covers = {}, {}
+
+        def song_id_for(self, title):
+            return self.ids.get(title)
+
+        def cover_for(self, title):
+            return self.covers.get(title)
+
+    def test_cover_arrives_after_song_id(self):
+        s, info = self.Searcher(), {"title": "감사", "artist": "김동률"}
+        self.assertEqual(link_song(info, s, "감사 - 김동률"), (False, None))  # 검색 중
+        self.assertNotIn("song_id", info)
+
+        s.ids["감사 - 김동률"] = "3897927"  # 검색은 끝났고 곡 페이지는 아직
+        self.assertEqual(link_song(info, s, "감사 - 김동률"), (True, None))
+        self.assertEqual(info["song_id"], "3897927")
+
+        url = "https://cdnimg.melon.co.kr/a_500.jpg"
+        s.covers["감사 - 김동률"] = url  # 곡 페이지까지 받음
+        self.assertEqual(link_song(info, s, "감사 - 김동률"), (False, url))  # 곡 ID를 붙인 뒤에도 커버를 돌려줌
+
+    def test_ignores_result_for_another_song(self):
+        s, info = self.Searcher(), {"title": "감사", "artist": "김동률"}
+        s.ids["취중진담 - 김동률"] = "1590160"
+        s.covers["취중진담 - 김동률"] = "https://cdnimg.melon.co.kr/b_500.jpg"
+        self.assertEqual(link_song(info, s, "취중진담 - 김동률"), (False, None))  # 창 제목이 이미 다음 곡
+        self.assertNotIn("song_id", info)
 
 
 class SongTitleTest(unittest.TestCase):

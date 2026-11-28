@@ -167,6 +167,26 @@ def is_song_title(title: str) -> bool:
     return bool(name.strip()) and bool(artist.strip())
 
 
+def link_song(song_info: dict, searcher, window_title: str) -> tuple[bool, str | None]:
+    """가사 검색이 알아낸 멜론 곡 ID를 기록에 붙이고, 커버 주소를 알게 됐으면 돌려줍니다.
+
+    Returns (곡 ID를 이번에 붙였는지, 커버 주소 또는 None)
+
+    곡 ID는 검색이 끝나면 바로 알지만, 커버 주소는 그 뒤 곡 페이지를 받아야(요청 간격 때문에 1초 이상 뒤)
+    알게 됩니다. 그래서 곡 ID를 붙인 뒤에도 커버 주소가 올 때까지 계속 불러야 합니다.
+    """
+    sid = searcher.song_id_for(window_title)
+    if not sid:
+        return False, None
+    playing = parse_song_info(window_title.replace(" - Melon", "").strip())
+    if playing != (song_info["title"], song_info["artist"]):
+        return False, None  # 창 제목이 이미 다음 곡으로 바뀜
+    added = "song_id" not in song_info
+    if added:
+        song_info["song_id"] = sid
+    return added, searcher.cover_for(window_title)
+
+
 async def main() -> None:
     global _window, is_running, persistent_stats, session_stats, _app_config
 
@@ -309,11 +329,13 @@ async def main() -> None:
     matcher.searcher.enabled = _app_config.melon_lyrics
     sp = window.setting_page
 
-    def refresh_covers_status() -> None:
+    def refresh_covers_status(notice: str = "") -> None:
         left = covers.store.backfill_left
         paused = melon_http.paused_for()
         if paused:
             text = f"멜론이 요청을 거절해 {int(paused) // 60 + 1}분 동안 쉬는 중이에요."
+        elif notice:
+            text = notice
         elif left:
             text = f"예전 기록 커버를 찾는 중이에요 (남은 곡 {left}개)."
         else:
@@ -334,9 +356,22 @@ async def main() -> None:
         refresh_covers_status()
 
     def on_backfill() -> None:
-        n = covers.store.backfill(persistent_stats.get("play_history", []))
-        add_log(f"예전 기록 커버 채우기: {n}곡 예약" if n else "예전 기록 커버 채우기: 찾을 곡이 없어요")
-        refresh_covers_status()
+        wait = covers.store.backfill_wait()
+        n, left_over = covers.store.backfill(persistent_stats.get("play_history", []))
+        if n:
+            more = f" (남은 {left_over}곡은 {covers.BACKFILL_COOLDOWN_SEC // 60}분 뒤에 다시 눌러 주세요)" if left_over else ""
+            add_log(f"예전 기록 커버 채우기: 최근 곡부터 {n}곡 예약{more}")
+        elif left_over and melon_http.paused_for() > 0:
+            add_log("예전 기록 커버 채우기: 멜론이 요청을 거절해 쉬는 중이에요")
+        elif left_over and wait > 0:
+            # 멜론에 요청이 몰리지 않도록 한 번에 조금씩만 받습니다.
+            add_log(f"예전 기록 커버 채우기: {int(wait) // 60 + 1}분 뒤에 다시 눌러 주세요 (남은 곡 {left_over}개)")
+        else:
+            add_log("예전 기록 커버 채우기: 찾을 곡이 없어요")
+        refresh_covers_status(notice=(
+            f"조금씩 받는 중이에요. {int(wait) // 60 + 1}분 뒤에 다시 눌러 주세요 (남은 곡 {left_over}개)."
+            if not n and left_over and wait > 0 else ""
+        ))
 
     def on_clear_covers() -> None:
         if QMessageBox.question(window, "받은 커버 지우기",
@@ -378,6 +413,7 @@ async def main() -> None:
             add_log(title)
 
     current_song_info = None
+    cover_done_for = None  # 커버 받기를 이미 맡긴 재생 기록 (current_song_info와 같은 객체면 더 확인하지 않음)
     current_song_lines = 0
     current_song_played = 0.0   # 지금 곡을 실제로 재생한 시간 (초)
     session_played = 0.0        # 이번 실행에서 실제로 재생한 시간 (초)
@@ -660,14 +696,20 @@ async def main() -> None:
                         add_log(status)
 
                     # 가사를 찾았으면 멜론 곡 ID를 기록에 남겨, 감상 기록에서 바로 곡 페이지를 열 수 있게 합니다.
-                    if current_song_info is not None and "song_id" not in current_song_info:
-                        sid = matcher.searcher.song_id_for(target_win.title)
-                        if sid and parse_song_info(target_win.title.replace(" - Melon", "").strip()) == (current_song_info["title"], current_song_info["artist"]):
-                            current_song_info["song_id"] = sid
-                            cover = matcher.searcher.cover_for(target_win.title)
-                            if cover:
-                                covers.store.remember(current_song_info["title"], current_song_info["artist"], sid, cover)
-                            window.set_now_playing(current_song_info["title"], current_song_info["artist"], sid)
+                    # 커버 주소는 곡 ID보다 늦게 오므로, 받을 때까지 계속 확인합니다 (멜론 요청이 늘지는 않음).
+                    if current_song_info is not None and cover_done_for is not current_song_info:
+                        id_added, cover = link_song(current_song_info, matcher.searcher, target_win.title)
+                        if id_added:
+                            window.set_now_playing(
+                                current_song_info["title"], current_song_info["artist"], current_song_info["song_id"]
+                            )
+                        if cover:
+                            covers.store.remember(
+                                current_song_info["title"], current_song_info["artist"],
+                                current_song_info["song_id"], cover,
+                            )
+                            # 커버 받기가 꺼져 있었다면 맡기지 못했으니, 켜면 다시 시도하도록 둡니다.
+                            cover_done_for = current_song_info if covers.store.enabled else None
 
                     curr = fixed_lines[0] if len(fixed_lines) > 0 else "..."
                     nxt = fixed_lines[1] if len(fixed_lines) > 1 else ""

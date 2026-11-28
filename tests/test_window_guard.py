@@ -38,11 +38,16 @@ def leave_ghosted(hwnd: int) -> None:
     )
 
 
-def make_topmost(hwnd: int) -> None:
-    win32gui.SetWindowPos(
-        hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
-        win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE,
-    )
+ORIGINAL_ALPHA = 200
+
+
+def make_translucent(hwnd: int) -> None:
+    """창이 원래부터 반투명(레이어드)이던 것처럼 만듭니다.
+
+    '항상 위'는 다른 창들의 상태에 따라 Windows가 받아 주지 않을 때가 있어 테스트에 쓰지 않습니다.
+    """
+    win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, exstyle(hwnd) | win32con.WS_EX_LAYERED)
+    win32gui.SetLayeredWindowAttributes(hwnd, 0, ORIGINAL_ALPHA, win32con.LWA_ALPHA)
 
 
 class WindowStyleGuardTest(unittest.TestCase):
@@ -85,6 +90,16 @@ class WindowStyleGuardTest(unittest.TestCase):
         self.assertTrue(g.set_ghost(self.hwnd, False))
         self.assertEqual(exstyle(self.hwnd), self.original)
         self.assertFalse(os.path.exists(self.record))
+
+    def test_restores_originally_translucent_window(self):
+        make_translucent(self.hwnd)
+        original = exstyle(self.hwnd)
+        g = self.guard()
+        self.assertTrue(g.set_ghost(self.hwnd, True))
+        self.assertTrue(is_ghosted(self.hwnd))
+        self.assertTrue(g.set_ghost(self.hwnd, False))
+        self.assertEqual(exstyle(self.hwnd), original)
+        self.assertEqual(window_capture._read_layered(self.hwnd), [0, ORIGINAL_ALPHA, win32con.LWA_ALPHA])
 
     def test_leftover_ghost_is_not_recorded_as_original(self):
         """다른 실행이 남긴 고스트 상태를 원래 상태로 기억하면 복구해도 투명한 채로 남습니다."""
@@ -169,9 +184,9 @@ class WindowStyleGuardTest(unittest.TestCase):
 
     def test_unreadable_record_is_kept(self):
         """기록 파일을 잠깐 읽지 못했다고 지우면 멀쩡한 기록을 잃습니다. 남겨 두고 다음 실행에서 씁니다."""
-        make_topmost(self.hwnd)  # 기록이 있어야만 되살릴 수 있는 원래 상태
+        make_translucent(self.hwnd)  # 기록이 있어야만 되살릴 수 있는 원래 상태
         original = exstyle(self.hwnd)
-        self.assertTrue(original & win32con.WS_EX_TOPMOST)
+        self.assertTrue(original & win32con.WS_EX_LAYERED)
         self.assertTrue(self.guard().set_ghost(self.hwnd, True))  # 복구 없이 버려진 실행
         legacy = os.path.join(self.data_dir, "window_restore.json")
         with open(legacy, "w", encoding="utf-8") as f:
@@ -181,11 +196,12 @@ class WindowStyleGuardTest(unittest.TestCase):
             self.guard().recover_from_file()
         self.assertTrue(os.path.exists(self.record))
         self.assertTrue(os.path.exists(legacy))
-        # 기록 없이 걷어내기만 했으므로 '항상 위'는 꺼져 있습니다.
-        self.assertFalse(exstyle(self.hwnd) & win32con.WS_EX_TOPMOST)
+        # 기록 없이 걷어내기만 했으므로 원래의 반투명 설정은 사라져 있습니다.
+        self.assertFalse(exstyle(self.hwnd) & win32con.WS_EX_LAYERED)
 
-        self.guard().recover_from_file()  # 다음 실행: 이번에는 읽혀서 원래 상태('항상 위' 포함)로
+        self.guard().recover_from_file()  # 다음 실행: 이번에는 읽혀서 원래 상태(반투명 포함)로
         self.assertEqual(exstyle(self.hwnd), original)
+        self.assertEqual(window_capture._read_layered(self.hwnd), [0, ORIGINAL_ALPHA, win32con.LWA_ALPHA])
         self.assertFalse(os.path.exists(self.record))
         self.assertFalse(os.path.exists(legacy))
 
