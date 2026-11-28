@@ -130,7 +130,8 @@ class CoverStore:
         """
         if not self.enabled:
             return 0, 0
-        cooling = self.backfill_wait() > 0
+        # 대기 중이거나 멜론이 요청을 거절해 쉬는 중이면 예약하지 않습니다 (세기만 함).
+        cooling = self.backfill_wait() > 0 or melon_http.paused_for() > 0
         n = left_over = 0
         seen = set()
         for e in entries:
@@ -170,7 +171,7 @@ class CoverStore:
             info = self._index.get(key)
             self._queued.add(key)
         if info and info.get("song_id") and valid_cover_url(info.get("url")):
-            self._jobs.put(("download", key, info["song_id"], info["url"]))
+            self._jobs.put(("download", key, info["song_id"], info["url"], True))  # 채우기에서 온 작업
         else:
             self._jobs.put(("resolve", key, title, artist))
         return True
@@ -229,12 +230,14 @@ class CoverStore:
             job = self._jobs.get()
             if job is None:
                 return
+            # 채우기로 예약한 작업(곡 찾기, 저장된 주소로 바로 받기)은 끝나면 남은 곡 수에서 뺍니다.
+            counted = job[0] == "resolve" or (len(job) > 4 and job[4])
             if not self.enabled:
-                self._finish(job[1], counted=job[0] == "resolve")
+                self._finish(job[1], counted=counted)
                 continue
             try:
                 if job[0] == "download":
-                    _, key, sid, url = job
+                    key, sid, url = job[1:4]
                     self._download(fetcher, sid, url)
                 else:
                     _, key, title, artist = job
@@ -265,7 +268,7 @@ class CoverStore:
             except Exception as e:
                 print(f"[⚠️] 앨범 커버를 가져오지 못했습니다: {e}")
                 self._mark_miss(job[1])
-            self._finish(job[1], counted=job[0] == "resolve")
+            self._finish(job[1], counted=counted)
 
     def _finish(self, key: str, counted: bool) -> None:
         """작업 하나가 끝나면 '예약됨' 표시를 지웁니다 (못 찾은 곡의 7일 뒤 재시도가 막히지 않게)."""

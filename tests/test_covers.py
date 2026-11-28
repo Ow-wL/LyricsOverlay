@@ -103,6 +103,40 @@ class CoverStoreTest(unittest.TestCase):
             self.assertEqual(s.backfill([{"title": "멜론 PC 플레이어", "artist": "Unknown"}]), (0, 0))
             self.assertEqual(s.backfill_wait(), 0)
 
+    def test_backfill_download_job_counts_down(self):
+        """주소는 아는데 파일만 없는 곡도 채우기 대상이고, 끝나면 남은 곡 수에서 빠져야 버튼이 다시 켜집니다."""
+        with tempfile.TemporaryDirectory() as d:
+            s = self.make(d)
+            key = cv._key("곡", "가수")
+            s._index[key] = {"song_id": "12345", "url": "https://cdnimg.melon.co.kr/a_500.jpg"}
+            self.assertEqual(s.backfill([{"title": "곡", "artist": "가수"}]), (1, 0))
+            self.assertEqual(s.backfill_left, 1)
+            s._jobs.put(None)
+            with mock.patch.object(s, "_download"):  # 실제로 받지는 않음
+                s._worker()
+            self.assertEqual(s.backfill_left, 0)
+
+    def test_new_song_download_does_not_touch_backfill_count(self):
+        with tempfile.TemporaryDirectory() as d:
+            s = self.make(d)
+            s.backfill_left = 3
+            s.remember("곡", "가수", "12345", "https://cdnimg.melon.co.kr/a_500.jpg")
+            s._jobs.put(None)
+            with mock.patch.object(s, "_download"):
+                s._worker()
+            self.assertEqual(s.backfill_left, 3)
+
+    def test_backfill_does_nothing_while_melon_paused(self):
+        """멜론이 거절해 쉬는 동안 누르면 예약하지 않고, 10분 대기도 시작하지 않습니다."""
+        from core import melon_http
+        self.addCleanup(melon_http._reset_for_tests)
+        with tempfile.TemporaryDirectory() as d:
+            s = self.make(d)
+            melon_http.report_status(429)
+            self.assertEqual(s.backfill([{"title": "곡", "artist": "가수"}]), (0, 1))
+            self.assertTrue(s._jobs.empty())
+            self.assertEqual(s.backfill_wait(), 0)
+
     def test_disabled_store_does_nothing(self):
         with tempfile.TemporaryDirectory() as d:
             s = self.make(d)

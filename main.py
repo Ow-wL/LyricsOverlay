@@ -361,6 +361,8 @@ async def main() -> None:
         if n:
             more = f" (남은 {left_over}곡은 {covers.BACKFILL_COOLDOWN_SEC // 60}분 뒤에 다시 눌러 주세요)" if left_over else ""
             add_log(f"예전 기록 커버 채우기: 최근 곡부터 {n}곡 예약{more}")
+        elif left_over and melon_http.paused_for() > 0:
+            add_log("예전 기록 커버 채우기: 멜론이 요청을 거절해 쉬는 중이에요")
         elif left_over and wait > 0:
             # 멜론에 요청이 몰리지 않도록 한 번에 조금씩만 받습니다.
             add_log(f"예전 기록 커버 채우기: {int(wait) // 60 + 1}분 뒤에 다시 눌러 주세요 (남은 곡 {left_over}개)")
@@ -706,7 +708,8 @@ async def main() -> None:
                                 current_song_info["title"], current_song_info["artist"],
                                 current_song_info["song_id"], cover,
                             )
-                            cover_done_for = current_song_info
+                            # 커버 받기가 꺼져 있었다면 맡기지 못했으니, 켜면 다시 시도하도록 둡니다.
+                            cover_done_for = current_song_info if covers.store.enabled else None
 
                     curr = fixed_lines[0] if len(fixed_lines) > 0 else "..."
                     nxt = fixed_lines[1] if len(fixed_lines) > 1 else ""
