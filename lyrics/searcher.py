@@ -4,8 +4,11 @@ from core import melon_http
 from bs4 import BeautifulSoup  # type: ignore
 from rapidfuzz import fuzz  # type: ignore
 import re
+import threading
 import time
+from collections import OrderedDict
 from concurrent.futures import Future, ThreadPoolExecutor
+from typing import Callable
 from urllib.parse import quote
 
 # 네트워크 오류 등 일시적인 실패 후 다시 시도하기까지 기다리는 시간
@@ -14,6 +17,12 @@ _RETRY_AFTER_SEC = 30.0
 # 멜론 페이지는 보통 수백 KB입니다. 이보다 크거나 오래 걸리면 비정상 응답으로 보고 끊습니다.
 _MAX_RESPONSE_BYTES = 3 * 1024 * 1024
 _MAX_RESPONSE_SEC = 15.0
+
+# 이번 실행에서 가사를 받은 곡을 이만큼 기억합니다 (메모리에만, 파일로 저장하지 않음).
+# 같은 곡을 다시 들을 때 멜론에 다시 묻지 않기 위한 것입니다.
+_CACHE_SONGS = 50
+
+_SONG_ID = re.compile(r"^\d{5,12}$")
 
 # 검색 결과 중 이 점수(0~100) 이상으로 제목·가수가 맞는 곡만 씁니다. 엉뚱한 곡의 가사로 보정하지 않도록.
 _MIN_ROW_SCORE = 70
@@ -117,6 +126,11 @@ class LyricsSearcher:
         # 가사를 찾은 곡의 멜론 곡 ID ('제목 - 가수' → ID). 감상 기록에서 멜론 링크로 씁니다.
         self.song_ids: dict[str, str] = {}
         self.song_covers: dict[str, str] = {}  # '제목 - 가수' → 앨범 이미지 주소
+        # 예전에 알아 둔 곡 ID를 찾는 함수 ('제목 - 가수' → 곡 ID 또는 None). 알면 검색을 건너뛰고 곡 페이지만 받습니다.
+        # 검색 작업 스레드에서 부르므로, 읽기만 하는 가벼운 함수여야 합니다.
+        self.id_lookup: Callable[[str], str | None] | None = None
+        self._cache: "OrderedDict[str, list[str]]" = OrderedDict()  # 이번 실행에서 받은 가사 (메모리에만)
+        self._cache_lock = threading.Lock()
 
     def search_lyrics(self, query: str) -> tuple[list[str], str | None]:
         """곡 제목 + 가수 쿼리에 해당하는 가사를 돌려줍니다 (UI를 막지 않음).
@@ -145,8 +159,14 @@ class LyricsSearcher:
             if self._future is not None:
                 self._future.cancel()
             self.current_song = display_name
-            self.cached_lyrics = []
             self._retry_at = None
+            remembered = self._cached(display_name)
+            if remembered is not None:
+                # 이번 실행에서 이미 받은 곡: 멜론에 다시 묻지 않습니다.
+                self._future = None
+                self.cached_lyrics = remembered
+                return self.cached_lyrics, f"✅ 다시 듣는 곡 (요청 없음): {display_name} ({len(remembered)}줄)"
+            self.cached_lyrics = []
             self._future = self._executor.submit(self._fetch, display_name, display_name)
             return [], f"🔎 가사 검색 중: {display_name}"
 
@@ -181,27 +201,75 @@ class LyricsSearcher:
     def shutdown(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)
 
+    def _cached(self, display_name: str) -> list[str] | None:
+        with self._cache_lock:
+            lines = self._cache.get(display_name)
+            if lines is not None:
+                self._cache.move_to_end(display_name)
+            return lines
+
+    def _remember(self, display_name: str, lines: list[str]) -> None:
+        with self._cache_lock:
+            self._cache[display_name] = lines
+            self._cache.move_to_end(display_name)
+            while len(self._cache) > _CACHE_SONGS:
+                self._cache.popitem(last=False)
+
+    def _known_id(self, display_name: str) -> str | None:
+        sid = self.song_ids.get(display_name)
+        if sid is None and self.id_lookup is not None:
+            try:
+                sid = self.id_lookup(display_name)
+            except Exception:
+                sid = None
+        return sid if isinstance(sid, str) and _SONG_ID.match(sid) else None
+
     def _get_text(self, url: str) -> str:
         """페이지를 받아 문자열로. 너무 크거나 오래 걸리는 응답은 중간에 끊습니다.
 
         requests의 timeout은 '응답 전체' 상한이 아니라 연결·읽기 대기 시간이라,
         조금씩 계속 오는 응답이나 비정상적으로 큰 응답이 검색 스레드를 오래 붙잡을 수 있습니다.
         """
-        melon_http.wait_turn()  # 최소 간격, 거절당한 뒤엔 쉬는 중이면 MelonPaused
+        melon_http.wait_turn()  # 최소 간격, 쉬는 중이면 MelonPaused
         start = time.monotonic()
-        with self.session.get(url, headers=self.headers, timeout=(5, 5), stream=True) as res:
-            melon_http.report_status(res.status_code)
-            res.raise_for_status()  # 차단·서버 오류는 재시도 대상으로
-            chunks, size = [], 0
-            for chunk in res.iter_content(64 * 1024):
-                size += len(chunk)
-                if size > _MAX_RESPONSE_BYTES:
-                    raise ValueError(f"응답이 너무 큽니다 ({_MAX_RESPONSE_BYTES // 1024 // 1024}MB 초과)")
-                if time.monotonic() - start > _MAX_RESPONSE_SEC:
-                    raise TimeoutError(f"응답이 {_MAX_RESPONSE_SEC:.0f}초 안에 끝나지 않았습니다")
-                chunks.append(chunk)
-            encoding = res.encoding or res.apparent_encoding or "utf-8"
+        try:
+            with self.session.get(url, headers=self.headers, timeout=(5, 5), stream=True) as res:
+                melon_http.report_status(res.status_code)  # 거절이면 쉬고, 다른 오류 응답은 연속 실패로 셈
+                res.raise_for_status()  # 차단·서버 오류는 재시도 대상으로
+                chunks, size = [], 0
+                for chunk in res.iter_content(64 * 1024):
+                    size += len(chunk)
+                    if size > _MAX_RESPONSE_BYTES:
+                        raise ValueError(f"응답이 너무 큽니다 ({_MAX_RESPONSE_BYTES // 1024 // 1024}MB 초과)")
+                    if time.monotonic() - start > _MAX_RESPONSE_SEC:
+                        raise TimeoutError(f"응답이 {_MAX_RESPONSE_SEC:.0f}초 안에 끝나지 않았습니다")
+                    chunks.append(chunk)
+                encoding = res.encoding or res.apparent_encoding or "utf-8"
+        except (requests.ConnectionError, requests.Timeout, TimeoutError):
+            melon_http.report_error()  # 응답을 못 받은 실패도 연속 실패로 셈
+            raise
         return b"".join(chunks).decode(encoding, errors="replace")
+
+    def _load_detail(self, display_name: str, song_id: str) -> list[str]:
+        """곡 페이지 한 번으로 가사와 커버 주소를 받습니다. 가사가 없으면 빈 목록."""
+        soup = BeautifulSoup(self._get_text(f"https://www.melon.com/song/detail.htm?songId={song_id}"), "html.parser")
+        lines: list[str] = []
+        lyric_div = soup.select_one("#d_video_summary") or soup.select_one(".lyric_area")
+        if lyric_div:
+            text_raw = lyric_div.get_text(separator="\n").strip()
+            found = [line.strip() for line in text_raw.split("\n") if line.strip()]
+            if len(found) > 2:
+                lines = found
+        cover = cover_url_from_detail(soup)
+        # 커버 주소를 먼저, 곡 ID를 나중에 적습니다 (곡 ID가 보이면 커버 주소도 이미 있도록).
+        if cover:
+            if len(self.song_covers) > 500:
+                self.song_covers.clear()
+            self.song_covers[display_name] = cover
+        if len(self.song_ids) > 500:
+            self.song_ids.clear()
+        self.song_ids[display_name] = str(song_id)
+        return lines
 
     def _fetch(self, query: str, display_name: str) -> tuple[list[str], str, bool]:
         """(백그라운드 스레드) 멜론에서 가사를 가져옵니다.
@@ -212,6 +280,21 @@ class LyricsSearcher:
         search_query = search_query_for(want_title, want_artist)
 
         try:
+            # 1) 예전에 알아 둔 곡 ID가 있으면 검색을 건너뛰고 곡 페이지만 받습니다 (요청 2번 → 1번).
+            known = self._known_id(display_name)
+            if known:
+                try:
+                    lines = self._load_detail(display_name, known)
+                except melon_http.MelonPaused:
+                    raise
+                except Exception as e:
+                    print(f"[DEBUG] 알고 있던 곡 ID({known})로 받지 못해 검색합니다: {e}")
+                    lines = []
+                if lines:
+                    self._remember(display_name, lines)
+                    return lines, f"✅ 로드 성공: {display_name} ({len(lines)}줄, 검색 생략)", False
+
+            # 2) 멜론에서 곡을 검색합니다.
             search_url = f"https://www.melon.com/search/song/index.htm?q={quote(search_query)}"
             rows = parse_search_rows(self._get_text(search_url))
             if not rows:
@@ -222,35 +305,19 @@ class LyricsSearcher:
             if best is None:
                 # 첫 결과를 그냥 쓰면 다른 곡의 가사로 '보정'해 버리므로 OCR 원문을 그대로 씁니다.
                 return [], f"❌ 같은 곡을 찾지 못함 (가장 비슷한 결과 {score:.0f}점): {display_name}", False
-            song_id = best[0]
+            song_id = str(best[0])
             print(f"[DEBUG] 찾은 곡 ID: {song_id} ({best[1]} - {best[2]}, {score:.0f}점)")
 
-            if not song_id or len(str(song_id)) < 5:
+            if not song_id or len(song_id) < 5:
                 return [], f"❌ 올바른 곡 ID를 찾지 못함: {display_name}", False
+            if song_id == known:
+                # 방금 그 곡 페이지에서 가사를 못 찾았습니다. 같은 페이지를 다시 받지 않습니다.
+                return [], f"❌ 가사 데이터 없음 (ID:{song_id}): {display_name}", False
 
-            if len(self.song_ids) > 500:
-                self.song_ids.clear()
-            self.song_ids[display_name] = str(song_id)
-
-            lyrics_url = (
-                f"https://www.melon.com/song/detail.htm?songId={song_id}"
-            )
-            l_soup = BeautifulSoup(self._get_text(lyrics_url), "html.parser")
-            cover = cover_url_from_detail(l_soup)
-            if cover:
-                if len(self.song_covers) > 500:
-                    self.song_covers.clear()
-                self.song_covers[display_name] = cover
-
-            lyric_div = l_soup.select_one("#d_video_summary") or l_soup.select_one(
-                ".lyric_area"
-            )
-            if lyric_div:
-                text_raw = lyric_div.get_text(separator="\n").strip()
-                lines = [line.strip() for line in text_raw.split("\n") if line.strip()]
-                if len(lines) > 2:
-                    return lines, f"✅ 로드 성공: {display_name} ({len(lines)}줄)", False
-
+            lines = self._load_detail(display_name, song_id)
+            if lines:
+                self._remember(display_name, lines)
+                return lines, f"✅ 로드 성공: {display_name} ({len(lines)}줄)", False
             return [], f"❌ 가사 데이터 없음 (ID:{song_id}): {display_name}", False
 
         except melon_http.MelonPaused as e:

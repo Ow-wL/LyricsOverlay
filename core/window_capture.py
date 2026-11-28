@@ -11,7 +11,7 @@ import win32gui
 import win32process
 import win32ui
 
-from core.utils import atomic_write_json
+from core.utils import atomic_write_json, state_dir
 
 # ------------------------------------------------------------------ #
 # 프로세스 확인
@@ -229,8 +229,7 @@ def default_state_dir() -> str:
     데이터 폴더는 설정이나 환경 변수로 바뀔 수 있습니다. 기록을 거기에 두면, 다른 데이터 폴더로
     띄운 실행이 강제 종료됐을 때 다음 실행이 기록을 찾지 못해 멜론 창이 투명한 채로 남습니다.
     """
-    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-    return os.path.join(base, "LyricsOverlay")
+    return state_dir()
 
 
 def _read_layered(hwnd) -> list[int] | None:

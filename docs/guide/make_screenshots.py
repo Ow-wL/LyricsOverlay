@@ -74,6 +74,8 @@ class _SampleConfig:
     record_history = True
     auto_update_check = True
     skipped_version = ""
+    auto_backfill = False
+    diagnostic_log = True
 
     def set_data_dir(self, new_dir, overwrite_existing=False):
         return True

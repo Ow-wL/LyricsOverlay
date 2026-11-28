@@ -17,6 +17,7 @@ import threading
 import time
 from urllib.parse import quote
 
+import requests  # type: ignore
 from bs4 import BeautifulSoup  # type: ignore
 
 from core import melon_http
@@ -27,6 +28,7 @@ _MAX_BYTES = 2 * 1024 * 1024
 _BACKFILL_GAP_SEC = 4.0          # 예전 기록 채우기: 요청 사이 간격 (곡 하나에 요청 3번, 약 10초)
 BACKFILL_MAX_PER_RUN = 20        # 한 번 누를 때 찾는 곡 수 상한 (멜론에 요청이 몰리지 않게)
 BACKFILL_COOLDOWN_SEC = 10 * 60  # 한 번 채운 뒤 다음 채우기까지 기다리는 시간
+AUTO_BACKFILL_INTERVAL_SEC = 5 * 60  # '자동으로 조금씩 채우기': 이 간격으로 한 곡씩
 _MISS_RETRY_SEC = 7 * 24 * 3600  # 못 찾은 곡은 일주일 뒤 다시 시도
 _SONG_ID = re.compile(r"^\d{5,12}$")
 
@@ -95,6 +97,12 @@ class CoverStore:
                 return self._file(sid)
         return None
 
+    def song_id_for(self, title: str, artist: str) -> str | None:
+        """예전에 커버를 받으며 알아 둔 곡 ID (없으면 None). 가사 검색을 건너뛰는 데 씁니다."""
+        with self._lock:
+            sid = (self._index.get(_key(title, artist)) or {}).get("song_id")
+        return sid if isinstance(sid, str) and _SONG_ID.match(sid) else None
+
     def take_updated(self) -> bool:
         """마지막 호출 이후 새 커버가 저장됐는지 (화면을 다시 그릴지)."""
         with self._lock:
@@ -121,17 +129,20 @@ class CoverStore:
             return 0.0
         return max(0.0, self._backfill_started + BACKFILL_COOLDOWN_SEC - time.monotonic())
 
-    def backfill(self, entries, limit: int = BACKFILL_MAX_PER_RUN) -> tuple[int, int]:
-        """예전 감상 기록 중 커버가 없는 곡을 찾기 예약합니다 (사용자가 버튼을 눌렀을 때만).
+    def backfill(self, entries, limit: int = BACKFILL_MAX_PER_RUN, auto: bool = False) -> tuple[int, int]:
+        """예전 감상 기록 중 커버가 없는 곡을 찾기 예약합니다.
 
         한 번에 `limit`곡까지만, 목록의 앞쪽(최근에 들은 곡)부터 예약합니다. 직전 채우기에서
         `BACKFILL_COOLDOWN_SEC`가 지나지 않았으면 예약하지 않습니다 (`backfill_wait()` 참고).
+
+        auto=True는 '자동으로 조금씩 채우기'가 부를 때입니다. 부르는 쪽이 간격을 지키므로 대기 시간을
+        보지도 시작하지도 않고, 다른 채우기가 진행 중이면 아무것도 하지 않습니다.
         Returns (예약한 곡 수, 이번에 예약하지 못하고 남은 곡 수)
         """
-        if not self.enabled:
+        if not self.enabled or (auto and self.backfill_left > 0):
             return 0, 0
-        # 대기 중이거나 멜론이 요청을 거절해 쉬는 중이면 예약하지 않습니다 (세기만 함).
-        cooling = self.backfill_wait() > 0 or melon_http.paused_for() > 0
+        # 대기 중이거나 멜론 요청을 쉬는 중이면 예약하지 않습니다 (세기만 함).
+        cooling = melon_http.paused_for() > 0 or (not auto and self.backfill_wait() > 0)
         n = left_over = 0
         seen = set()
         for e in entries:
@@ -146,7 +157,7 @@ class CoverStore:
                 left_over += self._backfill_wanted(title, artist)
             elif self._request_backfill(title, artist):
                 n += 1
-        if n:
+        if n and not auto:
             self._backfill_started = time.monotonic()
         with self._lock:
             self.backfill_left += n
@@ -287,7 +298,11 @@ class CoverStore:
         path = self._file(sid)
         if not os.path.exists(path):
             melon_http.wait_turn()
-            res = fetcher.session.get(url + _RESIZE, headers=fetcher.headers, timeout=(5, 10), stream=True)
+            try:
+                res = fetcher.session.get(url + _RESIZE, headers=fetcher.headers, timeout=(5, 10), stream=True)
+            except (requests.ConnectionError, requests.Timeout):
+                melon_http.report_error()  # 응답을 못 받은 실패도 연속 실패로 셈
+                raise
             melon_http.report_status(res.status_code)
             res.raise_for_status()
             if not res.headers.get("content-type", "").startswith("image/"):

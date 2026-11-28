@@ -35,7 +35,7 @@ import cv2
 cv2.setNumThreads(1)
 from PySide6.QtWidgets import QApplication, QMessageBox  # type: ignore
 
-from core import autostart, covers, melon_control, melon_http
+from core import app_log, autostart, covers, melon_control, melon_http
 from core.hotkey_manager import HotkeyManager, send_next_track, send_play_pause, send_prev_track
 from core.ocr_engine import OCR_HELP, OCR_KOREAN, OCR_STATUS, ocr_available, windows_native_ocr_split
 from core.stats_manager import load_stats, make_session_stats, parse_song_info, resumable_entry, save_stats
@@ -109,6 +109,7 @@ def add_log(message: str) -> None:
     timestamp = time.strftime("%H:%M:%S")
     log_msg = f"[{timestamp}] {message}"
     log_history.append(log_msg)
+    app_log.write(message)
     if len(log_history) > 5:
         log_history.pop(0)
 
@@ -200,6 +201,11 @@ async def main() -> None:
         return
     
     _app_config = AppConfig()
+
+    # 진단 로그: 설정에서 끄거나 '감상 기록 저장'을 끄면 남기지 않습니다 (곡 제목이 들어가므로).
+    app_log.start(should_log=lambda: _app_config.diagnostic_log and _app_config.record_history)
+    # 지난 실행에서 멜론 요청을 쉬는 중이었다면 이어서 쉽니다 (앱을 다시 켠다고 바로 요청하지 않게).
+    melon_http.restore_pause(*_app_config.melon_pause)
 
     # 지난번 강제 종료로 투명하게 남은 멜론 창이 있으면 가장 먼저 복구합니다.
     # (이후 단계에서 무엇이 실패해도 멜론 창은 원래대로 돌아오게)
@@ -331,9 +337,9 @@ async def main() -> None:
 
     def refresh_covers_status(notice: str = "") -> None:
         left = covers.store.backfill_left
-        paused = melon_http.paused_for()
+        paused = melon_http.pause_text()
         if paused:
-            text = f"멜론이 요청을 거절해 {int(paused) // 60 + 1}분 동안 쉬는 중이에요."
+            text = paused + "이에요."
         elif notice:
             text = notice
         elif left:
@@ -362,7 +368,7 @@ async def main() -> None:
             more = f" (남은 {left_over}곡은 {covers.BACKFILL_COOLDOWN_SEC // 60}분 뒤에 다시 눌러 주세요)" if left_over else ""
             add_log(f"예전 기록 커버 채우기: 최근 곡부터 {n}곡 예약{more}")
         elif left_over and melon_http.paused_for() > 0:
-            add_log("예전 기록 커버 채우기: 멜론이 요청을 거절해 쉬는 중이에요")
+            add_log(f"예전 기록 커버 채우기: {melon_http.pause_text()}이에요")
         elif left_over and wait > 0:
             # 멜론에 요청이 몰리지 않도록 한 번에 조금씩만 받습니다.
             add_log(f"예전 기록 커버 채우기: {int(wait) // 60 + 1}분 뒤에 다시 눌러 주세요 (남은 곡 {left_over}개)")
@@ -384,7 +390,37 @@ async def main() -> None:
 
     sp.melon_lyrics_toggled.connect(on_melon_lyrics)
     sp.melon_covers_toggled.connect(on_melon_covers)
+    def on_auto_backfill(on: bool) -> None:
+        _app_config.auto_backfill = on
+        add_log(f"예전 기록 커버 자동 채우기: {'켬' if on else '끔'}")
+
     sp.covers_backfill_requested.connect(on_backfill)
+    sp.auto_backfill_toggled.connect(on_auto_backfill)
+
+    # 이미 아는 곡은 멜론 검색을 건너뜁니다 (곡 페이지 1번만 요청). 곡 ID는 감상 기록과 커버 색인에서 찾습니다.
+    known_ids: dict[tuple[str, str], str] = {}
+    for entry in reversed(persistent_stats.get("play_history", [])):  # 최근 기록이 우선
+        sid = entry.get("song_id")
+        if isinstance(sid, str) and sid.isdigit():
+            known_ids[(entry.get("title", ""), entry.get("artist", ""))] = sid
+
+    def lookup_song_id(display_name: str) -> str | None:
+        title, artist = parse_song_info(display_name)
+        return known_ids.get((title, artist)) or covers.store.song_id_for(title, artist)
+
+    matcher.searcher.id_lookup = lookup_song_id
+
+    def on_restore_melon() -> None:
+        """트레이 '멜론 창 되돌리기': 지금 바로 되돌리고, 다시 숨기지 않도록 '멜론 창 숨기기'를 끕니다."""
+        style_guard.restore_all()
+        healed = style_guard.heal_orphans()
+        if config_manager.hide_melon_window:
+            config_manager.hide_melon_window = False
+            config_manager.save_to_file()
+            window.sync_controls()
+        add_log("멜론 창을 원래대로 되돌렸어요 ('멜론 창 숨기기' 끔)" + (f", 남아 있던 창 {healed}개 복구" if healed else ""))
+
+    window.melon_restore_requested.connect(on_restore_melon)
     sp.covers_clear_requested.connect(on_clear_covers)
     refresh_covers_status()
     if recovered:
@@ -472,6 +508,11 @@ async def main() -> None:
             persistent_stats["play_history"].insert(0, current_song_info)
             save_stats(persistent_stats, _app_config.data_dir)
 
+    saved_pause_until = melon_http.paused_until_epoch()
+    if saved_pause_until:
+        add_log(f"지난 실행에 이어 {melon_http.pause_text()}")
+    next_auto_backfill = time.monotonic() + covers.AUTO_BACKFILL_INTERVAL_SEC
+
     target_win = None
     next_window_scan = 0.0
     last_target_ok = False
@@ -557,6 +598,24 @@ async def main() -> None:
                 prev_state = media_state
                 media_state = await media.poll()
                 restarted = is_restart(prev_state, media_state, current_song_played)
+                # 멜론 요청을 쉬기 시작했거나 끝났으면 저장해 둡니다 (앱을 다시 켜도 이어지도록).
+                pause_until = melon_http.paused_until_epoch()
+                if pause_until != saved_pause_until:
+                    saved_pause_until = pause_until
+                    _app_config.set_melon_pause(pause_until, melon_http.pause_reason())
+                    if pause_until:
+                        add_log(melon_http.pause_text())
+                    refresh_covers_status()
+                # 예전 기록 커버 자동 채우기: 실제로 듣는 동안에만, 정해진 간격으로 한 곡씩
+                if now >= next_auto_backfill:
+                    next_auto_backfill = now + covers.AUTO_BACKFILL_INTERVAL_SEC
+                    if _app_config.auto_backfill and media_state.available and media_state.playing:
+                        queued, _left = covers.store.backfill(
+                            persistent_stats.get("play_history", []), limit=1, auto=True
+                        )
+                        if queued:
+                            add_log("예전 기록 커버 자동 채우기: 한 곡 찾는 중")
+                            refresh_covers_status()
                 if covers.store.take_updated():
                     window.refresh_covers()
                     refresh_covers_status()
@@ -700,6 +759,7 @@ async def main() -> None:
                     if current_song_info is not None and cover_done_for is not current_song_info:
                         id_added, cover = link_song(current_song_info, matcher.searcher, target_win.title)
                         if id_added:
+                            known_ids[(current_song_info["title"], current_song_info["artist"])] = current_song_info["song_id"]
                             window.set_now_playing(
                                 current_song_info["title"], current_song_info["artist"], current_song_info["song_id"]
                             )
@@ -731,16 +791,17 @@ async def main() -> None:
                         last_shown = (curr, nxt)
                         overlay.update_lyrics(curr, nxt)
                         window.dashboard_page.curr_lyric.setText(curr)
-                        print("\033[H\033[J")
+                        # 가사 문장은 파일에 남기지 않으므로, 이 화면 출력은 진단 로그를 거치지 않습니다.
                         mode_status = "👻 게임 모드" if is_ghost_mode else "🖱️  조작 모드"
-                        print(f"상태: {mode_status} | 대상: {target_win.title}")
-                        print("-" * 40)
-                        print(f"🔥 현재: {curr}")
-                        print(f"💤 다음: {nxt}")
-                        print("-" * 40)
-                        print("[ 시스템 로그 ]")
+                        app_log.console("\033[H\033[J")
+                        app_log.console(f"상태: {mode_status} | 대상: {target_win.title}")
+                        app_log.console("-" * 40)
+                        app_log.console(f"🔥 현재: {curr}")
+                        app_log.console(f"💤 다음: {nxt}")
+                        app_log.console("-" * 40)
+                        app_log.console("[ 시스템 로그 ]")
                         for log in log_history:
-                            print(f" > {log}")
+                            app_log.console(f" > {log}")
 
                     # 통계 카드는 1초에 한 번이면 충분합니다.
                     if now - last_stats_ui >= 1.0:

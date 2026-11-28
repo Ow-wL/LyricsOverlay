@@ -57,6 +57,24 @@ Get-FileHash .\LyricsOverlay.exe -Algorithm SHA256
 
 앱은 GitHub의 **최신 릴리스**(Latest)를 보고 새 버전을 알려 주고, exe로 실행 중이면 그 자리에서 업데이트합니다.
 
+**자동 (권장)**
+
+1. `core/version.py`의 `APP_VERSION`을 올려 `main`에 머지합니다. (예: `1.4.0`)
+2. 그 커밋에 같은 숫자의 태그를 만들어 올립니다.
+
+   ```powershell
+   git tag 1.4.0
+   ```
+   ```powershell
+   git push origin 1.4.0
+   ```
+3. GitHub Actions의 `release` 워크플로(`.github/workflows/release.yml`)가 테스트 → exe 빌드와 자체 점검 → 사용 가이드 생성을 하고, 파일을 첨부한 릴리스 **초안**을 만듭니다. 태그와 `APP_VERSION`이 다르면 멈춥니다.
+4. 초안에서 exe를 받아 직접 실행해 확인합니다. 변경 내용(`docs/release_notes_template.md`의 첫 줄 자리)을 적고 **게시**합니다. 초안인 동안에는 업데이트 알림이 뜨지 않습니다.
+
+빌드 관련 파일(`build.ps1`, `main.spec`, `requirements*.txt` 등)을 고친 PR에서는 같은 워크플로가 릴리스 없이 빌드만 해 봅니다.
+
+**수동**
+
 1. `core/version.py`의 `APP_VERSION`을 올립니다. (예: `1.2.0`)
 2. `.\build.ps1`로 빌드합니다.
 3. GitHub에서 새 릴리스를 만듭니다.

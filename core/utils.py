@@ -16,6 +16,15 @@ def resource_path(relative_path: str) -> str:
     return os.path.join(base_path, relative_path)
 
 
+def state_dir() -> str:
+    r"""사용자별 고정 폴더 (%LOCALAPPDATA%\LyricsOverlay). 데이터 폴더와 달리 설정이나 환경 변수로 바뀌지 않습니다.
+
+    멜론 창 복구 기록과 진단 로그처럼, 데이터 폴더를 바꿔도 같은 자리에서 찾아야 하는 파일을 둡니다.
+    """
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    return os.path.join(base, "LyricsOverlay")
+
+
 def atomic_write_json(path: str, data) -> None:
     """JSON을 임시 파일에 먼저 쓴 뒤 교체해, 저장 중 중단돼도 기존 파일이 깨지지 않게 합니다."""
     import json
