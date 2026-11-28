@@ -530,11 +530,12 @@ class WindowStyleGuard:
             topmost_bit = current & win32con.WS_EX_TOPMOST  # topmost는 SetWindowPos로만 바꿉니다
 
             if target & win32con.WS_EX_LAYERED and layered is not None:
-                # SetLayeredWindowAttributes 방식이던 창: 속성을 원래 값으로
-                win32gui.SetLayeredWindowAttributes(hwnd, layered[0], layered[1], layered[2])
+                # SetLayeredWindowAttributes 방식이던 창: 스타일을 먼저 되돌리고 속성을 원래 값으로.
+                # (지금 레이어드가 아닌 창에 속성부터 걸면 실패합니다.)
                 win32gui.SetWindowLong(
                     hwnd, win32con.GWL_EXSTYLE, (target & ~win32con.WS_EX_TOPMOST) | topmost_bit
                 )
+                win32gui.SetLayeredWindowAttributes(hwnd, layered[0], layered[1], layered[2])
             else:
                 # 레이어드가 아니었거나 UpdateLayeredWindow 방식이던 창:
                 # 레이어드를 한 번 껐다가 원래 스타일로 되돌려야 우리가 건 속성이 사라집니다.
